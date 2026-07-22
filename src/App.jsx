@@ -642,7 +642,7 @@ export default function ScarabTracker() {
       </header>
 
       <nav className="st-tabs" aria-label="Views">
-        <button className={tab === "prices" ? "on" : ""} onClick={() => setTab("prices")}>Prices</button>
+        <button className={tab === "prices" ? "on" : ""} onClick={() => setTab("prices")}>Scarabs</button>
         <button className={tab === "farms" ? "on" : ""} onClick={() => setTab("farms")}>Popular farms</button>
         <button className={tab === "astrolabes" ? "on" : ""} onClick={() => setTab("astrolabes")}>Astrolabes</button>
         <button className={tab === "catalysts" ? "on" : ""} onClick={() => setTab("catalysts")}>Catalysts</button>
@@ -916,6 +916,7 @@ const css = `
 }
 .st-root {
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     radial-gradient(1100px 500px at 50% -150px, #2b241a 0%, transparent 70%),
     #17130e;
@@ -1019,11 +1020,17 @@ const css = `
 .st-pct.up { color: #8fd47f; }
 .st-pct.down { color: #d47f7f; }
 .st-pct.flat { color: #6f6656; }
-.st-tabs { display: flex; gap: 4px; border-bottom: 1px solid #3a332a; margin: 4px 0 12px; }
+.st-tabs {
+  display: flex; gap: 4px; border-bottom: 1px solid #3a332a; margin: 4px 0 12px;
+  overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.st-tabs::-webkit-scrollbar { display: none; }
 .st-tabs button {
   background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
   color: #8d8371; font-family: inherit; font-size: 14px; letter-spacing: 0.08em;
   text-transform: uppercase; padding: 8px 14px 10px;
+  white-space: nowrap; flex: 0 0 auto;
 }
 .st-tabs button.on { color: #ead9a8; border-bottom-color: #c9a24b; }
 .st-tabs button:hover { color: #c4b795; }
