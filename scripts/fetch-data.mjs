@@ -248,7 +248,12 @@ async function main() {
       if (!priced || !priced.items.length) { console.log(`- ${lg.name}: no usable scarab data, skipping`); continue; }
       const { items, source, leagueParam, exchangeDivineRate } = priced;
 
-      const divineRate = await getDivineRate(leagueParam, exchangeDivineRate);
+      // Divine rate: when prices come from the exchange overview, derive the
+      // rate from that same response (live market, consistent with the scarab
+      // prices). The stash/legacy currency endpoints can serve stale values.
+      const divineRate = (source === "exchange" && exchangeDivineRate)
+        ? exchangeDivineRate
+        : await getDivineRate(leagueParam, exchangeDivineRate);
       // divineValue may be missing/zero from some sources — recompute
       for (const it of items) if (!it.divineValue) it.divineValue = it.chaosValue / divineRate;
 
