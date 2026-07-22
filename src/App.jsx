@@ -674,6 +674,9 @@ export default function ScarabTracker() {
               <span className="st-panel-total">
                 Set total {fmtPrice(openGroupData.total, currency, divineRate)}
               </span>
+              {(openGroupData.name === "Universal" || openGroupData.name === "Horned") && (
+                <em className="st-tag st-tag-panel">not tied to a mechanic</em>
+              )}
             </div>
             <button className="st-close" onClick={() => { setOpenGroup(null); setFocusScarab(null); }}>Close</button>
           </div>
@@ -835,7 +838,6 @@ export default function ScarabTracker() {
                 <div className="st-card-name">
                   <ScarabIcon size={20} tone={tone} />
                   <span>{g.name}</span>
-                  {(g.name === "Universal" || g.name === "Horned") && <em className="st-tag">not tied to a mechanic</em>}
                 </div>
                 <div className="st-card-meta">{g.members.length} scarabs · top: {top?.name.replace(/^.*Scarab( of)? ?/, "") || "—"}</div>
               </div>
@@ -970,6 +972,7 @@ const css = `
 .st-card-main { flex: 1; min-width: 0; }
 .st-card-name { display: flex; align-items: center; gap: 8px; font-size: 16px; color: #ead9a8; letter-spacing: 0.03em; }
 .st-tag { font-size: 10.5px; color: #8d8371; font-style: italic; }
+.st-tag-panel { font-size: 12.5px; white-space: nowrap; }
 .st-card-meta { font-size: 11.5px; color: #8d8371; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .st-card-total { text-align: right; }
 .st-card-total-num { font-size: 17px; color: #f0dfa8; font-variant-numeric: tabular-nums; }
