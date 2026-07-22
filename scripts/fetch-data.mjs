@@ -47,19 +47,30 @@ const median = (arr) => {
 
 /* ---------- leagues ---------- */
 async function getLeagues() {
+  const current = [];
+  const previous = [];
   // Documented: plain array [{id, name}], first = current challenge league
   const a = await tryJson(`${NINJA}/poe1/api/economy/leagues`);
   if (Array.isArray(a) && a.length && a[0].id) {
-    console.log("Leagues via /poe1/api/economy/leagues");
-    return a.map((l) => ({ name: l.name || l.id, params: [l.id, l.name].filter(Boolean) }));
+    console.log("Current leagues via /poe1/api/economy/leagues");
+    for (const l of a) current.push({ name: l.name || l.id, params: [l.id, l.name].filter(Boolean), group: "current" });
   }
+  // index-state carries the previous ("old") economy leagues, and doubles as
+  // a fallback for the current ones
   const b = await tryJson(`${NINJA}/poe1/api/data/index-state`) || await tryJson(`${NINJA}/api/data/getindexstate`);
-  const eco = (b && b.economyLeagues) || [];
-  if (eco.length) {
-    console.log("Leagues via index-state");
-    return eco.map((l) => ({ name: l.name, params: [l.url, l.name].filter(Boolean) }));
+  if (b) {
+    if (!current.length) {
+      for (const l of b.economyLeagues || []) current.push({ name: l.name, params: [l.url, l.name].filter(Boolean), group: "current" });
+    }
+    for (const l of b.oldEconomyLeagues || []) {
+      previous.push({ name: l.name, params: [l.url, l.name].filter(Boolean), group: "previous" });
+    }
+    if (previous.length) console.log(`Previous leagues via index-state: ${previous.map((l) => l.name).join(", ")}`);
   }
-  throw new Error("Could not fetch league list from any known endpoint");
+  const seen = new Set();
+  const all = [...current, ...previous].filter((l) => (seen.has(l.name) ? false : (seen.add(l.name), true)));
+  if (!all.length) throw new Error("Could not fetch league list from any known endpoint");
+  return all;
 }
 
 /* ---------- prices ---------- */
@@ -269,11 +280,16 @@ async function main() {
 
       const slug = slugify(lg.name);
       let history = {};
-      if (source === "legacy" && li < HISTORY_LEAGUES) {
+      if (source === "legacy" && lg.group === "current" && li < HISTORY_LEAGUES) {
         history = await getNinjaHistory(leagueParam, items);
       }
-      const self = await updateSelfHistory(slug, items);
-      if (!Object.keys(history).length) history = selfHistoryToSeries(self);
+      // Self-history only makes sense for running leagues; finished leagues
+      // have frozen prices, so a flat fake curve would just mislead.
+      let self = { points: [] };
+      if (lg.group === "current") {
+        self = await updateSelfHistory(slug, items);
+        if (!Object.keys(history).length) history = selfHistoryToSeries(self);
+      }
 
       const dir = path.join(OUT, slug);
       await mkdir(dir, { recursive: true });
@@ -281,7 +297,7 @@ async function main() {
       await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, items }));
       await writeFile(path.join(dir, "history.json"), JSON.stringify(history));
       await writeFile(path.join(dir, "selfhistory.json"), JSON.stringify(self));
-      written.push({ name: lg.name, slug });
+      written.push({ name: lg.name, slug, group: lg.group || "current" });
       console.log(`- ${lg.name}: ${items.length} scarabs, ${Object.keys(history).length} history series, 1 div = ${Math.round(divineRate)}c`);
     } catch (e) {
       console.log(`- ${lg.name}: FAILED (${e.message})`);

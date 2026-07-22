@@ -303,7 +303,7 @@ export default function ScarabTracker() {
             const slugs = {};
             for (const l of lgs) slugs[l.name] = l.slug;
             staticSlugsRef.current = slugs;
-            setLeagues(lgs.map((l) => l.name));
+            setLeagues(lgs.map((l) => ({ name: l.name, group: l.group || "current" })));
             setLeague(lgs[0].name);
             await loadStaticLeague(lgs[0].name, slugs);
             return;
@@ -316,16 +316,18 @@ export default function ScarabTracker() {
         try { res = await ninjaFetch(`/index-state`); }
         catch { res = await ninjaFetch(`/getindexstate`); }
         const idx = await res.json();
-        const lgs = (idx.economyLeagues || []).map((l) => l.name);
+        const cur = (idx.economyLeagues || []).map((l) => ({ name: l.name, group: "current" }));
+        const prev = (idx.oldEconomyLeagues || []).map((l) => ({ name: l.name, group: "previous" }));
+        const lgs = [...cur, ...prev];
         if (cancelled) return;
-        const first = lgs[0] || "Standard";
-        setLeagues(lgs.length ? lgs : ["Standard"]);
+        const first = cur[0]?.name || "Standard";
+        setLeagues(lgs.length ? lgs : [{ name: "Standard", group: "current" }]);
         setLeague(first);
         await loadLeague(first);
       } catch {
         if (cancelled) return;
         setItems(buildDemoData());
-        setLeagues(["Demo snapshot"]);
+        setLeagues([{ name: "Demo snapshot", group: "current" }]);
         setLeague("Demo snapshot");
         setMode("demo");
       }
@@ -469,7 +471,15 @@ export default function ScarabTracker() {
           <label className="st-ctl">
             <span>League</span>
             <select value={league} disabled={mode !== "live"} onChange={(e) => { const v = e.target.value; setLeague(v); (dataSource === "static" ? loadStaticLeague(v) : loadLeague(v)).catch(() => {}); }}>
-              {leagues.map((l) => <option key={l} value={l}>{l}</option>)}
+              {["current", "previous"].map((g) => {
+                const opts = leagues.filter((l) => (l.group || "current") === g);
+                if (!opts.length) return null;
+                return (
+                  <optgroup key={g} label={g === "current" ? "Current leagues" : "Previous leagues"}>
+                    {opts.map((l) => <option key={l.name} value={l.name}>{l.name}</option>)}
+                  </optgroup>
+                );
+              })}
             </select>
           </label>
           <div className="st-ctl">
