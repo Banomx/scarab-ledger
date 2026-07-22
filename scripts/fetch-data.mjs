@@ -6,7 +6,11 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const API = "https://poe.ninja/api/data";
+const API_BASES = [
+  "https://poe.ninja/poe1/api/data", // current PoE 1 API location
+  "https://poe.ninja/api/data",      // legacy location, kept as fallback
+];
+const INDEX_PATHS = ["/index-state", "/getindexstate"];
 const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public", "data");
 const HEADERS = { "User-Agent": "scarab-ledger-snapshot/0.1 (github actions data fetch)" };
 const HISTORY_LEAGUES = 2; // full per-scarab history only for the first N leagues (politeness)
@@ -33,7 +37,20 @@ async function main() {
   await rm(OUT, { recursive: true, force: true });
   await mkdir(OUT, { recursive: true });
 
-  const idx = await getJson(`${API}/getindexstate`);
+  // Find a working API base + index endpoint (poe.ninja moved PoE1 to /poe1/)
+  let API = null, idx = null;
+  outer: for (const base of API_BASES) {
+    for (const p of INDEX_PATHS) {
+      try {
+        idx = await getJson(`${base}${p}`);
+        API = base;
+        console.log(`Using API base: ${base}${p}`);
+        break outer;
+      } catch { /* try next */ }
+    }
+  }
+  if (!API) throw new Error("No working poe.ninja API base found (tried /poe1/api/data and /api/data)");
+
   const leagueNames = (idx.economyLeagues || []).map((l) => l.name);
   console.log("Leagues:", leagueNames.join(", ") || "(none)");
 

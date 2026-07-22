@@ -10,15 +10,21 @@ import {
    - Falls back to a deterministic demo snapshot inside Claude,
      where outbound requests to poe.ninja are blocked.
    Live endpoints used when reachable:
-     GET /api/data/getindexstate                      -> league list
+     GET /poe1/api/data/index-state                   -> league list
      GET /api/data/itemoverview?league=X&type=Scarab  -> prices
      GET /api/data/currencyoverview?league=X&type=Currency -> divine rate
      GET /api/data/itemhistory?league=X&type=Scarab&itemId=N -> history
    ================================================================ */
 
 /* Proxy path first (vite dev server / nginx rewrites /ninja -> poe.ninja,
-   dodging CORS), direct URL as fallback. */
-const API_BASES = ["/ninja/api/data", "https://poe.ninja/api/data"];
+   dodging CORS), direct URLs as fallback. poe.ninja moved PoE 1 endpoints
+   under /poe1/ — the old /api/data paths are kept as a last resort. */
+const API_BASES = [
+  "/ninja/poe1/api/data",
+  "https://poe.ninja/poe1/api/data",
+  "/ninja/api/data",
+  "https://poe.ninja/api/data",
+];
 const DEMO_LEAGUE_DAYS = 92;
 const DEMO_DIVINE_RATE = 185;
 
@@ -306,7 +312,9 @@ export default function ScarabTracker() {
       } catch { /* fall through to live API */ }
       // 2) live poe.ninja API (dev proxy or direct)
       try {
-        const res = await ninjaFetch(`/getindexstate`);
+        let res;
+        try { res = await ninjaFetch(`/index-state`); }
+        catch { res = await ninjaFetch(`/getindexstate`); }
         const idx = await res.json();
         const lgs = (idx.economyLeagues || []).map((l) => l.name);
         if (cancelled) return;
