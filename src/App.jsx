@@ -207,6 +207,90 @@ function ScarabIcon({ size = 22, tone = "#c9a24b" }) {
   );
 }
 
+
+/* ---------------- extra price-check categories (Astrolabes, Catalysts) ---- */
+
+const CATEGORY_TABS = {
+  astrolabes: { label: "Astrolabes", type: "Astrolabe", re: /astrolabe/i, shape: "ring" },
+  catalysts: { label: "Catalysts", type: "Currency", re: /catalyst/i, shape: "gem" },
+};
+
+const SMALL_WORDS = new Set(["of", "the", "a", "and", "in"]);
+function slugToName(slug) {
+  if (!slug || typeof slug !== "string") return null;
+  return slug.split("-").map((w, i) =>
+    (i > 0 && SMALL_WORDS.has(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1)
+  ).join(" ");
+}
+
+const EXCHANGE_BASES = ["/ninja/poe1/api/economy", "https://poe.ninja/poe1/api/economy"];
+async function exchangeFetch(path) {
+  let lastErr;
+  for (const base of EXCHANGE_BASES) {
+    try {
+      const res = await fetch(base + path);
+      if (res.ok) return res;
+      lastErr = new Error(`HTTP ${res.status}`);
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("unreachable");
+}
+
+/* Same adaptation the snapshot script uses, for live/dev mode. */
+function adaptExchangeLite(j, nameRe) {
+  const core = j.core || {};
+  const coreItems = core.items || [];
+  const byId = {};
+  for (const it of coreItems) { if (it.id != null) byId[it.id] = it; if (it.itemId != null) byId[it.itemId] = it; }
+  const findId = (n) => { for (const it of coreItems) if ((it.name || "").toLowerCase() === n) return it.id ?? it.itemId; return null; };
+  const chaosId = findId("chaos orb"), divineId = findId("divine orb");
+  const rates = core.rates || {};
+  const rChaos = core.primary === chaosId ? (rates[chaosId] ?? 1) : rates[chaosId];
+  const raw = (j.lines || [])
+    .map((l) => ({ line: l, name: (byId[l.id] || byId[l.itemId] || {}).name || l.name || slugToName(l.id ?? l.itemId) }))
+    .filter((x) => x.name && nameRe.test(x.name));
+  if (!raw.length) return { items: [] };
+  const mult = (!rChaos || rChaos === 1) ? 1 : rChaos;
+  let divineRate = null;
+  if (rChaos != null && rates[divineId]) {
+    for (const c of [rChaos / rates[divineId], rates[divineId] / rChaos]) if (c >= 20 && c <= 20000) { divineRate = c; break; }
+  }
+  const items = raw.map(({ line, name }) => {
+    const sp = (((line.sparkline || line.sparkLine) || {}).data || []).filter((v) => v != null);
+    const last = sp.length ? sp[sp.length - 1] : 0;
+    const p24 = sp.length > 1 ? sp[sp.length - 2] : last;
+    const p48 = sp.length > 2 ? sp[sp.length - 3] : p24;
+    const chaos = Math.max(0, (line.primaryValue ?? 0) * mult);
+    return {
+      id: line.id ?? name, name,
+      chaosValue: Math.round(chaos * 100) / 100,
+      divineValue: divineRate ? chaos / divineRate : 0,
+      change24: last - p24, change48: last - p48,
+    };
+  });
+  return { items, divineRate: divineRate ?? undefined };
+}
+
+function CategoryIcon({ name, shape, size = 20 }) {
+  const tone = `hsl(${hashStr(name) % 360} 42% 62%)`;
+  if (shape === "ring") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+        <circle cx="12" cy="12" r="8.5" fill="none" stroke={tone} strokeWidth="2.4" />
+        <circle cx="12" cy="12" r="4" fill="none" stroke={tone} strokeWidth="1.3" />
+        <line x1="12" y1="2.5" x2="12" y2="7" stroke={tone} strokeWidth="1.3" />
+        <line x1="12" y1="12" x2="16.5" y2="8.5" stroke={tone} strokeWidth="1.3" />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M12 2.5 L19 9 L12 21.5 L5 9 Z" fill={tone} opacity="0.85" stroke="#1b150c" strokeWidth="1.1" />
+      <path d="M5 9 L19 9 M12 2.5 L9 9 L12 21.5 M12 2.5 L15 9 L12 21.5" fill="none" stroke="#1b150c" strokeWidth="0.9" />
+    </svg>
+  );
+}
+
 const GROUP_TONES = {
   Breach: "#b06ad4", Legion: "#8f6ad4", Delirium: "#9fb6c9", Blight: "#9fc96a", Harvest: "#5fc9b0",
   Abyss: "#7fd46a", Beyond: "#d46a6a", Betrayal: "#d4a06a", Incursion: "#6ad4c3", Ultimatum: "#d46a94",
@@ -238,6 +322,10 @@ export default function ScarabTracker() {
   const staticSlugsRef = useRef({});                      // league name -> folder slug
   const [staticInfo, setStaticInfo] = useState(null);     // { generatedAt }
   const staticHistFetched = useRef(new Set());            // leagues whose history.json was loaded
+  const [catData, setCatData] = useState({});             // tab key -> {items, divineRate, generatedAt} | "missing"
+  const [catHist, setCatHist] = useState({});             // tab key -> {name: [{day,value}]}
+  const [catSelected, setCatSelected] = useState({});     // tab key -> selected item name
+  const [catFilter, setCatFilter] = useState({});         // tab key -> filter text
 
   /* ---- static snapshots (GitHub Pages etc.) ---- */
   const loadStaticLeague = useCallback(async (name, slugsArg) => {
@@ -253,6 +341,7 @@ export default function ScarabTracker() {
     setMode("live"); setDataSource("static");
     staticHistFetched.current.delete(name);
     setHistories({}); setOpenGroup(null); setFocusScarab(null);
+    setCatData({}); setCatHist({}); setCatSelected({});
   }, []);
 
   /* ---- data loading: try live, fall back to demo ---- */
@@ -286,6 +375,7 @@ export default function ScarabTracker() {
       if (!mapped.length) throw new Error("empty");
       setItems(mapped); setDivineRate(rate); setMode("live"); setDataSource("api");
       setHistories({}); setOpenGroup(null); setFocusScarab(null);
+      setCatData({}); setCatHist({}); setCatSelected({});
     } finally { clearTimeout(t); }
   }, []);
 
@@ -387,6 +477,43 @@ export default function ScarabTracker() {
     })();
     return () => { cancelled = true; };
   }, [openGroup, items, mode, league, histories, dataSource]);
+
+  /* ---- category tab data (Astrolabes / Catalysts) ---- */
+  useEffect(() => {
+    const cat = CATEGORY_TABS[tab];
+    if (!cat || catData[tab] !== undefined) return;
+    let cancelled = false;
+    (async () => {
+      if (dataSource === "static") {
+        try {
+          const slug = staticSlugsRef.current[league];
+          const res = await fetch(`${STATIC_BASE}/${slug}/${tab}.json`);
+          if (res.ok) {
+            const j = await res.json();
+            if (cancelled) return;
+            setCatData((d) => ({ ...d, [tab]: j }));
+            try {
+              const hres = await fetch(`${STATIC_BASE}/${slug}/${tab}-history.json`);
+              if (hres.ok) { const h = await hres.json(); if (!cancelled) setCatHist((d) => ({ ...d, [tab]: h })); }
+            } catch { /* chart will say no history */ }
+            return;
+          }
+        } catch { /* fall through */ }
+      }
+      if (mode === "live" || mode === "connecting") {
+        try {
+          const res = await exchangeFetch(`/exchange/current/overview?league=${encodeURIComponent(league)}&type=${encodeURIComponent(cat.type)}`);
+          const adapted = adaptExchangeLite(await res.json(), cat.re);
+          if (adapted.items.length && !cancelled) {
+            setCatData((d) => ({ ...d, [tab]: { items: adapted.items, divineRate: adapted.divineRate } }));
+            return;
+          }
+        } catch { /* fall through */ }
+      }
+      if (!cancelled) setCatData((d) => ({ ...d, [tab]: "missing" }));
+    })();
+    return () => { cancelled = true; };
+  }, [tab, league, dataSource, mode, catData]);
 
   /* ---- derived ---- */
   const groups = useMemo(() => {
@@ -517,6 +644,8 @@ export default function ScarabTracker() {
       <nav className="st-tabs" aria-label="Views">
         <button className={tab === "prices" ? "on" : ""} onClick={() => setTab("prices")}>Prices</button>
         <button className={tab === "farms" ? "on" : ""} onClick={() => setTab("farms")}>Popular farms</button>
+        <button className={tab === "astrolabes" ? "on" : ""} onClick={() => setTab("astrolabes")}>Astrolabes</button>
+        <button className={tab === "catalysts" ? "on" : ""} onClick={() => setTab("catalysts")}>Catalysts</button>
       </nav>
 
       {mode === "demo" && (
@@ -609,6 +738,87 @@ export default function ScarabTracker() {
         </section>
       )}
 
+
+      {/* ---------- category price-check tabs (Astrolabes / Catalysts) ---------- */}
+      {CATEGORY_TABS[tab] && (() => {
+        const cat = CATEGORY_TABS[tab];
+        const cd = catData[tab];
+        if (cd === undefined) return <div className="st-cat-note">Loading {cat.label.toLowerCase()}…</div>;
+        if (cd === "missing") return (
+          <div className="st-cat-note">
+            No {cat.label.toLowerCase()} data for {league} yet. It appears after the next data
+            refresh; previous leagues may not have any.
+          </div>
+        );
+        const rate = cd.divineRate || divineRate;
+        const q = (catFilter[tab] || "").toLowerCase();
+        let list = cd.items.slice().sort((a, b) => (sortDir === "desc" ? b.chaosValue - a.chaosValue : a.chaosValue - b.chaosValue));
+        if (q) list = list.filter((m) => m.name.toLowerCase().includes(q));
+        const selName = (catSelected[tab] && list.some((m) => m.name === catSelected[tab])) ? catSelected[tab] : list[0]?.name;
+        const series = ((catHist[tab] || {})[selName] || []);
+        const div = currency === "divine" ? rate : 1;
+        const rows = series.map((p) => ({ day: p.day, value: Math.round((p.value / div) * 100) / 100 }));
+        let hi = null, lo = null;
+        if (rows.length > 1) { hi = rows[0]; lo = rows[0]; for (const r of rows) { if (r.value > hi.value) hi = r; if (r.value < lo.value) lo = r; } }
+        return (
+          <section className="st-cat-wrap">
+            <div className="st-chart">
+              <div className="st-chart-label">{selName ? <>Price history: <em>{selName}</em></> : "Select an item"}</div>
+              {rows.length > 1 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <ComposedChart data={rows} margin={{ top: 18, right: 18, bottom: 4, left: 0 }}>
+                    <defs>
+                      <linearGradient id="stFillCat" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#c9a24b" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#c9a24b" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#3a332a" strokeDasharray="2 5" vertical={false} />
+                    <XAxis dataKey="day" tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234"
+                      label={{ value: "league day", position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
+                    <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
+                      tickFormatter={(v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
+                    <Tooltip
+                      contentStyle={{ background: "#211c15", border: "1px solid #5a4d33", borderRadius: 6, fontSize: 12 }}
+                      labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
+                      formatter={(v) => [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, selName]}
+                      labelFormatter={(d) => `Day ${d}`} />
+                    <Area type="monotone" dataKey="value" stroke="#d8b355" strokeWidth={2} fill="url(#stFillCat)" isAnimationActive={false} />
+                    {hi && <ReferenceDot x={hi.day} y={hi.value} r={4} fill="#8fd47f" stroke="#1b150c"
+                      label={{ value: `High ${currency === "chaos" ? fmtChaos(hi.value) : fmtDiv(hi.value)}${unit} · d${hi.day}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
+                    {lo && <ReferenceDot x={lo.day} y={lo.value} r={4} fill="#d47f7f" stroke="#1b150c"
+                      label={{ value: `Low ${currency === "chaos" ? fmtChaos(lo.value) : fmtDiv(lo.value)}${unit} · d${lo.day}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="st-chart-empty" style={{ height: 220 }}>
+                  History builds up with each data refresh — check back after a couple of runs.
+                </div>
+              )}
+            </div>
+            <input
+              className="st-cat-filter"
+              type="text"
+              placeholder="Filter by name"
+              value={catFilter[tab] || ""}
+              onChange={(e) => setCatFilter((f) => ({ ...f, [tab]: e.target.value }))}
+            />
+            <div className="st-cat-grid">
+              {list.map((m) => (
+                <button key={m.name}
+                  className={`st-row ${selName === m.name ? "focused" : ""}`}
+                  onClick={() => setCatSelected((c) => ({ ...c, [tab]: m.name }))}
+                  title="Show price history">
+                  <span className="st-row-name"><CategoryIcon name={m.name} shape={cat.shape} />{m.name}</span>
+                  <span className="st-row-price"><PctBadge v={m[chgKey]} /> {fmtPrice(m.chaosValue, currency, rate)}</span>
+                </button>
+              ))}
+              {!list.length && <div className="st-cat-note">Nothing matches that filter.</div>}
+            </div>
+          </section>
+        );
+      })()}
+
       {/* ---------- mechanic grid ---------- */}
       {tab === "prices" && (
       <main className="st-grid">
@@ -625,7 +835,7 @@ export default function ScarabTracker() {
                 <div className="st-card-name">
                   <ScarabIcon size={20} tone={tone} />
                   <span>{g.name}</span>
-                  {g.name === "Universal" && <em className="st-tag">not tied to a mechanic</em>}
+                  {(g.name === "Universal" || g.name === "Horned") && <em className="st-tag">not tied to a mechanic</em>}
                 </div>
                 <div className="st-card-meta">{g.members.length} scarabs · top: {top?.name.replace(/^.*Scarab( of)? ?/, "") || "—"}</div>
               </div>
@@ -695,13 +905,20 @@ export default function ScarabTracker() {
 
 /* ---------------- styles ---------------- */
 const css = `
+/* Kei Font (KeiFont) — Apache License 2.0. Drop the TTF at public/fonts/keifont.ttf;
+   until it's there, the page silently falls back to the serif stack. */
+@font-face {
+  font-family: "Kei";
+  src: url("fonts/keifont.ttf") format("truetype");
+  font-display: swap;
+}
 .st-root {
   min-height: 100vh;
   background:
     radial-gradient(1100px 500px at 50% -150px, #2b241a 0%, transparent 70%),
     #17130e;
   color: #d9cfb4;
-  font-family: Georgia, 'Palatino Linotype', 'Times New Roman', serif;
+  font-family: "Kei", Georgia, 'Palatino Linotype', 'Times New Roman', serif;
   padding: 22px clamp(12px, 4vw, 44px) 40px;
 }
 .st-head { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; justify-content: space-between; margin-bottom: 14px; }
@@ -833,4 +1050,14 @@ const css = `
 .st-mover-scarab { grid-template-columns: minmax(0, 1fr) auto auto; margin-bottom: 0; }
 .st-mover-price { font-variant-numeric: tabular-nums; color: #e5d49c; white-space: nowrap; font-size: 12.5px; }
 .st-farms-note { font-size: 11.5px; color: #6f6656; margin-top: 14px; }
+.st-cat-wrap { border: 1px solid #3a332a; border-radius: 8px; background: #1d1811; padding-bottom: 10px; }
+.st-cat-note { padding: 22px 16px; color: #8d8371; font-size: 13.5px; }
+.st-cat-filter {
+  display: block; width: min(360px, calc(100% - 28px)); margin: 4px 14px 10px;
+  background: #211c15; color: #d9cfb4; border: 1px solid #5a4d33; border-radius: 5px;
+  padding: 8px 11px; font-family: inherit; font-size: 13.5px;
+}
+.st-cat-filter::placeholder { color: #6f6656; }
+.st-cat-filter:focus-visible { outline: 2px solid #d8b355; outline-offset: 1px; }
+.st-cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0 14px; padding: 0 6px; }
 `;

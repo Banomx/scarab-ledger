@@ -73,6 +73,24 @@ async function getLeagues() {
   return all;
 }
 
+/* ---------- extra exchange categories (same features as scarabs) ---------- */
+const EXTRA_CATEGORIES = [
+  { key: "astrolabes", type: "Astrolabe", re: /astrolabe/i },
+  { key: "catalysts", type: "Currency", re: /catalyst/i }, // catalysts live inside Currency
+];
+
+async function getExchangeCategory(lgParams, type, nameRe) {
+  for (const p of lgParams) {
+    const j = await tryJson(`${NINJA}/poe1/api/economy/exchange/current/overview?league=${encodeURIComponent(p)}&type=${encodeURIComponent(type)}`);
+    if (j && Array.isArray(j.lines) && j.lines.length) {
+      const adapted = adaptExchange(j, nameRe);
+      if (adapted.items.length) return adapted;
+    }
+    await sleep(DELAY_MS);
+  }
+  return null;
+}
+
 /* ---------- prices ---------- */
 async function getScarabPrices(lgParams) {
   // 1) legacy itemoverview (kept alive via redirects historically)
@@ -121,7 +139,7 @@ function slugToName(slug) {
   ).join(" ");
 }
 
-function adaptExchange(j) {
+function adaptExchange(j, nameRe = /scarab/i) {
   const core = j.core || {};
   const coreItems = core.items || [];
   const itemsById = {};
@@ -149,7 +167,7 @@ function adaptExchange(j) {
       const name = (meta && meta.name) || l.name || slugToName(l.id ?? l.itemId);
       return { line: l, name };
     })
-    .filter((x) => x.name && /scarab/i.test(x.name));
+    .filter((x) => x.name && nameRe.test(x.name));
   if (!raw.length) return { items: [] };
 
   const convert = (mult) => raw.map(({ line }) => Math.max(0, (line.primaryValue ?? 0) * mult));
@@ -225,9 +243,9 @@ function pagesBaseUrl() {
   return `https://${owner}.github.io/${name}`;
 }
 
-async function updateSelfHistory(slug, items) {
+async function updateSelfHistory(slug, items, prefix = "") {
   const base = pagesBaseUrl();
-  let prev = base ? await tryJson(`${base}/data/${slug}/selfhistory.json`) : null;
+  let prev = base ? await tryJson(`${base}/data/${slug}/${prefix}selfhistory.json`) : null;
   const points = (prev && Array.isArray(prev.points)) ? prev.points : [];
   const today = todayISO();
   const values = {};
@@ -297,6 +315,28 @@ async function main() {
       await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, items }));
       await writeFile(path.join(dir, "history.json"), JSON.stringify(history));
       await writeFile(path.join(dir, "selfhistory.json"), JSON.stringify(self));
+      // extra categories: astrolabes + catalysts, same treatment as scarabs
+      for (const cat of EXTRA_CATEGORIES) {
+        try {
+          const r = await getExchangeCategory(lg.params, cat.type, cat.re);
+          if (!r || !r.items.length) { console.log(`  ${cat.key}: no data for ${lg.name}`); continue; }
+          const rate2 = r.exchangeDivineRate || divineRate;
+          for (const it of r.items) if (!it.divineValue) it.divineValue = it.chaosValue / rate2;
+          let catHist = {};
+          let catSelf = { points: [] };
+          if (lg.group === "current") {
+            catSelf = await updateSelfHistory(slug, r.items, `${cat.key}-`);
+            catHist = selfHistoryToSeries(catSelf);
+          }
+          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, divineRate: rate2, items: r.items }));
+          await writeFile(path.join(dir, `${cat.key}-history.json`), JSON.stringify(catHist));
+          await writeFile(path.join(dir, `${cat.key}-selfhistory.json`), JSON.stringify(catSelf));
+          console.log(`  ${cat.key}: ${r.items.length} items`);
+        } catch (e) {
+          console.log(`  ${cat.key}: FAILED (${e.message})`);
+        }
+      }
+
       written.push({ name: lg.name, slug, group: lg.group || "current" });
       console.log(`- ${lg.name}: ${items.length} scarabs, ${Object.keys(history).length} history series, 1 div = ${Math.round(divineRate)}c`);
     } catch (e) {

@@ -22,6 +22,20 @@ Open the folder (`File > Open Folder...` or `code scarab-ledger`), then run
 `npm run dev` in the integrated terminal (Ctrl+`). Vite hot-reloads on every
 save of `src/App.jsx`.
 
+## Font
+
+The UI uses **Kei Font (けいふぉんと)** — free for commercial use, Apache License
+2.0. The font file isn't bundled; add it once:
+
+1. Download: http://font.sumomo.ne.jp/fontdata-c2157415/k-font.zip
+2. Extract and copy the `.ttf` to `public/fonts/keifont.ttf` (rename it to
+   exactly that — the original filename contains Japanese characters).
+3. Commit and push. Until the file exists, the site falls back to the previous
+   serif stack automatically.
+
+Note: the TTF is several MB because it includes thousands of kanji. If load
+time ever bothers you, ask me to subset it to Latin glyphs (~50 KB).
+
 ## Host on GitHub Pages
 
 GitHub Pages is static-only and poe.ninja blocks cross-origin browser requests,
