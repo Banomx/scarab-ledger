@@ -102,6 +102,14 @@ async function getScarabPrices(lgParams) {
   return null;
 }
 
+const SMALL_WORDS = new Set(["of", "the", "a", "and", "in"]);
+function slugToName(slug) {
+  if (!slug || typeof slug !== "string") return null;
+  return slug.split("-").map((w, i) =>
+    (i > 0 && SMALL_WORDS.has(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1)
+  ).join(" ");
+}
+
 function adaptExchange(j) {
   const core = j.core || {};
   const coreItems = core.items || [];
@@ -118,33 +126,35 @@ function adaptExchange(j) {
   const divineId = findId("divine orb");
   const rates = core.rates || {};
 
-  // Confirmed convention (see poe.ninja consumers): rates[x] = units of x per
-  // 1 primary, so value_in_chaos = primaryValue * rates[chaosId].
-  let chaosPerPrimary = core.primary === chaosId ? 1 : rates[chaosId];
+  // rates[x] = units of x per 1 primary. When chaos itself is the primary
+  // (observed for PoE1 scarabs), primaryValue is already the chaos price.
+  const rChaos = core.primary === chaosId ? (rates[chaosId] ?? 1) : rates[chaosId];
 
   const raw = j.lines
     .map((l) => {
       const meta = itemsById[l.id] || itemsById[l.itemId] || null;
-      const name = (meta && meta.name) || l.name || null;
-      return { line: l, name, icon: meta && meta.icon };
+      // core.items only carries the reference currencies; scarab names live
+      // in the line id as a slug (e.g. "divination-scarab-of-pilfering").
+      const name = (meta && meta.name) || l.name || slugToName(l.id ?? l.itemId);
+      return { line: l, name };
     })
     .filter((x) => x.name && /scarab/i.test(x.name));
   if (!raw.length) return { items: [] };
 
   const convert = (mult) => raw.map(({ line }) => Math.max(0, (line.primaryValue ?? 0) * mult));
   let chaosVals;
-  if (!chaosPerPrimary || chaosPerPrimary === 1) {
+  if (!rChaos || rChaos === 1) {
     chaosVals = convert(1);
   } else {
-    const a = convert(chaosPerPrimary);
-    const b = convert(1 / chaosPerPrimary);
+    const a = convert(rChaos);
+    const b = convert(1 / rChaos);
     chaosVals = (median(a) >= 0.05 && median(a) <= 50000) ? a : b; // sanity net
   }
 
-  // Divine rate in chaos = rates[chaos] / rates[divine]; sanity-check both directions
+  // Divine rate in chaos, sanity-checked in both directions
   let divineRate = null;
-  if (rates[chaosId] != null && rates[divineId] != null && rates[divineId] !== 0) {
-    for (const c of [rates[chaosId] / rates[divineId], rates[divineId] / rates[chaosId]]) {
+  if (rChaos != null && rates[divineId] != null && rates[divineId] !== 0) {
+    for (const c of [rChaos / rates[divineId], rates[divineId] / rChaos]) {
       if (c >= 20 && c <= 20000) { divineRate = c; break; }
     }
   }
