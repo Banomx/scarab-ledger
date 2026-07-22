@@ -68,23 +68,34 @@ async function getScarabPrices(lgParams) {
   for (const p of lgParams) {
     const j = await tryJson(`${NINJA}/api/data/itemoverview?league=${encodeURIComponent(p)}&type=Scarab`);
     if (j && Array.isArray(j.lines) && j.lines.length) {
-      console.log(`  prices via legacy itemoverview (league=${p})`);
-      const items = j.lines.map((l) => ({
+      const items = j.lines.filter((l) => l.name).map((l) => ({
         id: l.id, name: l.name,
         chaosValue: l.chaosValue ?? 0,
         divineValue: l.divineValue ?? 0,
         ...changesFromSparkline(l.sparkline || l.sparkLine),
       }));
-      return { items, source: "legacy", leagueParam: p };
+      if (items.length) {
+        console.log(`  prices via legacy itemoverview (league=${p}, ${items.length} items)`);
+        return { items, source: "legacy", leagueParam: p };
+      }
+      console.log(`  legacy itemoverview answered for ${p} but yielded 0 usable items`);
     }
     await sleep(DELAY_MS);
   }
   // 2) documented new home: exchange overview (different shape)
   for (const p of lgParams) {
     const j = await tryJson(`${NINJA}/poe1/api/economy/exchange/current/overview?league=${encodeURIComponent(p)}&type=Scarab`);
-    if (j && Array.isArray(j.lines) && j.lines.length && j.core) {
-      console.log(`  prices via exchange overview (league=${p})`);
-      return { ...adaptExchange(j), source: "exchange", leagueParam: p };
+    if (j && Array.isArray(j.lines) && j.lines.length) {
+      const adapted = adaptExchange(j);
+      if (adapted.items.length) {
+        console.log(`  prices via exchange overview (league=${p}, ${adapted.items.length} items)`);
+        return { ...adapted, source: "exchange", leagueParam: p };
+      }
+      // Nothing matched — dump structure so the workflow log shows what came back
+      console.log(`  exchange overview answered for ${p} but 0 items matched. Diagnostics:`);
+      console.log(`    lines: ${j.lines.length}, core.items: ${(j.core?.items || []).length}, primary: ${j.core?.primary}, secondary: ${j.core?.secondary}`);
+      console.log(`    sample line: ${JSON.stringify(j.lines[0]).slice(0, 400)}`);
+      console.log(`    sample core.items[0]: ${JSON.stringify((j.core?.items || [])[0]).slice(0, 400)}`);
     }
     await sleep(DELAY_MS);
   }
@@ -92,44 +103,60 @@ async function getScarabPrices(lgParams) {
 }
 
 function adaptExchange(j) {
+  const core = j.core || {};
+  const coreItems = core.items || [];
   const itemsById = {};
-  for (const it of j.core.items || []) itemsById[it.id] = it;
+  for (const it of coreItems) {
+    if (it.id != null) itemsById[it.id] = it;
+    if (it.itemId != null) itemsById[it.itemId] = it;
+  }
   const findId = (needle) => {
-    for (const it of j.core.items || []) if ((it.name || "").toLowerCase() === needle) return it.id;
+    for (const it of coreItems) if ((it.name || "").toLowerCase() === needle) return it.id ?? it.itemId;
     return null;
   };
   const chaosId = findId("chaos orb");
   const divineId = findId("divine orb");
-  const rates = j.core.rates || {};
-  const rChaos = j.core.primary === chaosId ? 1 : rates[chaosId];
+  const rates = core.rates || {};
 
-  // Rate direction is undocumented — pick whichever puts the median scarab
-  // price in a sane chaos range.
+  // Confirmed convention (see poe.ninja consumers): rates[x] = units of x per
+  // 1 primary, so value_in_chaos = primaryValue * rates[chaosId].
+  let chaosPerPrimary = core.primary === chaosId ? 1 : rates[chaosId];
+
   const raw = j.lines
-    .map((l) => ({ line: l, meta: itemsById[l.id] }))
-    .filter((x) => x.meta && /scarab/i.test(x.meta.name));
-  const mk = (mode) => raw.map(({ line }) => {
-    const v = line.primaryValue ?? 0;
-    if (!rChaos || rChaos === 1) return v;
-    return mode === "div" ? v / rChaos : v * rChaos;
-  });
-  const a = mk("div"), b = mk("mul");
-  const chaosVals = (median(a) >= 0.05 && median(a) <= 50000) ? a : b;
+    .map((l) => {
+      const meta = itemsById[l.id] || itemsById[l.itemId] || null;
+      const name = (meta && meta.name) || l.name || null;
+      return { line: l, name, icon: meta && meta.icon };
+    })
+    .filter((x) => x.name && /scarab/i.test(x.name));
+  if (!raw.length) return { items: [] };
 
-  // Divine rate in chaos, sanity-checked into a plausible band
-  let divineRate = 185;
-  if (chaosId && divineId && rates[divineId] != null && rChaos) {
-    const cand = [rates[divineId] / rChaos, rChaos / rates[divineId]];
-    for (const c of cand) if (c >= 20 && c <= 20000) { divineRate = c; break; }
+  const convert = (mult) => raw.map(({ line }) => Math.max(0, (line.primaryValue ?? 0) * mult));
+  let chaosVals;
+  if (!chaosPerPrimary || chaosPerPrimary === 1) {
+    chaosVals = convert(1);
+  } else {
+    const a = convert(chaosPerPrimary);
+    const b = convert(1 / chaosPerPrimary);
+    chaosVals = (median(a) >= 0.05 && median(a) <= 50000) ? a : b; // sanity net
   }
 
-  const items = raw.map(({ line, meta }, i) => ({
-    id: line.id, name: meta.name,
-    chaosValue: Math.max(0, chaosVals[i] ?? 0),
-    divineValue: Math.max(0, (chaosVals[i] ?? 0) / divineRate),
+  // Divine rate in chaos = rates[chaos] / rates[divine]; sanity-check both directions
+  let divineRate = null;
+  if (rates[chaosId] != null && rates[divineId] != null && rates[divineId] !== 0) {
+    for (const c of [rates[chaosId] / rates[divineId], rates[divineId] / rates[chaosId]]) {
+      if (c >= 20 && c <= 20000) { divineRate = c; break; }
+    }
+  }
+
+  const items = raw.map(({ line, name }, i) => ({
+    id: line.id ?? line.itemId ?? name,
+    name,
+    chaosValue: Math.round((chaosVals[i] ?? 0) * 100) / 100,
+    divineValue: divineRate ? (chaosVals[i] ?? 0) / divineRate : 0,
     ...changesFromSparkline(line.sparkline || line.sparkLine),
   }));
-  return { items, exchangeDivineRate: divineRate };
+  return { items, exchangeDivineRate: divineRate ?? undefined };
 }
 
 /* ---------- divine rate ---------- */
@@ -218,7 +245,7 @@ async function main() {
   for (const [li, lg] of leagues.entries()) {
     try {
       const priced = await getScarabPrices(lg.params);
-      if (!priced) { console.log(`- ${lg.name}: no scarab data, skipping`); continue; }
+      if (!priced || !priced.items.length) { console.log(`- ${lg.name}: no usable scarab data, skipping`); continue; }
       const { items, source, leagueParam, exchangeDivineRate } = priced;
 
       const divineRate = await getDivineRate(leagueParam, exchangeDivineRate);
