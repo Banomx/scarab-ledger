@@ -47,12 +47,17 @@ minutes the site is live at `https://YOUR_USER.github.io/scarab-ledger/`.
 
 Notes:
 - Prices refresh on the 6-hour cron; the banner shows the snapshot timestamp.
-- Full per-scarab league history is snapshotted for the first two leagues
-  (usually the challenge league + hardcore); other leagues get prices only.
-  Adjust `HISTORY_LEAGUES` in `scripts/fetch-data.mjs` if you want more.
+- poe.ninja restructured their API in 2026 and no longer documents a public
+  price-history endpoint. The fetch script still tries the legacy history
+  route, but if it's gone, the site **accumulates its own history**: every
+  scheduled run reads the previous deployment's `selfhistory.json` and appends
+  the current prices. Graphs start appearing after the second run and grow
+  from there — so the earlier in the league you deploy, the better.
 - You can also run `node scripts/fetch-data.mjs` locally — the dev server will
   then serve the same snapshots from `public/data/`. Delete that folder to go
-  back to the live `/ninja` proxy during development.
+  back to the live `/ninja` proxy during development. (Self-history needs the
+  deployed site URL; locally set `PAGES_BASE_URL=https://YOUR_USER.github.io/scarab-ledger`
+  if you want it, same if you later use a custom domain.)
 
 ## Production build (for later, e.g. serving from your own box)
 
