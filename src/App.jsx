@@ -354,7 +354,7 @@ export default function ScarabTracker() {
     setMode("live"); setDataSource("static");
     staticHistFetched.current.delete(name);
     setHistories({}); setOpenGroup(null); setFocusScarab(null);
-    setCatData({}); setCatHist({}); setCatSelected({});
+    setCatData({}); setCatHist({}); setCatSelected({}); setDragSel(null);
   }, []);
 
   /* ---- data loading: try live, fall back to demo ---- */
@@ -388,7 +388,7 @@ export default function ScarabTracker() {
       if (!mapped.length) throw new Error("empty");
       setItems(mapped); setDivineRate(rate); setMode("live"); setDataSource("api");
       setHistories({}); setOpenGroup(null); setFocusScarab(null);
-      setCatData({}); setCatHist({}); setCatSelected({});
+      setCatData({}); setCatHist({}); setCatSelected({}); setDragSel(null);
     } finally { clearTimeout(t); }
   }, []);
 
@@ -672,10 +672,10 @@ export default function ScarabTracker() {
       </header>
 
       <nav className="st-tabs" aria-label="Views">
-        <button className={tab === "prices" ? "on" : ""} onClick={() => setTab("prices")}>Scarabs</button>
-        <button className={tab === "farms" ? "on" : ""} onClick={() => setTab("farms")}>Popular farms</button>
-        <button className={tab === "astrolabes" ? "on" : ""} onClick={() => setTab("astrolabes")}>Astrolabes</button>
-        <button className={tab === "catalysts" ? "on" : ""} onClick={() => setTab("catalysts")}>Catalysts</button>
+        <button className={tab === "prices" ? "on" : ""} onClick={() => { setTab("prices"); setDragSel(null); }}>Scarabs</button>
+        <button className={tab === "farms" ? "on" : ""} onClick={() => { setTab("farms"); setDragSel(null); }}>Popular farms</button>
+        <button className={tab === "astrolabes" ? "on" : ""} onClick={() => { setTab("astrolabes"); setDragSel(null); }}>Astrolabes</button>
+        <button className={tab === "catalysts" ? "on" : ""} onClick={() => { setTab("catalysts"); setDragSel(null); }}>Catalysts</button>
       </nav>
 
       {mode === "demo" && (
@@ -821,10 +821,32 @@ export default function ScarabTracker() {
         return (
           <section className="st-cat-wrap">
             <div className="st-chart">
-              <div className="st-chart-label">{selName ? <>Price history: <em>{selName}</em></> : "Select an item"}</div>
+              <div className="st-chart-label">
+                {selName ? <>Price history: <em>{selName}</em></> : "Select an item"}
+                <span className="st-drag-hint"> · drag on the graph to measure a range</span>
+              </div>
+              {dragSel && !dragSel.active && Math.abs(dragSel.end - dragSel.start) > 0.01 && rows.length > 1 && (() => {
+                const a = Math.min(dragSel.start, dragSel.end), b = Math.max(dragSel.start, dragSel.end);
+                const at = (d) => rows.reduce((best, pt) => (Math.abs(pt.day - d) < Math.abs(best.day - d) ? pt : best), rows[0]);
+                const p1 = at(a), p2 = at(b);
+                const pct = p1.value > 0 ? (p2.value / p1.value - 1) * 100 : null;
+                const f = (v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v));
+                return (
+                  <div className="st-range">
+                    Day {fmtDay(p1.day)} → Day {fmtDay(p2.day)}: {f(p1.value)}{unit} → {f(p2.value)}{unit}
+                    {" "}<PctBadge v={pct} />
+                    <button className="st-range-clear" onClick={() => setDragSel(null)} aria-label="Clear selection">✕</button>
+                  </div>
+                );
+              })()}
               {rows.length > 1 ? (
                 <ResponsiveContainer width="100%" height={220}>
-                  <ComposedChart data={rows} margin={{ top: 18, right: 18, bottom: 4, left: 0 }}>
+                  <ComposedChart data={rows} margin={{ top: 18, right: 18, bottom: 4, left: 0 }}
+                    style={{ userSelect: "none" }}
+                    onMouseDown={(e) => { if (e && e.activeLabel != null) setDragSel({ start: e.activeLabel, end: e.activeLabel, active: true }); }}
+                    onMouseMove={(e) => { if (e && e.activeLabel != null) setDragSel((sel) => (sel && sel.active ? { ...sel, end: e.activeLabel } : sel)); }}
+                    onMouseUp={() => setDragSel((sel) => (sel ? { ...sel, active: false } : sel))}
+                    onMouseLeave={() => setDragSel((sel) => (sel && sel.active ? { ...sel, active: false } : sel))}>
                     <defs>
                       <linearGradient id="stFillCat" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#c9a24b" stopOpacity={0.35} />
@@ -842,6 +864,10 @@ export default function ScarabTracker() {
                       labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
                       formatter={(v) => [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, selName]}
                       labelFormatter={(d) => `Day ${fmtDay(d)}`} />
+                    {dragSel && dragSel.start !== dragSel.end && (
+                      <ReferenceArea x1={Math.min(dragSel.start, dragSel.end)} x2={Math.max(dragSel.start, dragSel.end)}
+                        fill="#c9a24b" fillOpacity={0.13} stroke="#c9a24b" strokeOpacity={0.4} />
+                    )}
                     <Area type="monotone" dataKey="value" stroke="#d8b355" strokeWidth={2} fill="url(#stFillCat)" isAnimationActive={false} />
                     {hi && <ReferenceDot x={hi.day} y={hi.value} r={4} fill="#8fd47f" stroke="#1b150c"
                       label={{ value: `High ${currency === "chaos" ? fmtChaos(hi.value) : fmtDiv(hi.value)}${unit} · d${fmtDay(hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
@@ -866,7 +892,7 @@ export default function ScarabTracker() {
               {list.map((m) => (
                 <button key={m.name}
                   className={`st-row ${selName === m.name ? "focused" : ""}`}
-                  onClick={() => setCatSelected((c) => ({ ...c, [tab]: m.name }))}
+                  onClick={() => { setCatSelected((c) => ({ ...c, [tab]: m.name })); setDragSel(null); }}
                   title="Show price history">
                   <span className="st-row-name"><CategoryIcon name={m.name} shape={cat.shape} />{m.name}</span>
                   <span className="st-row-price"><PctBadge v={m[chgKey]} /> {fmtPrice(m.chaosValue, currency, rate)}</span>
