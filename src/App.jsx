@@ -500,15 +500,19 @@ export default function ScarabTracker() {
       if (dataSource === "static") {
         try {
           const slug = staticSlugsRef.current[league];
-          const res = await fetch(`${STATIC_BASE}/${slug}/${tab}.json`);
+          // Fetch data + history together, commit together: setting catData
+          // first re-runs this effect and cancels the in-flight history fetch.
+          const [res, hres] = await Promise.all([
+            fetch(`${STATIC_BASE}/${slug}/${tab}.json`),
+            fetch(`${STATIC_BASE}/${slug}/${tab}-history.json`).catch(() => null),
+          ]);
           if (res.ok) {
             const j = await res.json();
+            let h = null;
+            if (hres && hres.ok) { try { h = await hres.json(); } catch { /* no history yet */ } }
             if (cancelled) return;
+            if (h) setCatHist((d) => ({ ...d, [tab]: h }));
             setCatData((d) => ({ ...d, [tab]: j }));
-            try {
-              const hres = await fetch(`${STATIC_BASE}/${slug}/${tab}-history.json`);
-              if (hres.ok) { const h = await hres.json(); if (!cancelled) setCatHist((d) => ({ ...d, [tab]: h })); }
-            } catch { /* chart will say no history */ }
             return;
           }
         } catch { /* fall through */ }

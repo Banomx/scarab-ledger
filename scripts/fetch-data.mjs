@@ -250,7 +250,8 @@ function normalizePoint(p) {
 
 async function updateSelfHistory(slug, items, prefix = "") {
   const base = pagesBaseUrl();
-  const prev = base ? await tryJson(`${base}/data/${slug}/${prefix}selfhistory.json`) : null;
+  const reset = process.env.RESET_HISTORY === "true";
+  const prev = (base && !reset) ? await tryJson(`${base}/data/${slug}/${prefix}selfhistory.json`) : null;
   const points = ((prev && Array.isArray(prev.points)) ? prev.points : []).map(normalizePoint);
   const values = {};
   for (const it of items) values[it.name] = Math.round(it.chaosValue * 100) / 100;

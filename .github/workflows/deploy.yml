@@ -4,8 +4,13 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "23 */4 * * *"   # every 4h at :23 — off-peak minute, starts more punctually than :00
+    - cron: "0 */4 * * *"    # 00/04/08/12/16/20 UTC — day boundaries always land on a fetch
   workflow_dispatch:          # manual "Run workflow" button
+    inputs:
+      reset_history:
+        description: "Wipe accumulated price history and start clean"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,6 +37,7 @@ jobs:
           # push = code deploy only (reuse deployed data, no new snapshot);
           # schedule + manual dispatch = fetch fresh data
           DATA_MODE: ${{ github.event_name == 'push' && 'reuse' || 'fetch' }}
+          RESET_HISTORY: ${{ inputs.reset_history }}
       - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
