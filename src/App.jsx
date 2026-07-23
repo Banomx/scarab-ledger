@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   ComposedChart, Area, Line, XAxis, YAxis, Tooltip, CartesianGrid,
-  ReferenceDot, ResponsiveContainer,
+  ReferenceDot, ReferenceArea, ResponsiveContainer,
 } from "recharts";
 
 /* ================================================================
@@ -183,6 +183,17 @@ function fmtChaos(v) {
 }
 function fmtDiv(v) { return v >= 10 ? v.toFixed(1) : v.toFixed(2); }
 function fmtDay(d) { const n = Math.round(d * 10) / 10; return Number.isInteger(n) ? String(n) : n.toFixed(1); }
+/* Whole-day hardpoints, always: domain snaps outward to full days (day 0,
+   day 1, ...) and every 4h data point still plots at its true position. */
+function dayAxis(rows) {
+  if (!rows || !rows.length) return { domain: [0, 1], ticks: [0, 1] };
+  const min = Math.floor(rows[0].day);
+  const max = Math.max(Math.ceil(rows[rows.length - 1].day), min + 1);
+  const step = Math.max(1, Math.ceil((max - min) / 14)); // cap tick count on long leagues
+  const ticks = [];
+  for (let d = min; d <= max; d += step) ticks.push(d);
+  return { domain: [min, max], ticks };
+}
 function fmtPrice(chaos, currency, rate) {
   return currency === "chaos" ? `${fmtChaos(chaos)}c` : `${fmtDiv(chaos / rate)} div`;
 }
@@ -327,6 +338,7 @@ export default function ScarabTracker() {
   const [catHist, setCatHist] = useState({});             // tab key -> {name: [{day,value}]}
   const [catSelected, setCatSelected] = useState({});     // tab key -> selected item name
   const [catFilter, setCatFilter] = useState({});         // tab key -> filter text
+  const [dragSel, setDragSel] = useState(null);           // {start, end, active} in day units
 
   /* ---- static snapshots (GitHub Pages etc.) ---- */
   const loadStaticLeague = useCallback(async (name, slugsArg) => {
@@ -338,7 +350,7 @@ export default function ScarabTracker() {
     const j = await res.json();
     setItems((j.items || []).map((it) => ({ ...it, group: groupForName(it.name) })));
     setDivineRate(j.divineRate || DEMO_DIVINE_RATE);
-    setStaticInfo({ generatedAt: j.generatedAt, historySource: j.historySource });
+    setStaticInfo({ generatedAt: j.generatedAt, historySource: j.historySource, historyAxis: j.historyAxis });
     setMode("live"); setDataSource("static");
     staticHistFetched.current.delete(name);
     setHistories({}); setOpenGroup(null); setFocusScarab(null);
@@ -521,17 +533,19 @@ export default function ScarabTracker() {
     const byGroup = {};
     for (const it of items) { if (!byGroup[it.group]) byGroup[it.group] = []; byGroup[it.group].push(it); }
     const wchg = (members, key) => {
-      let now = 0, prev = 0;
+      let now = 0, prev = 0, measurable = false;
       for (const m of members) {
-        const c = m[key] ?? 0;
+        let c = m[key];
+        if (c == null || !isFinite(c)) c = 0; else measurable = true;
         now += m.chaosValue;
         prev += m.chaosValue / Math.max(0.05, 1 + c / 100);
       }
-      return prev > 0 ? (now / prev - 1) * 100 : 0;
+      return (measurable && prev > 0) ? (now / prev - 1) * 100 : null;
     };
     let arr = Object.entries(byGroup).map(([name, members]) => ({
       name, members: members.slice().sort((a, b) => b.chaosValue - a.chaosValue),
       total: members.reduce((s, m) => s + m.chaosValue, 0),
+      change4: wchg(members, "change4"), change8: wchg(members, "change8"), change12: wchg(members, "change12"),
       change24: wchg(members, "change24"), change48: wchg(members, "change48"),
     }));
     if (!showUniversal) arr = arr.filter((g) => g.name !== "Universal");
@@ -567,8 +581,10 @@ export default function ScarabTracker() {
 
   // Axis wording: ninja history is aligned to league days; our own snapshots
   // count from the first run.
-  const scarabAxisLabel = (dataSource === "static" && staticInfo?.historySource === "self")
-    ? "days since first snapshot" : "league day";
+  const scarabAxisLabel = (dataSource === "static" && staticInfo?.historyAxis)
+    ? staticInfo.historyAxis
+    : (dataSource === "static" && staticInfo?.historySource === "self")
+      ? "days since first snapshot" : "league day";
 
   const extremes = useMemo(() => {
     if (chartData.length < 2) return null;
@@ -578,11 +594,12 @@ export default function ScarabTracker() {
   }, [chartData]);
 
   const unit = currency === "chaos" ? "c" : "div";
-  const chgKey = chgWindow === "24h" ? "change24" : "change48";
+  const CHG_KEYS = { "4h": "change4", "8h": "change8", "12h": "change12", "24h": "change24", "48h": "change48" };
+  const chgKey = CHG_KEYS[chgWindow] || "change24";
 
   const movers = useMemo(() => {
-    const rising = groups.filter((g) => g[chgKey] > 0.5).sort((a, b) => b[chgKey] - a[chgKey]).slice(0, 8);
-    const falling = groups.filter((g) => g[chgKey] < -0.5).sort((a, b) => a[chgKey] - b[chgKey]).slice(0, 8);
+    const rising = groups.filter((g) => isFinite(g[chgKey]) && g[chgKey] > 0.5).sort((a, b) => b[chgKey] - a[chgKey]).slice(0, 8);
+    const falling = groups.filter((g) => isFinite(g[chgKey]) && g[chgKey] < -0.5).sort((a, b) => a[chgKey] - b[chgKey]).slice(0, 8);
     const maxAbs = Math.max(1, ...rising.map((g) => Math.abs(g[chgKey])), ...falling.map((g) => Math.abs(g[chgKey])));
     const pool = groups.flatMap((g) => g.members);
     const topScarabs = pool
@@ -634,8 +651,9 @@ export default function ScarabTracker() {
           <div className="st-ctl">
             <span>Price change</span>
             <div className="st-seg">
-              <button className={chgWindow === "24h" ? "on" : ""} onClick={() => setChgWindow("24h")}>24h</button>
-              <button className={chgWindow === "48h" ? "on" : ""} onClick={() => setChgWindow("48h")}>48h</button>
+              {["4h", "8h", "12h", "24h", "48h"].map((w) => (
+                <button key={w} className={chgWindow === w ? "on" : ""} onClick={() => setChgWindow(w)}>{w}</button>
+              ))}
             </div>
           </div>
           <label className="st-ctl st-check">
@@ -686,7 +704,7 @@ export default function ScarabTracker() {
                 <em className="st-tag st-tag-panel">not tied to a mechanic</em>
               )}
             </div>
-            <button className="st-close" onClick={() => { setOpenGroup(null); setFocusScarab(null); }}>Close</button>
+            <button className="st-close" onClick={() => { setOpenGroup(null); setFocusScarab(null); setDragSel(null); }}>Close</button>
           </div>
 
           <div className="st-panel-body">
@@ -694,10 +712,30 @@ export default function ScarabTracker() {
               <div className="st-chart-label">
                 {focusScarab ? <>Set total <em>and</em> {focusScarab}</> : "Set total across the league"}
                 {histLoading && <span className="st-loading"> · loading history…</span>}
+                <span className="st-drag-hint"> · drag on the graph to measure a range</span>
               </div>
+              {dragSel && !dragSel.active && Math.abs(dragSel.end - dragSel.start) > 0.01 && chartData.length > 1 && (() => {
+                const a = Math.min(dragSel.start, dragSel.end), b = Math.max(dragSel.start, dragSel.end);
+                const at = (d) => chartData.reduce((best, p) => (Math.abs(p.day - d) < Math.abs(best.day - d) ? p : best), chartData[0]);
+                const p1 = at(a), p2 = at(b);
+                const pct = p1.total > 0 ? (p2.total / p1.total - 1) * 100 : null;
+                const f = (v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v));
+                return (
+                  <div className="st-range">
+                    Day {fmtDay(p1.day)} → Day {fmtDay(p2.day)}: {f(p1.total)}{unit} → {f(p2.total)}{unit}
+                    {" "}<PctBadge v={pct} />
+                    <button className="st-range-clear" onClick={() => setDragSel(null)} aria-label="Clear selection">✕</button>
+                  </div>
+                );
+              })()}
               {chartData.length > 1 ? (
                 <ResponsiveContainer width="100%" height={260}>
-                  <ComposedChart data={chartData} margin={{ top: 18, right: 18, bottom: 4, left: 0 }}>
+                  <ComposedChart data={chartData} margin={{ top: 18, right: 18, bottom: 4, left: 0 }}
+                    style={{ userSelect: "none" }}
+                    onMouseDown={(e) => { if (e && e.activeLabel != null) setDragSel({ start: e.activeLabel, end: e.activeLabel, active: true }); }}
+                    onMouseMove={(e) => { if (e && e.activeLabel != null) setDragSel((sel) => (sel && sel.active ? { ...sel, end: e.activeLabel } : sel)); }}
+                    onMouseUp={() => setDragSel((sel) => (sel ? { ...sel, active: false } : sel))}
+                    onMouseLeave={() => setDragSel((sel) => (sel && sel.active ? { ...sel, active: false } : sel))}>
                     <defs>
                       <linearGradient id="stFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#c9a24b" stopOpacity={0.35} />
@@ -705,7 +743,8 @@ export default function ScarabTracker() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="#3a332a" strokeDasharray="2 5" vertical={false} />
-                    <XAxis dataKey="day" tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay}
+                    <XAxis dataKey="day" type="number" domain={dayAxis(chartData).domain} ticks={dayAxis(chartData).ticks}
+                      tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay}
                       label={{ value: scarabAxisLabel, position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
                     <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
                       tickFormatter={(v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
@@ -714,6 +753,10 @@ export default function ScarabTracker() {
                       labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
                       formatter={(v, n) => [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, n === "total" ? "Set total" : focusScarab]}
                       labelFormatter={(d) => `Day ${fmtDay(d)}`} />
+                    {dragSel && dragSel.start !== dragSel.end && (
+                      <ReferenceArea x1={Math.min(dragSel.start, dragSel.end)} x2={Math.max(dragSel.start, dragSel.end)}
+                        fill="#c9a24b" fillOpacity={0.13} stroke="#c9a24b" strokeOpacity={0.4} />
+                    )}
                     <Area type="monotone" dataKey="total" stroke="#d8b355" strokeWidth={2} fill="url(#stFill)" name="total" isAnimationActive={false} />
                     {focusScarab && <Line type="monotone" dataKey="focus" stroke={GROUP_TONES[openGroupData.name] || "#7fb4d4"} strokeWidth={1.8} dot={false} isAnimationActive={false} />}
                     {extremes && <ReferenceDot x={extremes.hi.day} y={extremes.hi.total} r={4} fill="#8fd47f" stroke="#1b150c"
@@ -785,7 +828,8 @@ export default function ScarabTracker() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="#3a332a" strokeDasharray="2 5" vertical={false} />
-                    <XAxis dataKey="day" tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay}
+                    <XAxis dataKey="day" type="number" domain={dayAxis(rows).domain} ticks={dayAxis(rows).ticks}
+                      tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay}
                       label={{ value: (cd.historySource === "ninja" ? "league day" : "days since first snapshot"), position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
                     <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
                       tickFormatter={(v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
@@ -840,7 +884,7 @@ export default function ScarabTracker() {
             <button key={g.name}
               className={`st-card ${openGroup === g.name ? "open" : ""}`}
               style={{ "--tone": tone }}
-              onClick={() => { setOpenGroup(openGroup === g.name ? null : g.name); setFocusScarab(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+              onClick={() => { setOpenGroup(openGroup === g.name ? null : g.name); setFocusScarab(null); setDragSel(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
               <div className="st-card-rank">{sortDir === "desc" ? i + 1 : groups.length - i}</div>
               <div className="st-card-main">
                 <div className="st-card-name">
@@ -1004,6 +1048,18 @@ const css = `
 .st-chart { padding: 12px 8px 8px 4px; min-width: 0; }
 .st-chart-label { font-size: 12px; color: #8d8371; padding: 0 0 6px 14px; }
 .st-chart-label em { color: #c4b795; }
+.st-drag-hint { color: #57503f; }
+.st-range {
+  display: inline-flex; align-items: center; gap: 8px; margin: 2px 0 6px 14px;
+  border: 1px solid #6b5730; background: #2a2214; color: #e0d0a0;
+  font-size: 12.5px; padding: 4px 10px; border-radius: 999px; font-variant-numeric: tabular-nums;
+}
+.st-range .st-pct { margin-right: 0; }
+.st-range-clear {
+  background: none; border: none; color: #8d8371; cursor: pointer; font-size: 12px;
+  padding: 0 2px; font-family: inherit;
+}
+.st-range-clear:hover { color: #ead9a8; }
 .st-loading { color: #6f6656; }
 .st-chart-empty { height: 260px; display: grid; place-items: center; color: #6f6656; font-size: 13px; }
 .st-breakdown { border-left: 1px solid #3a332a; max-height: 340px; overflow-y: auto; }

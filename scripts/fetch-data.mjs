@@ -53,14 +53,14 @@ async function getLeagues() {
   const a = await tryJson(`${NINJA}/poe1/api/economy/leagues`);
   if (Array.isArray(a) && a.length && a[0].id) {
     console.log("Current leagues via /poe1/api/economy/leagues");
-    for (const l of a) current.push({ name: l.name || l.id, params: [l.id, l.name].filter(Boolean), group: "current" });
+    for (const l of a) current.push({ name: l.name || l.id, params: [l.id, l.name].filter(Boolean), group: "current", start: l.startAt || l.startDate || l.start || null });
   }
   // index-state carries the previous ("old") economy leagues, and doubles as
   // a fallback for the current ones
   const b = await tryJson(`${NINJA}/poe1/api/data/index-state`) || await tryJson(`${NINJA}/api/data/getindexstate`);
   if (b) {
     if (!current.length) {
-      for (const l of b.economyLeagues || []) current.push({ name: l.name, params: [l.url, l.name].filter(Boolean), group: "current" });
+      for (const l of b.economyLeagues || []) current.push({ name: l.name, params: [l.url, l.name].filter(Boolean), group: "current", start: l.startAt || l.startDate || null });
     }
     for (const l of b.oldEconomyLeagues || []) {
       previous.push({ name: l.name, params: [l.url, l.name].filter(Boolean), group: "previous" });
@@ -260,30 +260,47 @@ async function updateSelfHistory(slug, items, prefix = "") {
   return { points };
 }
 
-/* Recompute 24h/48h change from our own accumulated points when we have data
-   old enough; otherwise the sparkline-derived values on the items stay. */
+/* Recompute change windows from our own accumulated points when we have data
+   old enough; otherwise sparkline-derived values (24h/48h only) stay. The
+   15-min tolerance forgives GitHub's cron starting a few minutes late. */
+const CHANGE_WINDOWS = [[4, "change4"], [8, "change8"], [12, "change12"], [24, "change24"], [48, "change48"]];
 function applySelfChanges(items, self) {
   const pts = (self.points || []).map(normalizePoint);
   if (pts.length < 2) return;
   const now = Date.parse(pts[pts.length - 1].t);
   const refFor = (hours) => {
-    const cutoff = now - hours * 3600e3;
+    const cutoff = now - (hours * 3600e3 - 15 * 60e3);
     let ref = null;
     for (const p of pts) { if (Date.parse(p.t) <= cutoff) ref = p; else break; }
     return ref;
   };
-  const r24 = refFor(24), r48 = refFor(48);
-  for (const it of items) {
-    if (r24) { const v = r24.values[it.name]; if (v > 0) it.change24 = (it.chaosValue / v - 1) * 100; }
-    if (r48) { const v = r48.values[it.name]; if (v > 0) it.change48 = (it.chaosValue / v - 1) * 100; }
+  for (const [hours, key] of CHANGE_WINDOWS) {
+    const ref = refFor(hours);
+    if (!ref) continue;
+    for (const it of items) {
+      const v = ref.values[it.name];
+      if (v > 0) it[key] = (it.chaosValue / v - 1) * 100;
+    }
   }
 }
 
-function selfHistoryToSeries(self) {
+/* Anchor self-history day 0 at league start when we know it and it's sane
+   (guards against Standard's 2013 "start" producing day 4700). */
+function alignmentBase(self, leagueStart) {
+  if (!leagueStart) return null;
+  const ms = Date.parse(leagueStart);
+  if (!isFinite(ms)) return null;
+  const pts = (self.points || []).map(normalizePoint);
+  if (!pts.length) return null;
+  const diff = Date.parse(pts[0].t) - ms;
+  return (diff >= -6 * 3600e3 && diff <= 45 * 86400000) ? ms : null;
+}
+
+function selfHistoryToSeries(self, baseMs = null) {
   const out = {};
   const pts = (self.points || []).map(normalizePoint);
   if (!pts.length) return out;
-  const t0 = Date.parse(pts[0].t);
+  const t0 = baseMs ?? Date.parse(pts[0].t);
   for (const p of pts) {
     const day = Math.round(((Date.parse(p.t) - t0) / 86400000) * 100) / 100;
     for (const [name, v] of Object.entries(p.values || {})) {
@@ -326,19 +343,24 @@ async function main() {
       // have frozen prices, so a flat fake curve would just mislead.
       let self = { points: [] };
       let historySource = Object.keys(history).length ? "ninja" : "none";
+      let historyAxis = "league day";
       if (lg.group === "current") {
         self = await updateSelfHistory(slug, items);
         applySelfChanges(items, self);
         if (!Object.keys(history).length) {
-          history = selfHistoryToSeries(self);
-          if (Object.keys(history).length) historySource = "self";
+          const alignMs = alignmentBase(self, lg.start);
+          history = selfHistoryToSeries(self, alignMs);
+          if (Object.keys(history).length) {
+            historySource = "self";
+            historyAxis = alignMs ? "league day" : "days since first snapshot";
+          }
         }
       }
 
       const dir = path.join(OUT, slug);
       await mkdir(dir, { recursive: true });
       const generatedAt = new Date().toISOString();
-      await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, historySource, items }));
+      await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, historySource, historyAxis, items }));
       await writeFile(path.join(dir, "history.json"), JSON.stringify(history));
       await writeFile(path.join(dir, "selfhistory.json"), JSON.stringify(self));
       // extra categories: astrolabes + catalysts, same treatment as scarabs
@@ -351,13 +373,18 @@ async function main() {
           let catHist = {};
           let catSelf = { points: [] };
           let catHistorySource = "none";
+          let catHistoryAxis = "days since first snapshot";
           if (lg.group === "current") {
             catSelf = await updateSelfHistory(slug, r.items, `${cat.key}-`);
             applySelfChanges(r.items, catSelf);
-            catHist = selfHistoryToSeries(catSelf);
-            if (Object.keys(catHist).length) catHistorySource = "self";
+            const catAlign = alignmentBase(catSelf, lg.start);
+            catHist = selfHistoryToSeries(catSelf, catAlign);
+            if (Object.keys(catHist).length) {
+              catHistorySource = "self";
+              if (catAlign) catHistoryAxis = "league day";
+            }
           }
-          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, divineRate: rate2, historySource: catHistorySource, items: r.items }));
+          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, divineRate: rate2, historySource: catHistorySource, historyAxis: catHistoryAxis, items: r.items }));
           await writeFile(path.join(dir, `${cat.key}-history.json`), JSON.stringify(catHist));
           await writeFile(path.join(dir, `${cat.key}-selfhistory.json`), JSON.stringify(catSelf));
           console.log(`  ${cat.key}: ${r.items.length} items`);
