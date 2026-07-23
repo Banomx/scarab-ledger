@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "23 */6 * * *"   # refresh prices every 6 hours
+    - cron: "0 */4 * * *"    # every 4 hours on the hour (02/06/10/14/18/22 CEST)
   workflow_dispatch:          # manual "Run workflow" button
 
 permissions:

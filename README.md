@@ -60,7 +60,7 @@ GitHub Actions**. The first workflow run starts on push (or trigger it under
 minutes the site is live at `https://YOUR_USER.github.io/scarab-ledger/`.
 
 Notes:
-- Prices refresh on the 6-hour cron; the banner shows the snapshot timestamp.
+- Prices refresh on the 4-hour cron; the banner shows the snapshot timestamp.
 - poe.ninja restructured their API in 2026 and no longer documents a public
   price-history endpoint. The fetch script still tries the legacy history
   route, but if it's gone, the site **accumulates its own history**: every
