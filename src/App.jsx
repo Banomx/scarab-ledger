@@ -182,6 +182,7 @@ function fmtChaos(v) {
   return v.toFixed(1);
 }
 function fmtDiv(v) { return v >= 10 ? v.toFixed(1) : v.toFixed(2); }
+function fmtDay(d) { const n = Math.round(d * 10) / 10; return Number.isInteger(n) ? String(n) : n.toFixed(1); }
 function fmtPrice(chaos, currency, rate) {
   return currency === "chaos" ? `${fmtChaos(chaos)}c` : `${fmtDiv(chaos / rate)} div`;
 }
@@ -337,7 +338,7 @@ export default function ScarabTracker() {
     const j = await res.json();
     setItems((j.items || []).map((it) => ({ ...it, group: groupForName(it.name) })));
     setDivineRate(j.divineRate || DEMO_DIVINE_RATE);
-    setStaticInfo({ generatedAt: j.generatedAt });
+    setStaticInfo({ generatedAt: j.generatedAt, historySource: j.historySource });
     setMode("live"); setDataSource("static");
     staticHistFetched.current.delete(name);
     setHistories({}); setOpenGroup(null); setFocusScarab(null);
@@ -545,22 +546,29 @@ export default function ScarabTracker() {
     if (!openGroupData) return [];
     const memberHists = openGroupData.members.map((m) => histories[m.name]).filter((h) => h && h.length);
     if (!memberHists.length) return [];
-    const maxDay = Math.max(...memberHists.map((h) => h[h.length - 1]?.day ?? 0));
+    // Self-history uses fractional days (multiple snapshots per day), so build
+    // one row per distinct day value instead of iterating integer days.
+    const daySet = new Set();
+    for (const h of memberHists) for (const p of h) daySet.add(p.day);
+    const days = [...daySet].sort((a, b) => a - b);
     const div = currency === "divine" ? divineRate : 1;
-    const rows = [];
-    for (let d = 0; d <= maxDay; d++) {
+    return days.map((d) => {
       let total = 0, focus = null;
       for (const m of openGroupData.members) {
         const h = histories[m.name];
         if (!h || !h.length) continue;
         const pt = h.find((p) => p.day === d) ?? h.reduce((best, p) => (Math.abs(p.day - d) < Math.abs(best.day - d) ? p : best), h[0]);
         total += pt.value;
-        if (focusScarab === m.name) focus = pt.value / div;
+        if (focusScarab === m.name) focus = Math.round((pt.value / div) * 100) / 100;
       }
-      rows.push({ day: d, total: Math.round((total / div) * 100) / 100, focus });
-    }
-    return rows;
+      return { day: d, total: Math.round((total / div) * 100) / 100, focus };
+    });
   }, [openGroupData, histories, currency, divineRate, focusScarab]);
+
+  // Axis wording: ninja history is aligned to league days; our own snapshots
+  // count from the first run.
+  const scarabAxisLabel = (dataSource === "static" && staticInfo?.historySource === "self")
+    ? "days since first snapshot" : "league day";
 
   const extremes = useMemo(() => {
     if (chartData.length < 2) return null;
@@ -697,21 +705,21 @@ export default function ScarabTracker() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="#3a332a" strokeDasharray="2 5" vertical={false} />
-                    <XAxis dataKey="day" tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234"
-                      label={{ value: "league day", position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
+                    <XAxis dataKey="day" tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay}
+                      label={{ value: scarabAxisLabel, position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
                     <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
                       tickFormatter={(v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
                     <Tooltip
                       contentStyle={{ background: "#211c15", border: "1px solid #5a4d33", borderRadius: 6, fontSize: 12 }}
                       labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
                       formatter={(v, n) => [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, n === "total" ? "Set total" : focusScarab]}
-                      labelFormatter={(d) => `Day ${d}`} />
+                      labelFormatter={(d) => `Day ${fmtDay(d)}`} />
                     <Area type="monotone" dataKey="total" stroke="#d8b355" strokeWidth={2} fill="url(#stFill)" name="total" isAnimationActive={false} />
                     {focusScarab && <Line type="monotone" dataKey="focus" stroke={GROUP_TONES[openGroupData.name] || "#7fb4d4"} strokeWidth={1.8} dot={false} isAnimationActive={false} />}
                     {extremes && <ReferenceDot x={extremes.hi.day} y={extremes.hi.total} r={4} fill="#8fd47f" stroke="#1b150c"
-                      label={{ value: `High ${currency === "chaos" ? fmtChaos(extremes.hi.total) : fmtDiv(extremes.hi.total)}${unit} · d${extremes.hi.day}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
+                      label={{ value: `High ${currency === "chaos" ? fmtChaos(extremes.hi.total) : fmtDiv(extremes.hi.total)}${unit} · d${fmtDay(extremes.hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
                     {extremes && <ReferenceDot x={extremes.lo.day} y={extremes.lo.total} r={4} fill="#d47f7f" stroke="#1b150c"
-                      label={{ value: `Low ${currency === "chaos" ? fmtChaos(extremes.lo.total) : fmtDiv(extremes.lo.total)}${unit} · d${extremes.lo.day}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
+                      label={{ value: `Low ${currency === "chaos" ? fmtChaos(extremes.lo.total) : fmtDiv(extremes.lo.total)}${unit} · d${fmtDay(extremes.lo.day)}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (
@@ -777,20 +785,20 @@ export default function ScarabTracker() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="#3a332a" strokeDasharray="2 5" vertical={false} />
-                    <XAxis dataKey="day" tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234"
-                      label={{ value: "league day", position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
+                    <XAxis dataKey="day" tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay}
+                      label={{ value: (cd.historySource === "ninja" ? "league day" : "days since first snapshot"), position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
                     <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
                       tickFormatter={(v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
                     <Tooltip
                       contentStyle={{ background: "#211c15", border: "1px solid #5a4d33", borderRadius: 6, fontSize: 12 }}
                       labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
                       formatter={(v) => [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, selName]}
-                      labelFormatter={(d) => `Day ${d}`} />
+                      labelFormatter={(d) => `Day ${fmtDay(d)}`} />
                     <Area type="monotone" dataKey="value" stroke="#d8b355" strokeWidth={2} fill="url(#stFillCat)" isAnimationActive={false} />
                     {hi && <ReferenceDot x={hi.day} y={hi.value} r={4} fill="#8fd47f" stroke="#1b150c"
-                      label={{ value: `High ${currency === "chaos" ? fmtChaos(hi.value) : fmtDiv(hi.value)}${unit} · d${hi.day}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
+                      label={{ value: `High ${currency === "chaos" ? fmtChaos(hi.value) : fmtDiv(hi.value)}${unit} · d${fmtDay(hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
                     {lo && <ReferenceDot x={lo.day} y={lo.value} r={4} fill="#d47f7f" stroke="#1b150c"
-                      label={{ value: `Low ${currency === "chaos" ? fmtChaos(lo.value) : fmtDiv(lo.value)}${unit} · d${lo.day}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
+                      label={{ value: `Low ${currency === "chaos" ? fmtChaos(lo.value) : fmtDiv(lo.value)}${unit} · d${fmtDay(lo.day)}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (

@@ -243,28 +243,49 @@ function pagesBaseUrl() {
   return `https://${owner}.github.io/${name}`;
 }
 
+function normalizePoint(p) {
+  // old format: {date: "YYYY-MM-DD"}; new format: {t: ISO timestamp}
+  return { t: p.t || `${p.date}T00:00:00Z`, values: p.values || {} };
+}
+
 async function updateSelfHistory(slug, items, prefix = "") {
   const base = pagesBaseUrl();
-  let prev = base ? await tryJson(`${base}/data/${slug}/${prefix}selfhistory.json`) : null;
-  const points = (prev && Array.isArray(prev.points)) ? prev.points : [];
-  const today = todayISO();
+  const prev = base ? await tryJson(`${base}/data/${slug}/${prefix}selfhistory.json`) : null;
+  const points = ((prev && Array.isArray(prev.points)) ? prev.points : []).map(normalizePoint);
   const values = {};
   for (const it of items) values[it.name] = Math.round(it.chaosValue * 100) / 100;
-  const existing = points.findIndex((p) => p.date === today);
-  if (existing >= 0) points[existing] = { date: today, values };
-  else points.push({ date: today, values });
-  points.sort((a, b) => (a.date < b.date ? -1 : 1));
+  points.push({ t: new Date().toISOString(), values }); // one point per run
+  points.sort((a, b) => (a.t < b.t ? -1 : 1));
   while (points.length > SELF_HISTORY_CAP) points.shift();
   return { points };
 }
 
+/* Recompute 24h/48h change from our own accumulated points when we have data
+   old enough; otherwise the sparkline-derived values on the items stay. */
+function applySelfChanges(items, self) {
+  const pts = (self.points || []).map(normalizePoint);
+  if (pts.length < 2) return;
+  const now = Date.parse(pts[pts.length - 1].t);
+  const refFor = (hours) => {
+    const cutoff = now - hours * 3600e3;
+    let ref = null;
+    for (const p of pts) { if (Date.parse(p.t) <= cutoff) ref = p; else break; }
+    return ref;
+  };
+  const r24 = refFor(24), r48 = refFor(48);
+  for (const it of items) {
+    if (r24) { const v = r24.values[it.name]; if (v > 0) it.change24 = (it.chaosValue / v - 1) * 100; }
+    if (r48) { const v = r48.values[it.name]; if (v > 0) it.change48 = (it.chaosValue / v - 1) * 100; }
+  }
+}
+
 function selfHistoryToSeries(self) {
   const out = {};
-  const pts = self.points || [];
+  const pts = (self.points || []).map(normalizePoint);
   if (!pts.length) return out;
-  const day0 = new Date(pts[0].date + "T00:00:00Z").getTime();
+  const t0 = Date.parse(pts[0].t);
   for (const p of pts) {
-    const day = Math.round((new Date(p.date + "T00:00:00Z").getTime() - day0) / 86400000);
+    const day = Math.round(((Date.parse(p.t) - t0) / 86400000) * 100) / 100;
     for (const [name, v] of Object.entries(p.values || {})) {
       (out[name] ||= []).push({ day, value: v });
     }
@@ -304,15 +325,20 @@ async function main() {
       // Self-history only makes sense for running leagues; finished leagues
       // have frozen prices, so a flat fake curve would just mislead.
       let self = { points: [] };
+      let historySource = Object.keys(history).length ? "ninja" : "none";
       if (lg.group === "current") {
         self = await updateSelfHistory(slug, items);
-        if (!Object.keys(history).length) history = selfHistoryToSeries(self);
+        applySelfChanges(items, self);
+        if (!Object.keys(history).length) {
+          history = selfHistoryToSeries(self);
+          if (Object.keys(history).length) historySource = "self";
+        }
       }
 
       const dir = path.join(OUT, slug);
       await mkdir(dir, { recursive: true });
       const generatedAt = new Date().toISOString();
-      await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, items }));
+      await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, historySource, items }));
       await writeFile(path.join(dir, "history.json"), JSON.stringify(history));
       await writeFile(path.join(dir, "selfhistory.json"), JSON.stringify(self));
       // extra categories: astrolabes + catalysts, same treatment as scarabs
@@ -324,11 +350,14 @@ async function main() {
           for (const it of r.items) if (!it.divineValue) it.divineValue = it.chaosValue / rate2;
           let catHist = {};
           let catSelf = { points: [] };
+          let catHistorySource = "none";
           if (lg.group === "current") {
             catSelf = await updateSelfHistory(slug, r.items, `${cat.key}-`);
+            applySelfChanges(r.items, catSelf);
             catHist = selfHistoryToSeries(catSelf);
+            if (Object.keys(catHist).length) catHistorySource = "self";
           }
-          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, divineRate: rate2, items: r.items }));
+          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, divineRate: rate2, historySource: catHistorySource, items: r.items }));
           await writeFile(path.join(dir, `${cat.key}-history.json`), JSON.stringify(catHist));
           await writeFile(path.join(dir, `${cat.key}-selfhistory.json`), JSON.stringify(catSelf));
           console.log(`  ${cat.key}: ${r.items.length} items`);
