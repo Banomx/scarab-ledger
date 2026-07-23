@@ -310,8 +310,59 @@ function selfHistoryToSeries(self, baseMs = null) {
   return out;
 }
 
+/* ---------- reuse mode: mirror the currently deployed data ---------- */
+const LEAGUE_FILES = [
+  "scarabs.json", "history.json", "selfhistory.json",
+  "astrolabes.json", "astrolabes-history.json", "astrolabes-selfhistory.json",
+  "catalysts.json", "catalysts-history.json", "catalysts-selfhistory.json",
+];
+
+async function tryText(url) {
+  try {
+    const res = await fetch(url, { headers: HEADERS });
+    return res.ok ? await res.text() : null;
+  } catch { return null; }
+}
+
+async function mirrorExisting() {
+  const base = pagesBaseUrl();
+  if (!base) return false;
+  const idxText = await tryText(`${base}/data/index.json`);
+  if (!idxText) return false;
+  let idx;
+  try { idx = JSON.parse(idxText); } catch { return false; }
+  if (!idx.leagues || !idx.leagues.length) return false;
+
+  await rm(OUT, { recursive: true, force: true });
+  await mkdir(OUT, { recursive: true });
+  const kept = [];
+  for (const l of idx.leagues) {
+    const dir = path.join(OUT, l.slug);
+    const main = await tryText(`${base}/data/${l.slug}/scarabs.json`);
+    if (!main) { console.log(`- ${l.name}: deployed data missing, dropping`); continue; }
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, "scarabs.json"), main);
+    for (const f of LEAGUE_FILES.slice(1)) {
+      const body = await tryText(`${base}/data/${l.slug}/${f}`);
+      if (body != null) await writeFile(path.join(dir, f), body);
+    }
+    kept.push(l);
+    console.log(`- ${l.name}: reused deployed data`);
+  }
+  if (!kept.length) return false;
+  await writeFile(path.join(OUT, "index.json"), JSON.stringify({ ...idx, leagues: kept }));
+  return true;
+}
+
 /* ---------- main ---------- */
 async function main() {
+  if ((process.env.DATA_MODE || "fetch") === "reuse") {
+    if (await mirrorExisting()) {
+      console.log("Code-only deploy: reused deployed data, no new snapshot taken.");
+      return;
+    }
+    console.log("Nothing deployed to reuse — falling back to a full fetch.");
+  }
   await rm(OUT, { recursive: true, force: true });
   await mkdir(OUT, { recursive: true });
 

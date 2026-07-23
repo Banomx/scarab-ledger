@@ -28,6 +28,10 @@ jobs:
       - run: npm ci
       - name: Snapshot poe.ninja data
         run: node scripts/fetch-data.mjs
+        env:
+          # push = code deploy only (reuse deployed data, no new snapshot);
+          # schedule + manual dispatch = fetch fresh data
+          DATA_MODE: ${{ github.event_name == 'push' && 'reuse' || 'fetch' }}
       - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
