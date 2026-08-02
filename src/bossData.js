@@ -26,7 +26,7 @@
    change.
    ================================================================ */
 
-export const GROUP_ORDER = ["Pinnacle", "Uber pinnacle", "Vaal", "Eldritch", "Breach", "Delve", "Other"];
+export const GROUP_ORDER = ["Pinnacle", "Uber pinnacle", "Vaal", "Eldritch", "Breach", "Synthesis", "Delve", "Other"];
 
 export const GROUP_TONES = {
   "Pinnacle": "#c9a24b",
@@ -34,6 +34,7 @@ export const GROUP_TONES = {
   "Vaal": "#c96a3f",
   "Eldritch": "#8f6ad4",
   "Breach": "#b06ad4",
+  "Synthesis": "#7f8fd4",
   "Delve": "#6ac3d4",
   "Other": "#8fb46a",
 };
@@ -387,6 +388,42 @@ export const BOSSES = [
       { item: "The Blue Nightmare", chance: 0.04 },
       { item: "The Green Nightmare", chance: 0.04 },
       { item: "Presence of Chayula", chance: 0.03 },
+    ],
+  },
+
+  /* ---------------- Synthesis ---------------- */
+  {
+    id: "cortex",
+    name: "Venarius (Cortex)",
+    group: "Synthesis",
+    entry: [{ item: "Cortex" }],
+    ttk: 70, overhead: 90, poolRolls: 0, rates: "wiki",
+    note: "Published rates sum to ~113%, so they're independent per-kill chances rather than one guaranteed pool — Cortex drops more than one unique on average.",
+    drops: [
+      { item: "Offering to the Serpent", chance: 0.43 },
+      { item: "Perepiteia", chance: 0.43 },
+      { item: "Garb of the Ephemeral", chance: 0.09 },
+      { item: "The Apostate", chance: 0.08 },
+      { item: "Bottled Faith", chance: 0.05 },
+      { item: "Rational Doctrine", chance: 0.05 },
+      { item: "Greater Kinetic Instability Support", chance: 0.10 },
+      { item: "The Hook", chance: 0.05 },
+      { item: "Imperfect Memories", chance: 0.005 },
+    ],
+  },
+  {
+    id: "uber-venarius",
+    name: "Uber Venarius",
+    group: "Synthesis",
+    entry: [{ item: "Synthesising Fragment", qty: 4 }],
+    ttk: 130, overhead: 120, poolRolls: 1, rates: "wiki",
+    note: "The Unleashed Cortex, area level 85. Synthesised uniques roll three synthesised implicits, so the market price spread is wide — the Cheapest/Best-roll toggle matters here.",
+    drops: [
+      { item: "Nebulis", share: 0.34 },
+      { item: "Mask of the Tribunal", share: 0.34 },
+      { item: "Circle of Ambition", share: 0.19 },
+      { item: "The Apostate", share: 0.08 },
+      { item: "Forgotten Reliquary Key", chance: 0.015 },
     ],
   },
 

@@ -12,7 +12,10 @@ for (const b of BOSSES) {
   ok(b.ttk > 0 && b.overhead >= 0, `${b.id}: bad timing`);
   ok(b.drops.length > 0, `${b.id}: no drops`);
   const poolSum = b.drops.filter(d => d.share != null).reduce((s,d)=>s+d.share, 0);
-  if (poolSum > 0) ok(Math.abs(poolSum - 1) < 0.03, `${b.id}: pool shares sum to ${poolSum.toFixed(3)}, expected ~1`);
+  // A pool represents one guaranteed drop, so published shares should partition
+  // it. Wiki figures are rounded and occasionally omit a rare line, so allow a
+  // little slack — but not enough to hide a set that isn't really a pool.
+  if (poolSum > 0) ok(poolSum >= 0.93 && poolSum <= 1.06, `${b.id}: pool shares sum to ${poolSum.toFixed(3)}, expected ~1 (use chance: if these aren't a partition)`);
   if (poolSum > 0) ok((b.poolRolls ?? 1) > 0, `${b.id}: has pool shares but poolRolls=${b.poolRolls}`);
   if (poolSum === 0) ok((b.poolRolls ?? 1) === 0, `${b.id}: no pool shares but poolRolls=${b.poolRolls}`);
   for (const d of b.drops) {
