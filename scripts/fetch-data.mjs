@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const NINJA = "https://poe.ninja";
-const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public", "data");
+const OUT = process.env.DATA_OUT || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public", "data");
 const HEADERS = { "User-Agent": "scarab-ledger-snapshot/0.2 (github actions; contact via repo issues)" };
 const HISTORY_LEAGUES = 2;   // ninja per-scarab history only for the first N leagues (politeness)
 const SELF_HISTORY_CAP = 800; // max accumulated self-history points per league
@@ -218,9 +218,46 @@ function isBaseVariant(type, l) {
   return !l.variant && !(l.links > 0);
 }
 
+/* poe.ninja serves the same data from several endpoint families and has
+   been migrating between them. Rather than pick one, try each family per
+   type and remember whichever answered first.
+     stash/*  — legacy shape at the new paths ({lines:[{name, chaosValue}]})
+     api/data — the original paths, still redirected for some types
+     exchange — barter categories, {core, lines:[{primaryValue}]} shape */
+const ITEM_FAMILIES = [
+  (p, t) => `${NINJA}/poe1/api/economy/stash/current/item/overview?league=${encodeURIComponent(p)}&type=${t}`,
+  (p, t) => `${NINJA}/api/data/itemoverview?league=${encodeURIComponent(p)}&type=${t}`,
+  (p, t) => `${NINJA}/poe1/api/economy/exchange/current/overview?league=${encodeURIComponent(p)}&type=${t}`,
+];
+const CURRENCY_FAMILIES = [
+  (p, t) => `${NINJA}/poe1/api/economy/stash/current/currency/overview?league=${encodeURIComponent(p)}&type=${t}`,
+  (p, t) => `${NINJA}/api/data/currencyoverview?league=${encodeURIComponent(p)}&type=${t}`,
+  (p, t) => `${NINJA}/poe1/api/economy/exchange/current/overview?league=${encodeURIComponent(p)}&type=${t}`,
+];
+
+/* Normalise whichever shape came back into {name, chaos, preferred}[]. */
+function priceLines(j, type) {
+  if (!j) return [];
+  const out = [];
+  for (const l of j.lines || []) {
+    const name = l.name || l.currencyTypeName;
+    const chaos = l.chaosValue ?? l.chaosEquivalent;
+    if (name && chaos > 0) out.push({ name, chaos, preferred: isBaseVariant(type, l) });
+  }
+  if (out.length) return out;
+  // exchange shape: prices are relative to a primary currency
+  if (j.core && Array.isArray(j.lines) && j.lines.length) {
+    const a = adaptExchange(j, /.*/);
+    return (a.items || [])
+      .filter((it) => it.chaosValue > 0)
+      .map((it) => ({ name: it.name, chaos: it.chaosValue, preferred: true }));
+  }
+  return [];
+}
+
 async function getPriceMap(lgParams) {
   const acc = {};
-  const add = (name, chaos, preferred) => {
+  const add = ({ name, chaos, preferred }) => {
     if (!name || !(chaos > 0)) return;
     const e = (acc[name] ||= { all: [], base: [] });
     e.all.push(chaos);
@@ -228,39 +265,59 @@ async function getPriceMap(lgParams) {
   };
 
   let usedParam = null;
+  const sourceOf = {};
   for (const p of lgParams) {
-    let hits = 0;
-    for (const t of PRICE_CURRENCY_TYPES) {
-      const j = await tryJson(`${NINJA}/api/data/currencyoverview?league=${encodeURIComponent(p)}&type=${t}`);
-      if (j && Array.isArray(j.lines) && j.lines.length) {
-        hits++;
-        for (const l of j.lines) add(l.currencyTypeName, l.chaosEquivalent, true);
+    const missed = [];
+    let best = 0;   // family index that worked last, tried first next time
+    for (const [types, families, kind] of [
+      [PRICE_CURRENCY_TYPES, CURRENCY_FAMILIES, "currency"],
+      [PRICE_ITEM_TYPES, ITEM_FAMILIES, "item"],
+    ]) {
+      for (const t of types) {
+        let got = 0;
+        const order = [best, ...families.keys()].filter((v, i, a) => a.indexOf(v) === i);
+        for (const fi of order) {
+          const lines = priceLines(await tryJson(families[fi](p, t)), t);
+          await sleep(DELAY_MS);
+          if (lines.length) {
+            for (const l of lines) add(l);
+            got = lines.length; best = fi;
+            sourceOf[t] = `${kind}:${fi}`;
+            break;
+          }
+        }
+        if (!got) missed.push(t);
       }
-      await sleep(DELAY_MS);
     }
-    for (const t of PRICE_ITEM_TYPES) {
-      const j = await tryJson(`${NINJA}/api/data/itemoverview?league=${encodeURIComponent(p)}&type=${t}`);
-      if (j && Array.isArray(j.lines) && j.lines.length) {
-        hits++;
-        for (const l of j.lines) add(l.name, l.chaosValue, isBaseVariant(t, l));
-      }
-      await sleep(DELAY_MS);
+    if (Object.keys(acc).length) {
+      usedParam = p;
+      if (missed.length) console.log(`    no data for types: ${missed.join(", ")}`);
+      break;
     }
-    if (hits) { usedParam = p; break; }
+    console.log(`    league param "${p}" returned nothing from any endpoint family`);
   }
   if (!usedParam) return null;
 
+  // Lower-middle median: with an even number of listings (very common —
+  // a unique with two variants) the shared median() helper would return the
+  // dearer one, quietly biasing every EV upward. Cheaper side wins; the UI
+  // has a "Best roll" toggle for people who want the other end.
+  const midLow = (arr) => {
+    const s = arr.filter((v) => isFinite(v) && v > 0).sort((a, b) => a - b);
+    return s.length ? s[Math.ceil(s.length / 2) - 1] : 0;
+  };
   const prices = {};
   for (const [name, e] of Object.entries(acc)) {
     const pick = e.base.length ? e.base : e.all;
     prices[name] = {
-      c: Math.round(median(pick) * 100) / 100,
+      c: Math.round(midLow(pick) * 100) / 100,
       lo: Math.round(Math.min(...e.all) * 100) / 100,
       hi: Math.round(Math.max(...e.all) * 100) / 100,
       n: e.all.length,
     };
   }
-  return { prices, leagueParam: usedParam };
+  const fams = [...new Set(Object.values(sourceOf))].join(", ");
+  return { prices, leagueParam: usedParam, families: fams };
 }
 
 /* ---------- divine rate ---------- */
@@ -485,9 +542,9 @@ async function main() {
         const pm = await getPriceMap(lg.params);
         if (pm) {
           await writeFile(path.join(dir, "prices.json"), JSON.stringify({ generatedAt, divineRate, prices: pm.prices }));
-          console.log(`  prices: ${Object.keys(pm.prices).length} items (league=${pm.leagueParam})`);
+          console.log(`  prices: ${Object.keys(pm.prices).length} names (league=${pm.leagueParam}, via ${pm.families || "?"})`);
         } else {
-          console.log(`  prices: no data for ${lg.name}`);
+          console.log(`  prices: NO DATA for ${lg.name} — every endpoint family came back empty`);
         }
       } catch (e) {
         console.log(`  prices: FAILED (${e.message})`);
@@ -532,7 +589,7 @@ async function main() {
 
   if (!written.length) throw new Error("No league data could be fetched — aborting so the old deployment stays up.");
   await writeFile(path.join(OUT, "index.json"), JSON.stringify({ generatedAt: new Date().toISOString(), leagues: written }));
-  console.log(`Done. Wrote ${written.length} league(s) to public/data/`);
+  console.log(`Done. Wrote ${written.length} league(s) to ${OUT}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

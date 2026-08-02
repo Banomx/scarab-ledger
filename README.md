@@ -116,7 +116,18 @@ the fight, divided by how long a run takes you — i.e. profit per hour.
   price of the matching gem set, so "Maven drops a random awakened gem" prices
   correctly.
 
-Run `node scripts/test-boss.mjs` to check the dataset and the maths.
+Two test scripts:
+
+```bash
+node scripts/test-boss.mjs          # dataset integrity + EV maths
+node scripts/test-fetch-shapes.mjs  # snapshot script vs. poe.ninja's endpoint shapes
+```
+
+The second one matters because poe.ninja keeps moving PoE 1 economy data between
+endpoint families. It stubs `fetch`, makes every legacy `/api/data/*` path 404,
+and runs the real script end to end — so the next migration fails a test instead
+of silently shipping an empty `prices.json`. `DATA_OUT` redirects the script's
+output directory, which is how the test avoids touching `public/data/`.
 
 ## Where things live
 
