@@ -91,9 +91,38 @@ location /ninja/ {
 }
 ```
 
+## Boss profit tab
+
+Expected value per kill from each boss's drop pool, minus what it costs to open
+the fight, divided by how long a run takes you — i.e. profit per hour.
+
+- **`src/bossData.js`** is the dataset: one block per boss with its entry cost,
+  drop table and default times. Adding a boss means copying a block; no other
+  file changes. Each drop line is one of `share` (share of the guaranteed unique
+  pool), `chance` (independent chance per kill) or `qty` (flat expected count).
+- Bosses tagged **est** have a known drop pool but no published split, so it's
+  spread evenly — treat those as a starting point. The rest use the percentages
+  published on poewiki, which are crowdsourced and go stale whenever GGG
+  rebalances drops.
+- Uber-fragment names and quantities are tagged **verify** where they were worth
+  double-checking against an actual map device.
+- Everything on the page is editable — times, drop rates, quantities and prices.
+  Edits live in **TTK profiles** saved to `localStorage`, so you can keep one
+  profile per character and export/import them as JSON.
+- Prices come from `public/data/<league>/prices.json`, written by the same
+  workflow that snapshots scarabs. Items with no poe.ninja listing are flagged
+  `no price` rather than silently counted as zero.
+- `@awakened-common` / `@awakened-exceptional` are synthetic entries: the mean
+  price of the matching gem set, so "Maven drops a random awakened gem" prices
+  correctly.
+
+Run `node scripts/test-boss.mjs` to check the dataset and the maths.
+
 ## Where things live
 
-- `src/App.jsx` — the entire app (catalogue, demo fallback, live fetching, UI)
+- `src/App.jsx` — shell, scarab catalogue, demo fallback, live fetching, styles
+- `src/bossData.js` / `src/bossProfit.js` / `src/BossProfit.jsx` — boss profit
+  dataset, pure calculation layer, and UI
 - `vite.config.js` — the `/ninja` proxy for dev and preview
 - Scarab grouping is derived from names automatically; new scarabs poe.ninja
   adds get sorted into the right mechanic without code changes.

@@ -198,6 +198,71 @@ function adaptExchange(j, nameRe = /scarab/i) {
   return { items, exchangeDivineRate: divineRate ?? undefined };
 }
 
+/* ---------- broad price map (boss profitability) ----------
+   One name -> price lookup covering everything a boss can drop or cost.
+   Uniques and gems come in variants (links, gem level, corruption); we
+   keep the spread and default `c` to the "base" version where one can be
+   identified, so a Level 1 Awakened gem isn't priced as a 21/23. */
+const PRICE_CURRENCY_TYPES = ["Currency", "Fragment"];
+const PRICE_ITEM_TYPES = [
+  "UniqueWeapon", "UniqueArmour", "UniqueAccessory", "UniqueFlask", "UniqueJewel",
+  "UniqueMap", "UniqueRelic", "DivinationCard", "SkillGem", "Essence", "Artifact",
+  "Omen", "Invitation", "Vial", "Beast", "Fossil", "Oil", "Coffin", "Allflame",
+  "Tincture", "Incubator", "Memory", "DeliriumOrb", "Scarab",
+];
+
+function isBaseVariant(type, l) {
+  if (type === "SkillGem") {
+    return !l.corrupted && (l.gemLevel ?? 1) <= 1 && (l.gemQuality ?? 0) === 0;
+  }
+  return !l.variant && !(l.links > 0);
+}
+
+async function getPriceMap(lgParams) {
+  const acc = {};
+  const add = (name, chaos, preferred) => {
+    if (!name || !(chaos > 0)) return;
+    const e = (acc[name] ||= { all: [], base: [] });
+    e.all.push(chaos);
+    if (preferred) e.base.push(chaos);
+  };
+
+  let usedParam = null;
+  for (const p of lgParams) {
+    let hits = 0;
+    for (const t of PRICE_CURRENCY_TYPES) {
+      const j = await tryJson(`${NINJA}/api/data/currencyoverview?league=${encodeURIComponent(p)}&type=${t}`);
+      if (j && Array.isArray(j.lines) && j.lines.length) {
+        hits++;
+        for (const l of j.lines) add(l.currencyTypeName, l.chaosEquivalent, true);
+      }
+      await sleep(DELAY_MS);
+    }
+    for (const t of PRICE_ITEM_TYPES) {
+      const j = await tryJson(`${NINJA}/api/data/itemoverview?league=${encodeURIComponent(p)}&type=${t}`);
+      if (j && Array.isArray(j.lines) && j.lines.length) {
+        hits++;
+        for (const l of j.lines) add(l.name, l.chaosValue, isBaseVariant(t, l));
+      }
+      await sleep(DELAY_MS);
+    }
+    if (hits) { usedParam = p; break; }
+  }
+  if (!usedParam) return null;
+
+  const prices = {};
+  for (const [name, e] of Object.entries(acc)) {
+    const pick = e.base.length ? e.base : e.all;
+    prices[name] = {
+      c: Math.round(median(pick) * 100) / 100,
+      lo: Math.round(Math.min(...e.all) * 100) / 100,
+      hi: Math.round(Math.max(...e.all) * 100) / 100,
+      n: e.all.length,
+    };
+  }
+  return { prices, leagueParam: usedParam };
+}
+
 /* ---------- divine rate ---------- */
 async function getDivineRate(lgParam, fallback) {
   const urls = [
@@ -313,7 +378,7 @@ function selfHistoryToSeries(self, baseMs = null) {
 
 /* ---------- reuse mode: mirror the currently deployed data ---------- */
 const LEAGUE_FILES = [
-  "scarabs.json", "history.json", "selfhistory.json",
+  "scarabs.json", "history.json", "selfhistory.json", "prices.json",
   "astrolabes.json", "astrolabes-history.json", "astrolabes-selfhistory.json",
   "catalysts.json", "catalysts-history.json", "catalysts-selfhistory.json",
 ];
@@ -415,6 +480,19 @@ async function main() {
       await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, historySource, historyAxis, items }));
       await writeFile(path.join(dir, "history.json"), JSON.stringify(history));
       await writeFile(path.join(dir, "selfhistory.json"), JSON.stringify(self));
+      // broad price map for the boss profitability tab
+      try {
+        const pm = await getPriceMap(lg.params);
+        if (pm) {
+          await writeFile(path.join(dir, "prices.json"), JSON.stringify({ generatedAt, divineRate, prices: pm.prices }));
+          console.log(`  prices: ${Object.keys(pm.prices).length} items (league=${pm.leagueParam})`);
+        } else {
+          console.log(`  prices: no data for ${lg.name}`);
+        }
+      } catch (e) {
+        console.log(`  prices: FAILED (${e.message})`);
+      }
+
       // extra categories: astrolabes + catalysts, same treatment as scarabs
       for (const cat of EXTRA_CATEGORIES) {
         try {
