@@ -495,12 +495,21 @@ async function getPriceMap(lgParams, ctx) {
   };
   const prices = {};
   for (const [name, e] of Object.entries(acc)) {
+    // All three bases must describe the SAME population: the item as a boss
+    // drops it. poe.ninja's "variants" mix two unrelated things — genuine roll
+    // variants (Atziri's Splendour Armour vs ES/Eva) and post-drop states a
+    // boss never hands you (a corrupted 21/20 gem, a 6-linked unique). Spanning
+    // e.all let the second kind into lo/hi, which is how a level-1 Pacifism
+    // Support worth about a divine showed a "best roll" of 482 divine — that is
+    // the corrupted level 21 copy, not the gem that drops.
+    // Where base variants exist they ARE the drop; where none do (every listing
+    // carries a roll variant) the full spread is the real spread.
     const pick = e.base.length ? e.base : e.all;
     prices[name] = {
       c: Math.round(midLow(pick) * 100) / 100,
-      lo: Math.round(Math.min(...e.all) * 100) / 100,
-      hi: Math.round(Math.max(...e.all) * 100) / 100,
-      n: e.all.length,
+      lo: Math.round(Math.min(...pick) * 100) / 100,
+      hi: Math.round(Math.max(...pick) * 100) / 100,
+      n: pick.length,
     };
   }
   if (!prices["Chaos Orb"]) prices["Chaos Orb"] = { c: 1, lo: 1, hi: 1, n: 1 };

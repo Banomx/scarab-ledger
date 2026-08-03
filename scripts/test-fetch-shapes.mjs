@@ -75,6 +75,11 @@ const STASH_ITEMS = {
   SkillGem: [
     { id: 11, name: "Awakened Spell Echo Support", chaosValue: 700, gemLevel: 1, gemQuality: 0, corrupted: false },
     { id: 12, name: "Awakened Spell Echo Support", chaosValue: 9000, gemLevel: 5, gemQuality: 20, corrupted: true },
+    // The Pacifism case: bosses drop a level-1, 0% quality, uncorrupted gem.
+    // The corrupted 21/20 copy is worth hundreds of times that and must never
+    // reach hi, or "Best roll" quotes a drop nobody ever gets.
+    { id: 13, name: "Pacifism Support", chaosValue: 1050, gemLevel: 1, gemQuality: 0, corrupted: false },
+    { id: 14, name: "Pacifism Support", chaosValue: 626600, gemLevel: 21, gemQuality: 20, corrupted: true },
   ],
   // poe.ninja lists one "Nightmare Map" line for all five tier 17s
   Map: [{ id: 20, name: "Nightmare Map", chaosValue: 32 }],
@@ -188,7 +193,19 @@ ok(near(P["Awakener's Orb"]?.c, 210), `Awakener's Orb ${P["Awakener's Orb"]?.c} 
 ok(near(P["Omen of Amelioration"]?.c, 42), `Omen ${P["Omen of Amelioration"]?.c} != 42`);
 
 // stash items are already chaos and must NOT be divided
-ok(near(P["Starforge"]?.c, 4200) && near(P["Starforge"]?.hi, 5100), `Starforge ${JSON.stringify(P["Starforge"])}`);
+ok(near(P["Starforge"]?.c, 4200), `Starforge ${JSON.stringify(P["Starforge"])}`);
+
+/* c / lo / hi must all describe the item as it DROPS. A corrupted 21/20 gem
+   and a 6-linked unique are post-drop states, so they belong to none of the
+   three — otherwise "Best roll" quotes a price the boss cannot pay out. */
+for (const [n, v] of [["Pacifism Support", 1050], ["Awakened Spell Echo Support", 700], ["Starforge", 4200]]) {
+  const p = P[n] || {};
+  ok(near(p.lo, v) && near(p.c, v) && near(p.hi, v),
+     `${n} should be ${v} on all three bases, got ${JSON.stringify(p)}`);
+}
+// ...but a unique whose listings are all genuine roll variants keeps its spread.
+ok(near(P["Atziri's Splendour"]?.lo, 40) && near(P["Atziri's Splendour"]?.hi, 900),
+   `roll-variant spread lost: ${JSON.stringify(P["Atziri's Splendour"])}`);
 ok(near(P["Awakened Spell Echo Support"]?.c, 700), `gem base variant ${P["Awakened Spell Echo Support"]?.c}`);
 ok(near(P["Atziri's Splendour"]?.c, 40), `two-variant unique should take the cheaper: ${P["Atziri's Splendour"]?.c}`);
 ok(near(P["Nightmare Map"]?.c, 32), `T17 map entry cost ${P["Nightmare Map"]?.c}`);

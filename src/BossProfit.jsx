@@ -15,9 +15,9 @@ import {
    ================================================================ */
 
 const PRICE_BASIS = {
-  c: { label: "Typical", hint: "median listed price across variants" },
-  lo: { label: "Cheapest", hint: "lowest-priced variant — pessimistic" },
-  hi: { label: "Best roll", hint: "highest-priced variant — optimistic" },
+  c: { label: "Typical", hint: "median listed price across the item's roll variants" },
+  lo: { label: "Cheapest", hint: "worst roll variant — pessimistic. Same as Typical for items that don't roll." },
+  hi: { label: "Best roll", hint: "best roll variant — optimistic. Same as Typical for items that don't roll; corrupted or linked copies a boss never drops are excluded." },
 };
 
 const RATE_BADGE = {
