@@ -654,29 +654,6 @@ export default function ScarabTracker() {
               <button className={currency === "divine" ? "on" : ""} onClick={() => setCurrency("divine")}>Divine</button>
             </div>
           </div>
-          <div className="st-ctl">
-            <span>Sort by set value</span>
-            <div className="st-seg">
-              <button className={sortDir === "desc" ? "on" : ""} onClick={() => setSortDir("desc")}>High → Low</button>
-              <button className={sortDir === "asc" ? "on" : ""} onClick={() => setSortDir("asc")}>Low → High</button>
-            </div>
-          </div>
-          <div className="st-ctl">
-            <span>Price change</span>
-            <div className="st-seg">
-              {["4h", "8h", "12h", "24h", "48h"].map((w) => (
-                <button key={w} className={chgWindow === w ? "on" : ""} onClick={() => setChgWindow(w)}>{w}</button>
-              ))}
-            </div>
-          </div>
-          <label className="st-ctl st-check">
-            <input type="checkbox" checked={showUniversal} onChange={(e) => setShowUniversal(e.target.checked)} />
-            <span>Universal scarabs</span>
-          </label>
-          <label className="st-ctl st-check">
-            <input type="checkbox" checked={showHorned} onChange={(e) => setShowHorned(e.target.checked)} />
-            <span>Horned scarabs</span>
-          </label>
         </div>
       </header>
 
@@ -709,6 +686,66 @@ export default function ScarabTracker() {
             : `Live data · ${league}`} · 1 Divine ≈ {Math.round(divineRate)} Chaos
         </div>
       )}
+
+      {/* ---------- per-tab toolbar ----------
+          Only the controls that actually change the view in front of you.
+          The boss tab brings its own bar (BossProfit), so it's excluded. */}
+      {tab !== "bosses" && (() => {
+        const isCat = !!CATEGORY_TABS[tab];
+        const showSort = tab === "prices" || isCat;
+        const showChange = true;                      // every non-boss tab shows % badges
+        const showChecks = tab === "prices" || tab === "farms";
+        return (
+          <div className="st-tools">
+            {showSort && (
+              <div className="st-ctl">
+                <span>{isCat ? "Sort by price" : "Sort by set value"}</span>
+                <div className="st-seg">
+                  <button className={sortDir === "desc" ? "on" : ""} onClick={() => setSortDir("desc")}>High → Low</button>
+                  <button className={sortDir === "asc" ? "on" : ""} onClick={() => setSortDir("asc")}>Low → High</button>
+                </div>
+              </div>
+            )}
+            {showChange && (
+              <div className="st-ctl">
+                <span>Price change</span>
+                <div className="st-seg">
+                  {["4h", "8h", "12h", "24h", "48h"].map((w) => (
+                    <button key={w} className={chgWindow === w ? "on" : ""} onClick={() => setChgWindow(w)}>{w}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {isCat && (
+              <label className="st-ctl">
+                <span>Filter</span>
+                <input
+                  className="st-tool-filter"
+                  type="text"
+                  placeholder={`Filter ${CATEGORY_TABS[tab].label.toLowerCase()}`}
+                  value={catFilter[tab] || ""}
+                  onChange={(e) => setCatFilter((f) => ({ ...f, [tab]: e.target.value }))}
+                />
+              </label>
+            )}
+            {showChecks && (
+              <div className="st-ctl st-checks">
+                <span>Include</span>
+                <div className="st-checks-row">
+                  <label className="st-check">
+                    <input type="checkbox" checked={showUniversal} onChange={(e) => setShowUniversal(e.target.checked)} />
+                    <span>Universal</span>
+                  </label>
+                  <label className="st-check">
+                    <input type="checkbox" checked={showHorned} onChange={(e) => setShowHorned(e.target.checked)} />
+                    <span>Horned</span>
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ---------- expanded mechanic panel ---------- */}
       {tab === "prices" && openGroupData && (
@@ -897,13 +934,6 @@ export default function ScarabTracker() {
                 </div>
               )}
             </div>
-            <input
-              className="st-cat-filter"
-              type="text"
-              placeholder="Filter by name"
-              value={catFilter[tab] || ""}
-              onChange={(e) => setCatFilter((f) => ({ ...f, [tab]: e.target.value }))}
-            />
             <div className="st-cat-grid">
               {list.map((m) => (
                 <button key={m.name}
@@ -1060,9 +1090,23 @@ const css = `
 .st-seg button:focus-visible, .st-ctl select:focus-visible, .st-card:focus-visible, .st-row:focus-visible, .st-close:focus-visible {
   outline: 2px solid #d8b355; outline-offset: 2px;
 }
-.st-check { flex-direction: row; align-items: center; gap: 8px; padding-bottom: 8px; cursor: pointer; }
+.st-check { display: flex; flex-direction: row; align-items: center; gap: 7px; cursor: pointer; }
 .st-check input { accent-color: #c9a24b; width: 15px; height: 15px; }
 .st-check span { text-transform: none; letter-spacing: 0.02em; font-size: 13px; color: #c4b795; }
+/* Per-tab control strip: same shell as the boss tab's toolbar so the two
+   read as one pattern rather than two. */
+.st-tools {
+  display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: flex-end;
+  border: 1px solid #3a332a; border-radius: 8px; background: #1d1811;
+  padding: 12px 14px; margin: 0 0 14px;
+}
+.st-checks-row { display: flex; align-items: center; gap: 14px; height: 33px; }
+.st-tool-filter {
+  background: #211c15; color: #d9cfb4; border: 1px solid #5a4d33; border-radius: 5px;
+  padding: 7px 10px; font-family: inherit; font-size: 13px; width: min(240px, 46vw);
+}
+.st-tool-filter::placeholder { color: #6f6656; }
+.st-tool-filter:focus-visible, .st-check input:focus-visible { outline: 2px solid #d8b355; outline-offset: 1px; }
 .st-banner {
   border: 1px solid #6b5730; background: #2a2214; color: #d9c48a; font-size: 13px;
   padding: 9px 14px; border-radius: 6px; margin: 6px 0 16px; line-height: 1.45;
@@ -1185,14 +1229,7 @@ const css = `
 .st-farms-note { font-size: 11.5px; color: #6f6656; margin-top: 14px; }
 .st-cat-wrap { border: 1px solid #3a332a; border-radius: 8px; background: #1d1811; padding-bottom: 10px; }
 .st-cat-note { padding: 22px 16px; color: #8d8371; font-size: 13.5px; }
-.st-cat-filter {
-  display: block; width: min(360px, calc(100% - 28px)); margin: 4px 14px 10px;
-  background: #211c15; color: #d9cfb4; border: 1px solid #5a4d33; border-radius: 5px;
-  padding: 8px 11px; font-family: inherit; font-size: 13.5px;
-}
-.st-cat-filter::placeholder { color: #6f6656; }
-.st-cat-filter:focus-visible { outline: 2px solid #d8b355; outline-offset: 1px; }
-.st-cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0 14px; padding: 0 6px; }
+.st-cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0 14px; padding: 6px 6px 0; }
 
 /* ---------------- boss profitability ---------------- */
 .bp-wrap { display: block; }
