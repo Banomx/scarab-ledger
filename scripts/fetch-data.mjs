@@ -8,7 +8,11 @@
      prices:   legacy itemoverview        (fallback: new exchange overview)
      history:  legacy itemhistory if alive; otherwise the script accumulates
                its OWN history by reading the previous deployment's data and
-               appending today's prices (selfhistory.json).                  */
+               appending today's prices (selfhistory.json).
+
+   Every self-history point also carries the divine rate at that moment, which
+   is what lets the site tell "this scarab got more valuable" apart from "chaos
+   deflated under it" (rateHistory + the change*R fields below).             */
 
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -19,7 +23,13 @@ const OUT = process.env.DATA_OUT || path.join(path.dirname(fileURLToPath(import.
 const HEADERS = { "User-Agent": "scarab-ledger-snapshot/0.2 (github actions; contact via repo issues)" };
 const HISTORY_LEAGUES = 2;   // ninja per-scarab history only for the first N leagues (politeness)
 const SELF_HISTORY_CAP = 800; // max accumulated self-history points per league
+const RATE_HISTORY_CAP = 600; // max points in the emitted chaos-per-divine series
 const DELAY_MS = 300;
+
+/* A divine has never been worth less than ~20c or more than a few thousand.
+   Every rate that enters the pipeline goes through this, because the shape of
+   the source (ratio vs. inverse ratio) is not always knowable up front. */
+const rateSane = (v) => typeof v === "number" && isFinite(v) && v >= 20 && v <= 20000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const slugify = (s) => s.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -590,21 +600,23 @@ async function getDivineRate(lgParam, fallback) {
 async function getNinjaHistory(lgParam, items) {
   const history = {};
   let consecutiveFails = 0;
+  let maxAgoAll = 0;   // day 0 of this axis, in days before now — the rate line needs it too
   for (const it of items) {
     const arr = await tryJson(`${NINJA}/api/data/itemhistory?league=${encodeURIComponent(lgParam)}&type=Scarab&itemId=${it.id}`);
     if (Array.isArray(arr) && arr.length) {
       consecutiveFails = 0;
       const maxAgo = Math.max(...arr.map((p) => p.daysAgo), 0);
+      if (maxAgo > maxAgoAll) maxAgoAll = maxAgo;
       history[it.name] = arr
         .slice().sort((x, y) => y.daysAgo - x.daysAgo)
         .map((p) => ({ day: maxAgo - p.daysAgo, value: p.value }));
     } else if (++consecutiveFails >= 3 && Object.keys(history).length === 0) {
       console.log("  ninja itemhistory appears dead, skipping");
-      return {};
+      return { series: {}, maxAgo: 0 };
     }
     await sleep(DELAY_MS);
   }
-  return history;
+  return { series: history, maxAgo: maxAgoAll };
 }
 
 /* ---------- self-accumulated history ---------- */
@@ -618,17 +630,24 @@ function pagesBaseUrl() {
 
 function normalizePoint(p) {
   // old format: {date: "YYYY-MM-DD"}; new format: {t: ISO timestamp}
-  return { t: p.t || `${p.date}T00:00:00Z`, values: p.values || {} };
+  // `rate` (chaos per divine) is newer still — points written before the
+  // divine-rate feature simply don't have one, and everything downstream
+  // treats a missing rate as "not measurable here" rather than an error.
+  const out = { t: p.t || `${p.date}T00:00:00Z`, values: p.values || {} };
+  if (rateSane(p.rate)) out.rate = p.rate;
+  return out;
 }
 
-async function updateSelfHistory(slug, items, prefix = "") {
+async function updateSelfHistory(slug, items, prefix = "", rate = null) {
   const base = pagesBaseUrl();
   const reset = process.env.RESET_HISTORY === "true";
   const prev = (base && !reset) ? await tryJson(`${base}/data/${slug}/${prefix}selfhistory.json`) : null;
   const points = ((prev && Array.isArray(prev.points)) ? prev.points : []).map(normalizePoint);
   const values = {};
   for (const it of items) values[it.name] = Math.round(it.chaosValue * 100) / 100;
-  points.push({ t: new Date().toISOString(), values }); // one point per run
+  const point = { t: new Date().toISOString(), values }; // one point per run
+  if (rateSane(rate)) point.rate = Math.round(rate * 100) / 100;
+  points.push(point);
   points.sort((a, b) => (a.t < b.t ? -1 : 1));
   while (points.length > SELF_HISTORY_CAP) points.shift();
   return { points };
@@ -641,7 +660,8 @@ const CHANGE_WINDOWS = [[4, "change4"], [8, "change8"], [12, "change12"], [24, "
 function applySelfChanges(items, self) {
   const pts = (self.points || []).map(normalizePoint);
   if (pts.length < 2) return;
-  const now = Date.parse(pts[pts.length - 1].t);
+  const last = pts[pts.length - 1];
+  const now = Date.parse(last.t);
   const refFor = (hours) => {
     const cutoff = now - (hours * 3600e3 - 15 * 60e3);
     let ref = null;
@@ -654,6 +674,13 @@ function applySelfChanges(items, self) {
     for (const it of items) {
       const v = ref.values[it.name];
       if (v > 0) it[key] = (it.chaosValue / v - 1) * 100;
+      /* Same window, priced in divine instead of chaos: this is the move the
+         item made against the rest of the economy rather than against a chaos
+         orb that is itself drifting. Only computable once both ends of the
+         window know their rate. */
+      if (v > 0 && rateSane(ref.rate) && rateSane(last.rate)) {
+        it[`${key}R`] = ((it.chaosValue / last.rate) / (v / ref.rate) - 1) * 100;
+      }
     }
   }
 }
@@ -680,6 +707,90 @@ function selfHistoryToSeries(self, baseMs = null) {
     for (const [name, v] of Object.entries(p.values || {})) {
       (out[name] ||= []).push({ day, value: v });
     }
+  }
+  return out;
+}
+
+/* ---------- chaos-per-divine history ----------
+
+   The site can answer "did this scarab gain value, or did chaos just deflate?"
+   only if it knows what a divine cost on every past day. Two sources:
+
+     1. backfill — poe.ninja's legacy currency history, when it answers, hands
+        over the whole league in one request. Its shape has changed over the
+        years and the ratio is sometimes quoted the other way up, so accept
+        anything that yields {daysAgo, value} pairs, try both orientations and
+        keep whichever produces plausible rates.
+     2. accumulation — every snapshot stores its own rate, so the curve keeps
+        growing even when (1) is dead, which is the steady state. */
+function ratePointsFrom(list) {
+  const raw = [];
+  for (const e of list || []) {
+    const daysAgo = e?.daysAgo ?? e?.DaysAgo;
+    const value = e?.value ?? e?.Value;
+    if (typeof daysAgo === "number" && typeof value === "number" && value > 0) raw.push({ daysAgo, value });
+  }
+  if (raw.length < 3) return [];
+  // The same series read as chaos-per-divine and as divine-per-chaos; whichever
+  // lands inside a believable band is the one poe.ninja meant.
+  let best = [];
+  for (const invert of [false, true]) {
+    const pts = raw
+      .map((p) => ({ daysAgo: p.daysAgo, rate: invert ? 1 / p.value : p.value }))
+      .filter((p) => rateSane(p.rate));
+    if (pts.length > best.length && pts.length >= raw.length * 0.6) best = pts;
+  }
+  return best;
+}
+
+async function getDivineRateBackfill(lgParam) {
+  const overview = await tryJson(`${NINJA}/api/data/currencyoverview?league=${encodeURIComponent(lgParam)}&type=Currency`);
+  const divine = (overview?.currencyDetails || []).find((d) => d?.name === "Divine Orb");
+  if (!divine?.id) return [];
+  await sleep(DELAY_MS);
+  const j = await tryJson(`${NINJA}/api/data/currencyhistory?league=${encodeURIComponent(lgParam)}&type=Currency&currencyId=${divine.id}`);
+  if (!j) return [];
+  const candidates = Array.isArray(j)
+    ? [j]
+    : [j.receiveCurrencyGraphData, j.payCurrencyGraphData, j.lines, j.data];
+  let best = [];
+  for (const c of candidates) {
+    const pts = ratePointsFrom(c);
+    if (pts.length > best.length) best = pts;
+  }
+  return best;
+}
+
+/* Merge accumulated + backfilled rates onto whatever day axis the item history
+   is already using, so the rate line and the price line share an x. */
+function buildRateHistory({ self, backfill = [], axis, nowMs = Date.now() }) {
+  const byMs = new Map();
+  for (const p of backfill) {
+    const ms = nowMs - p.daysAgo * 86400000;
+    byMs.set(Math.round(ms / 600e3), { ms, rate: p.rate }); // 10-min buckets
+  }
+  // Our own snapshots are the more trustworthy source, so they overwrite.
+  for (const p of (self.points || []).map(normalizePoint)) {
+    if (!rateSane(p.rate)) continue;
+    const ms = Date.parse(p.t);
+    if (!isFinite(ms)) continue;
+    byMs.set(Math.round(ms / 600e3), { ms, rate: p.rate });
+  }
+  const toDay = axis.mode === "ninja"
+    ? (ms) => axis.maxAgo - (nowMs - ms) / 86400000
+    : (ms) => (ms - axis.t0Ms) / 86400000;
+  let out = [...byMs.values()]
+    .sort((a, b) => a.ms - b.ms)
+    .map((p) => ({ day: Math.round(toDay(p.ms) * 100) / 100, rate: Math.round(p.rate * 100) / 100 }))
+    // Points older than day 0 have no price line to sit next to; dropping them
+    // keeps the chart domain identical to the one the price series defines.
+    .filter((p) => isFinite(p.day) && p.day >= -0.01)
+    .map((p) => ({ day: Math.max(0, p.day), rate: p.rate }));
+  if (out.length > RATE_HISTORY_CAP) {
+    const step = Math.ceil(out.length / RATE_HISTORY_CAP);
+    const thinned = out.filter((_, i) => i % step === 0);
+    if (thinned[thinned.length - 1] !== out[out.length - 1]) thinned.push(out[out.length - 1]);
+    out = thinned;
   }
   return out;
 }
@@ -762,31 +873,49 @@ async function main() {
 
       const slug = slugify(lg.name);
       let history = {};
+      let ninjaMaxAgo = 0;
       if (source === "legacy" && lg.group === "current" && li < HISTORY_LEAGUES) {
-        history = await getNinjaHistory(leagueParam, items);
+        const nh = await getNinjaHistory(leagueParam, items);
+        history = nh.series;
+        ninjaMaxAgo = nh.maxAgo;
       }
       // Self-history only makes sense for running leagues; finished leagues
       // have frozen prices, so a flat fake curve would just mislead.
       let self = { points: [] };
       let historySource = Object.keys(history).length ? "ninja" : "none";
       let historyAxis = "league day";
+      let rateAxis = { mode: "ninja", maxAgo: ninjaMaxAgo };
       if (lg.group === "current") {
-        self = await updateSelfHistory(slug, items);
+        self = await updateSelfHistory(slug, items, "", divineRate);
         applySelfChanges(items, self);
+        const alignMs = alignmentBase(self, lg.start);
         if (!Object.keys(history).length) {
-          const alignMs = alignmentBase(self, lg.start);
           history = selfHistoryToSeries(self, alignMs);
           if (Object.keys(history).length) {
             historySource = "self";
             historyAxis = alignMs ? "league day" : "days since first snapshot";
           }
         }
+        if (historySource !== "ninja") {
+          const firstMs = self.points.length ? Date.parse(self.points[0].t) : Date.now();
+          rateAxis = { mode: "self", t0Ms: alignMs ?? firstMs };
+        }
       }
+
+      // One backfill attempt per league, and only where there is a chart to
+      // put it on. If poe.ninja's history endpoints are dead the rate curve
+      // still grows from our own snapshots, so this stays silent on failure.
+      let rateBackfill = [];
+      if (lg.group === "current" && li < HISTORY_LEAGUES) {
+        try { rateBackfill = await getDivineRateBackfill(leagueParam); } catch { /* accumulate instead */ }
+      }
+      const rateHistory = buildRateHistory({ self, backfill: rateBackfill, axis: rateAxis });
+      const rateHistorySource = !rateHistory.length ? "none" : rateBackfill.length ? "ninja+self" : "self";
 
       const dir = path.join(OUT, slug);
       await mkdir(dir, { recursive: true });
       const generatedAt = new Date().toISOString();
-      await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, historySource, historyAxis, items }));
+      await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, historySource, historyAxis, rateHistory, rateHistorySource, items }));
       await writeFile(path.join(dir, "history.json"), JSON.stringify(history));
       await writeFile(path.join(dir, "selfhistory.json"), JSON.stringify(self));
       // broad price map for the boss profitability tab
@@ -814,8 +943,9 @@ async function main() {
           let catSelf = { points: [] };
           let catHistorySource = "none";
           let catHistoryAxis = "days since first snapshot";
+          let catRateHistory = [];
           if (lg.group === "current") {
-            catSelf = await updateSelfHistory(slug, r.items, `${cat.key}-`);
+            catSelf = await updateSelfHistory(slug, r.items, `${cat.key}-`, rate2);
             applySelfChanges(r.items, catSelf);
             const catAlign = alignmentBase(catSelf, lg.start);
             catHist = selfHistoryToSeries(catSelf, catAlign);
@@ -823,8 +953,15 @@ async function main() {
               catHistorySource = "self";
               if (catAlign) catHistoryAxis = "league day";
             }
+            // These tabs always plot self-history, so day 0 is whatever this
+            // category's own alignment says — reuse the league's backfill on it.
+            const firstMs = catSelf.points.length ? Date.parse(catSelf.points[0].t) : Date.now();
+            catRateHistory = buildRateHistory({
+              self: catSelf, backfill: rateBackfill,
+              axis: { mode: "self", t0Ms: catAlign ?? firstMs },
+            });
           }
-          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, divineRate: rate2, historySource: catHistorySource, historyAxis: catHistoryAxis, items: r.items }));
+          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, divineRate: rate2, historySource: catHistorySource, historyAxis: catHistoryAxis, rateHistory: catRateHistory, rateHistorySource: !catRateHistory.length ? "none" : rateBackfill.length ? "ninja+self" : "self", items: r.items }));
           await writeFile(path.join(dir, `${cat.key}-history.json`), JSON.stringify(catHist));
           await writeFile(path.join(dir, `${cat.key}-selfhistory.json`), JSON.stringify(catSelf));
           console.log(`  ${cat.key}: ${r.items.length} items`);
@@ -834,7 +971,7 @@ async function main() {
       }
 
       written.push({ name: lg.name, slug, group: lg.group || "current" });
-      console.log(`- ${lg.name}: ${items.length} scarabs, ${Object.keys(history).length} history series, 1 div = ${Math.round(divineRate)}c`);
+      console.log(`- ${lg.name}: ${items.length} scarabs, ${Object.keys(history).length} history series, 1 div = ${Math.round(divineRate)}c, rate history ${rateHistory.length}pt (${rateHistorySource})`);
     } catch (e) {
       console.log(`- ${lg.name}: FAILED (${e.message})`);
     }

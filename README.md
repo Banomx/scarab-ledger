@@ -267,6 +267,47 @@ Two naming wrinkles it also pins:
   punctuation-insensitive match, trying the name with and without a trailing
   "Map" — so a near-miss doesn't silently read as `no price`.
 
+## Divine-adjusted prices ("did it go up, or did chaos deflate?")
+
+Chaos drifts against divine all league, so a scarab that reads +20% in chaos can
+be *down* in real terms. The **Divine-adjusted** checkbox in the toolbar (Scarabs,
+Popular farms, Astrolabes, Catalysts — the boss tab doesn't need it) answers that:
+
+- the price chart gains a dashed **chaos-per-divine** line on its own right-hand
+  axis, so a rising price sitting under a faster-rising rate is obvious at a glance;
+- dragging a range on the chart shows both the nominal move and the **real** one,
+  e.g. `▲ 12.1% · real ▼ 24.8%`;
+- every ▲/▼ badge switches to the divine-denominated change, marked with a small
+  `div`. Popular farms re-ranks off those numbers, so a mechanic only counts as
+  heating up if it outran the divine;
+- the status line reports what the divine itself did over the selected window.
+
+Real change is `(price_now / rate_now) / (price_then / rate_then) - 1` — the move
+priced in divine, using the rate **as it was on each end of the window**, not
+today's. Divine isn't a perfectly stable unit either, but it's the one the
+player base actually anchors to.
+
+Where the data comes from: every snapshot stores the divine rate alongside the
+prices in `selfhistory.json`, and the script emits a `rateHistory` series on the
+same day axis as the price history. On top of that it makes one attempt per league
+at poe.ninja's legacy `currencyhistory` endpoint to backfill the league so far —
+that endpoint has a habit of dying and of quoting the ratio upside down, so the
+result is sanity-checked and silently dropped when it looks wrong. With no
+backfill the curve simply grows from our own snapshots (every 4h).
+
+Consequences worth knowing:
+
+- the checkbox is **disabled** until there are two rate points — on a fresh
+  league without backfill that's the first 4-8 hours;
+- snapshots taken before this feature existed have no rate, so their change
+  windows can't be converted; those badges stay in chaos until the windows roll
+  past the old points. The status line says so when that's the case;
+- the live-API fallback (no static snapshots) has no rate curve at all, so the
+  toggle stays off there.
+
+`node scripts/test-rate.mjs` covers the whole data path: rate storage, the
+nominal-vs-real split, the upside-down backfill, and the day-axis alignment.
+
 ## Where things live
 
 - `src/App.jsx` — shell, scarab catalogue, demo fallback, live fetching, styles
@@ -284,3 +325,5 @@ Two naming wrinkles it also pins:
   group, cached), so opening a group the first time takes a moment.
 - 24h/48h change comes from poe.ninja's daily sparkline, i.e. "since
   yesterday's / the day before's data point".
+- Every % in the app is a chaos figure unless the Divine-adjusted box is
+  ticked; see the section above for what changes when it is.

@@ -157,8 +157,28 @@ function demoHistory(name, base) {
   return pts;
 }
 
+/* Chaos deflates over a league — the demo curve climbs to DEMO_DIVINE_RATE so
+   the divine-adjusted toggle has something to show without live data. */
+function demoRateHistory() {
+  const rnd = mulberry32(hashStr("divine|rate"));
+  const start = DEMO_DIVINE_RATE * 0.42;
+  const pts = [];
+  let noise = 0;
+  for (let d = 0; d <= DEMO_LEAGUE_DAYS; d++) {
+    noise = noise * 0.9 + (rnd() - 0.5) * 0.02;
+    const w = d / DEMO_LEAGUE_DAYS;
+    const v = (start + (DEMO_DIVINE_RATE - start) * Math.pow(w, 0.75)) * (1 + noise);
+    pts.push({ day: d, rate: Math.round(v) });
+  }
+  pts[pts.length - 1].rate = DEMO_DIVINE_RATE;
+  return pts;
+}
+
 function buildDemoData() {
   const items = [];
+  const rateHistory = demoRateHistory();
+  const rAt = (i) => rateHistory[Math.max(0, rateHistory.length + i)].rate;
+  const [r0, r1, r2] = [rAt(-1), rAt(-2), rAt(-3)];
   let id = 1;
   for (const [group, names] of Object.entries(GROUPS)) {
     for (const name of names) {
@@ -168,10 +188,11 @@ function buildDemoData() {
       items.push({
         id: id++, name, group, chaosValue: chaos, divineValue: chaos / DEMO_DIVINE_RATE,
         change24: (last / d1 - 1) * 100, change48: (last / d2 - 1) * 100,
+        change24R: ((last / r0) / (d1 / r1) - 1) * 100, change48R: ((last / r0) / (d2 / r2) - 1) * 100,
       });
     }
   }
-  return items;
+  return { items, rateHistory };
 }
 
 /* ---------------- shared helpers ------------------------------- */
@@ -202,11 +223,33 @@ function fmtPrice(chaos, currency, rate) {
   return currency === "chaos" ? `${fmtChaos(chaos)}c` : `${fmtDiv(chaos / rate)} div`;
 }
 
-function PctBadge({ v }) {
+/* ---- divine-rate helpers ----
+   The rate series shares its x axis with the price history, so "what did a
+   divine cost on day d" is a nearest-point lookup. */
+function rateAt(series, day) {
+  if (!series || !series.length) return null;
+  let best = series[0];
+  for (const p of series) if (Math.abs(p.day - day) < Math.abs(best.day - day)) best = p;
+  return best.rate;
+}
+/* Change measured in divine instead of chaos: what's left after the chaos
+   drift between the two ends of the window is taken out. */
+function realPct(v1, r1, v2, r2) {
+  if (!(v1 > 0) || !(v2 > 0) || !(r1 > 0) || !(r2 > 0)) return null;
+  return ((v2 / r2) / (v1 / r1) - 1) * 100;
+}
+function fmtRate(v) { return v >= 1000 ? `${(v / 1000).toFixed(2)}k` : Math.round(v).toString(); }
+
+function PctBadge({ v, real }) {
   if (v == null || !isFinite(v)) return <span className="st-pct flat">—</span>;
   const cls = v > 0.5 ? "up" : v < -0.5 ? "down" : "flat";
   const arrow = v > 0.5 ? "▲" : v < -0.5 ? "▼" : "•";
-  return <span className={`st-pct ${cls}`}>{arrow} {Math.abs(v).toFixed(1)}%</span>;
+  return (
+    <span className={`st-pct ${cls}${real ? " real" : ""}`}
+      title={real ? "Divine-adjusted: the move after chaos drift is taken out" : undefined}>
+      {arrow} {Math.abs(v).toFixed(1)}%
+    </span>
+  );
 }
 
 function ScarabIcon({ size = 22, tone = "#c9a24b" }) {
@@ -348,6 +391,8 @@ export default function ScarabTracker() {
   const [catSelected, setCatSelected] = useState({});     // tab key -> selected item name
   const [catFilter, setCatFilter] = useState({});         // tab key -> filter text
   const [dragSel, setDragSel] = useState(null);           // {start, end, active} in day units
+  const [rateHistory, setRateHistory] = useState([]);     // [{day, rate}] chaos per divine
+  const [realMode, setRealMode] = useState(false);        // read every % in divine terms
 
   /* ---- static snapshots (GitHub Pages etc.) ---- */
   const loadStaticLeague = useCallback(async (name, slugsArg) => {
@@ -360,6 +405,7 @@ export default function ScarabTracker() {
     setItems((j.items || []).map((it) => ({ ...it, group: groupForName(it.name) })));
     setDivineRate(j.divineRate || DEMO_DIVINE_RATE);
     setStaticInfo({ generatedAt: j.generatedAt, historySource: j.historySource, historyAxis: j.historyAxis });
+    setRateHistory(Array.isArray(j.rateHistory) ? j.rateHistory : []);
     setMode("live"); setDataSource("static");
     staticHistFetched.current.delete(name);
     setHistories({}); setOpenGroup(null); setFocusScarab(null);
@@ -395,6 +441,9 @@ export default function ScarabTracker() {
         };
       });
       if (!mapped.length) throw new Error("empty");
+      // The live API has no accumulated rate curve — that only exists in our
+      // own snapshots, so the divine-adjusted toggle stays unavailable here.
+      setRateHistory([]);
       setItems(mapped); setDivineRate(rate); setMode("live"); setDataSource("api");
       setHistories({}); setOpenGroup(null); setFocusScarab(null);
       setCatData({}); setCatHist({}); setCatSelected({}); setDragSel(null);
@@ -438,7 +487,9 @@ export default function ScarabTracker() {
         await loadLeague(first);
       } catch {
         if (cancelled) return;
-        setItems(buildDemoData());
+        const demo = buildDemoData();
+        setItems(demo.items);
+        setRateHistory(demo.rateHistory);
         setLeagues([{ name: "Demo snapshot", group: "current" }]);
         setLeague("Demo snapshot");
         setMode("demo");
@@ -560,6 +611,8 @@ export default function ScarabTracker() {
       total: members.reduce((s, m) => s + m.chaosValue, 0),
       change4: wchg(members, "change4"), change8: wchg(members, "change8"), change12: wchg(members, "change12"),
       change24: wchg(members, "change24"), change48: wchg(members, "change48"),
+      change4R: wchg(members, "change4R"), change8R: wchg(members, "change8R"), change12R: wchg(members, "change12R"),
+      change24R: wchg(members, "change24R"), change48R: wchg(members, "change48R"),
     }));
     if (!showUniversal) arr = arr.filter((g) => g.name !== "Universal");
     if (!showHorned) arr = arr.filter((g) => g.name !== "Horned");
@@ -588,9 +641,11 @@ export default function ScarabTracker() {
         total += pt.value;
         if (focusScarab === m.name) focus = Math.round((pt.value / div) * 100) / 100;
       }
-      return { day: d, total: Math.round((total / div) * 100) / 100, focus };
+      // chaosTotal stays unscaled: the real-% maths has to divide by the rate
+      // that applied on that day, not by today's.
+      return { day: d, total: Math.round((total / div) * 100) / 100, focus, chaosTotal: total, rate: rateAt(rateHistory, d) };
     });
-  }, [openGroupData, histories, currency, divineRate, focusScarab]);
+  }, [openGroupData, histories, currency, divineRate, focusScarab, rateHistory]);
 
   // Axis wording: ninja history is aligned to league days; our own snapshots
   // count from the first run.
@@ -610,17 +665,48 @@ export default function ScarabTracker() {
   const CHG_KEYS = { "4h": "change4", "8h": "change8", "12h": "change12", "24h": "change24", "48h": "change48" };
   const chgKey = CHG_KEYS[chgWindow] || "change24";
 
+  /* ---- divine-adjusted view ----
+     Two things can be missing independently: the rate curve for the chart, and
+     the per-item divine-denominated change windows (older snapshots were
+     written without a rate, so their windows can't be converted). The toggle
+     turns on whatever is actually there. */
+  const catRateHistory = (CATEGORY_TABS[tab] && catData[tab] && catData[tab] !== "missing" && Array.isArray(catData[tab].rateHistory))
+    ? catData[tab].rateHistory : null;
+  const activeRateHistory = (catRateHistory && catRateHistory.length > 1) ? catRateHistory : rateHistory;
+  const rateReady = activeRateHistory.length > 1;
+  const realKey = `${chgKey}R`;
+  const badgeSource = CATEGORY_TABS[tab] && catData[tab] && catData[tab] !== "missing" ? catData[tab].items : items;
+  const realBadges = realMode && (badgeSource || []).some((i) => i[realKey] != null && isFinite(i[realKey]));
+  const activeKey = realBadges ? realKey : chgKey;
+  const chgBadge = (o) => {
+    const useReal = realBadges && o[realKey] != null && isFinite(o[realKey]);
+    return <PctBadge v={useReal ? o[realKey] : o[chgKey]} real={useReal} />;
+  };
+
+  /* Headline drift for the banner: what a divine did over the same window the
+     % badges are using. This is the number that explains the rest. */
+  const rateDrift = useMemo(() => {
+    if (!rateReady) return null;
+    const hours = parseInt(chgWindow, 10);
+    const last = activeRateHistory[activeRateHistory.length - 1];
+    const target = last.day - hours / 24;
+    let ref = activeRateHistory[0];
+    for (const p of activeRateHistory) if (Math.abs(p.day - target) < Math.abs(ref.day - target)) ref = p;
+    if (Math.abs(ref.day - target) > 0.4 || !(ref.rate > 0)) return null;
+    return { pct: (last.rate / ref.rate - 1) * 100, now: last.rate };
+  }, [activeRateHistory, rateReady, chgWindow]);
+
   const movers = useMemo(() => {
-    const rising = groups.filter((g) => isFinite(g[chgKey]) && g[chgKey] > 0.5).sort((a, b) => b[chgKey] - a[chgKey]).slice(0, 8);
-    const falling = groups.filter((g) => isFinite(g[chgKey]) && g[chgKey] < -0.5).sort((a, b) => a[chgKey] - b[chgKey]).slice(0, 8);
-    const maxAbs = Math.max(1, ...rising.map((g) => Math.abs(g[chgKey])), ...falling.map((g) => Math.abs(g[chgKey])));
+    const rising = groups.filter((g) => isFinite(g[activeKey]) && g[activeKey] > 0.5).sort((a, b) => b[activeKey] - a[activeKey]).slice(0, 8);
+    const falling = groups.filter((g) => isFinite(g[activeKey]) && g[activeKey] < -0.5).sort((a, b) => a[activeKey] - b[activeKey]).slice(0, 8);
+    const maxAbs = Math.max(1, ...rising.map((g) => Math.abs(g[activeKey])), ...falling.map((g) => Math.abs(g[activeKey])));
     const pool = groups.flatMap((g) => g.members);
     const topScarabs = pool
-      .filter((m) => m.chaosValue >= 1 && isFinite(m[chgKey]))
-      .sort((a, b) => Math.abs(b[chgKey]) - Math.abs(a[chgKey]))
+      .filter((m) => m.chaosValue >= 1 && isFinite(m[activeKey]))
+      .sort((a, b) => Math.abs(b[activeKey]) - Math.abs(a[activeKey]))
       .slice(0, 12);
     return { rising, falling, maxAbs, topScarabs };
-  }, [groups, chgKey]);
+  }, [groups, activeKey]);
 
   /* ---- render ---- */
   return (
@@ -684,6 +770,14 @@ export default function ScarabTracker() {
           {dataSource === "static"
             ? `Snapshot data · ${league} · updated ${staticInfo?.generatedAt ? new Date(staticInfo.generatedAt).toLocaleString() : "recently"}`
             : `Live data · ${league}`} · 1 Divine ≈ {Math.round(divineRate)} Chaos
+          {realMode && rateReady && rateDrift && (
+            <span className="st-banner-real">
+              {" "}· divine {rateDrift.pct >= 0 ? "+" : "−"}{Math.abs(rateDrift.pct).toFixed(1)}% in {chgWindow}
+              {realBadges
+                ? ", so every % below is divine-adjusted"
+                : " — the % badges here predate the stored rate, so they stay in chaos"}
+            </span>
+          )}
         </div>
       )}
 
@@ -716,6 +810,19 @@ export default function ScarabTracker() {
                 </div>
               </div>
             )}
+            <div className="st-ctl st-checks">
+              <span>Divine drift</span>
+              <div className="st-checks-row">
+                <label className={`st-check ${rateReady ? "" : "st-check-off"}`}
+                  title={rateReady
+                    ? "Price everything in divine instead of chaos: a scarab only counts as up if it beat the divine rate."
+                    : "Needs at least two snapshots with a stored divine rate — it builds up over the next few data refreshes."}>
+                  <input type="checkbox" checked={realMode && rateReady} disabled={!rateReady}
+                    onChange={(e) => setRealMode(e.target.checked)} />
+                  <span>Divine-adjusted</span>
+                </label>
+              </div>
+            </div>
             {isCat && (
               <label className="st-ctl">
                 <span>Filter</span>
@@ -768,6 +875,7 @@ export default function ScarabTracker() {
             <div className="st-chart">
               <div className="st-chart-label">
                 {focusScarab ? <>Set total <em>and</em> {focusScarab}</> : "Set total across the league"}
+                {realMode && rateReady && <span className="st-rate-key"> · <i className="st-rate-swatch" />chaos per divine</span>}
                 {histLoading && <span className="st-loading"> · loading history…</span>}
                 <span className="st-drag-hint"> · drag on the graph to measure a range</span>
               </div>
@@ -776,11 +884,15 @@ export default function ScarabTracker() {
                 const at = (d) => chartData.reduce((best, p) => (Math.abs(p.day - d) < Math.abs(best.day - d) ? p : best), chartData[0]);
                 const p1 = at(a), p2 = at(b);
                 const pct = p1.total > 0 ? (p2.total / p1.total - 1) * 100 : null;
+                const rpct = (realMode && rateReady) ? realPct(p1.chaosTotal, p1.rate, p2.chaosTotal, p2.rate) : null;
                 const f = (v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v));
                 return (
                   <div className="st-range">
                     Day {fmtDay(p1.day)} → Day {fmtDay(p2.day)}: {f(p1.total)}{unit} → {f(p2.total)}{unit}
                     {" "}<PctBadge v={pct} />
+                    {rpct != null && (
+                      <span className="st-range-real"> · real <PctBadge v={rpct} real /></span>
+                    )}
                     <button className="st-range-clear" onClick={() => setDragSel(null)} aria-label="Clear selection">✕</button>
                   </div>
                 );
@@ -805,10 +917,17 @@ export default function ScarabTracker() {
                       label={{ value: scarabAxisLabel, position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
                     <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
                       tickFormatter={(v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
+                    {realMode && rateReady && (
+                      <YAxis yAxisId="rate" orientation="right" width={46} stroke="#4a4234"
+                        tick={{ fill: "#7f9fb8", fontSize: 11 }} tickFormatter={fmtRate}
+                        domain={["auto", "auto"]} />
+                    )}
                     <Tooltip
                       contentStyle={{ background: "#211c15", border: "1px solid #5a4d33", borderRadius: 6, fontSize: 12 }}
                       labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
-                      formatter={(v, n) => [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, n === "total" ? "Set total" : focusScarab]}
+                      formatter={(v, n) => (n === "rate"
+                        ? [`${fmtRate(v)}c`, "1 divine"]
+                        : [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, n === "total" ? "Set total" : focusScarab])}
                       labelFormatter={(d) => `Day ${fmtDay(d)}`} />
                     {dragSel && dragSel.start !== dragSel.end && (
                       <ReferenceArea x1={Math.min(dragSel.start, dragSel.end)} x2={Math.max(dragSel.start, dragSel.end)}
@@ -816,6 +935,10 @@ export default function ScarabTracker() {
                     )}
                     <Area type="monotone" dataKey="total" stroke="#d8b355" strokeWidth={2} fill="url(#stFill)" name="total" isAnimationActive={false} />
                     {focusScarab && <Line type="monotone" dataKey="focus" stroke={GROUP_TONES[openGroupData.name] || "#7fb4d4"} strokeWidth={1.8} dot={false} isAnimationActive={false} />}
+                    {realMode && rateReady && (
+                      <Line yAxisId="rate" type="monotone" dataKey="rate" name="rate" stroke="#6f97b3" strokeWidth={1.5}
+                        strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
+                    )}
                     {extremes && <ReferenceDot x={extremes.hi.day} y={extremes.hi.total} r={4} fill="#8fd47f" stroke="#1b150c"
                       label={{ value: `High ${currency === "chaos" ? fmtChaos(extremes.hi.total) : fmtDiv(extremes.hi.total)}${unit} · d${fmtDay(extremes.hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
                     {extremes && <ReferenceDot x={extremes.lo.day} y={extremes.lo.total} r={4} fill="#d47f7f" stroke="#1b150c"
@@ -840,7 +963,7 @@ export default function ScarabTracker() {
                     <ScarabIcon size={18} tone={GROUP_TONES[openGroupData.name] || "#c9a24b"} />
                     {m.name}
                   </span>
-                  <span className="st-row-price"><PctBadge v={m[chgKey]} /> {fmtPrice(m.chaosValue, currency, divineRate)}</span>
+                  <span className="st-row-price">{chgBadge(m)} {fmtPrice(m.chaosValue, currency, divineRate)}</span>
                 </button>
               ))}
               <div className="st-breakdown-hint">Tap a scarab to overlay it on the graph.</div>
@@ -868,7 +991,10 @@ export default function ScarabTracker() {
         const selName = (catSelected[tab] && list.some((m) => m.name === catSelected[tab])) ? catSelected[tab] : list[0]?.name;
         const series = ((catHist[tab] || {})[selName] || []);
         const div = currency === "divine" ? rate : 1;
-        const rows = series.map((p) => ({ day: p.day, value: Math.round((p.value / div) * 100) / 100 }));
+        const rows = series.map((p) => ({
+          day: p.day, value: Math.round((p.value / div) * 100) / 100,
+          chaos: p.value, rate: rateAt(activeRateHistory, p.day),
+        }));
         let hi = null, lo = null;
         if (rows.length > 1) { hi = rows[0]; lo = rows[0]; for (const r of rows) { if (r.value > hi.value) hi = r; if (r.value < lo.value) lo = r; } }
         return (
@@ -876,6 +1002,7 @@ export default function ScarabTracker() {
             <div className="st-chart">
               <div className="st-chart-label">
                 {selName ? <>Price history: <em>{selName}</em></> : "Select an item"}
+                {realMode && rateReady && <span className="st-rate-key"> · <i className="st-rate-swatch" />chaos per divine</span>}
                 <span className="st-drag-hint"> · drag on the graph to measure a range</span>
               </div>
               {dragSel && !dragSel.active && Math.abs(dragSel.end - dragSel.start) > 0.01 && rows.length > 1 && (() => {
@@ -883,11 +1010,15 @@ export default function ScarabTracker() {
                 const at = (d) => rows.reduce((best, pt) => (Math.abs(pt.day - d) < Math.abs(best.day - d) ? pt : best), rows[0]);
                 const p1 = at(a), p2 = at(b);
                 const pct = p1.value > 0 ? (p2.value / p1.value - 1) * 100 : null;
+                const rpct = (realMode && rateReady) ? realPct(p1.chaos, p1.rate, p2.chaos, p2.rate) : null;
                 const f = (v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v));
                 return (
                   <div className="st-range">
                     Day {fmtDay(p1.day)} → Day {fmtDay(p2.day)}: {f(p1.value)}{unit} → {f(p2.value)}{unit}
                     {" "}<PctBadge v={pct} />
+                    {rpct != null && (
+                      <span className="st-range-real"> · real <PctBadge v={rpct} real /></span>
+                    )}
                     <button className="st-range-clear" onClick={() => setDragSel(null)} aria-label="Clear selection">✕</button>
                   </div>
                 );
@@ -912,16 +1043,27 @@ export default function ScarabTracker() {
                       label={{ value: (cd.historySource === "ninja" ? "league day" : "days since first snapshot"), position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
                     <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
                       tickFormatter={(v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
+                    {realMode && rateReady && (
+                      <YAxis yAxisId="rate" orientation="right" width={46} stroke="#4a4234"
+                        tick={{ fill: "#7f9fb8", fontSize: 11 }} tickFormatter={fmtRate}
+                        domain={["auto", "auto"]} />
+                    )}
                     <Tooltip
                       contentStyle={{ background: "#211c15", border: "1px solid #5a4d33", borderRadius: 6, fontSize: 12 }}
                       labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
-                      formatter={(v) => [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, selName]}
+                      formatter={(v, n) => (n === "rate"
+                        ? [`${fmtRate(v)}c`, "1 divine"]
+                        : [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, selName])}
                       labelFormatter={(d) => `Day ${fmtDay(d)}`} />
                     {dragSel && dragSel.start !== dragSel.end && (
                       <ReferenceArea x1={Math.min(dragSel.start, dragSel.end)} x2={Math.max(dragSel.start, dragSel.end)}
                         fill="#c9a24b" fillOpacity={0.13} stroke="#c9a24b" strokeOpacity={0.4} />
                     )}
                     <Area type="monotone" dataKey="value" stroke="#d8b355" strokeWidth={2} fill="url(#stFillCat)" isAnimationActive={false} />
+                    {realMode && rateReady && (
+                      <Line yAxisId="rate" type="monotone" dataKey="rate" name="rate" stroke="#6f97b3" strokeWidth={1.5}
+                        strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
+                    )}
                     {hi && <ReferenceDot x={hi.day} y={hi.value} r={4} fill="#8fd47f" stroke="#1b150c"
                       label={{ value: `High ${currency === "chaos" ? fmtChaos(hi.value) : fmtDiv(hi.value)}${unit} · d${fmtDay(hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
                     {lo && <ReferenceDot x={lo.day} y={lo.value} r={4} fill="#d47f7f" stroke="#1b150c"
@@ -941,7 +1083,7 @@ export default function ScarabTracker() {
                   onClick={() => { setCatSelected((c) => ({ ...c, [tab]: m.name })); setDragSel(null); }}
                   title="Show price history">
                   <span className="st-row-name"><CategoryIcon name={m.name} shape={cat.shape} />{m.name}</span>
-                  <span className="st-row-price"><PctBadge v={m[chgKey]} /> {fmtPrice(m.chaosValue, currency, rate)}</span>
+                  <span className="st-row-price">{chgBadge(m)} {fmtPrice(m.chaosValue, currency, rate)}</span>
                 </button>
               ))}
               {!list.length && <div className="st-cat-note">Nothing matches that filter.</div>}
@@ -983,7 +1125,7 @@ export default function ScarabTracker() {
                 <div className="st-card-meta">{g.members.length} scarabs · top: {top?.name.replace(/^.*Scarab( of)? ?/, "") || "—"}</div>
               </div>
               <div className="st-card-total">
-                <div className="st-card-total-num"><PctBadge v={g[chgKey]} /> {fmtPrice(g.total, currency, divineRate)}</div>
+                <div className="st-card-total-num">{chgBadge(g)} {fmtPrice(g.total, currency, divineRate)}</div>
                 <div className="st-card-total-lbl">full set · {chgWindow}</div>
               </div>
             </button>
@@ -1000,7 +1142,32 @@ export default function ScarabTracker() {
             prices mean players are buying in — a strat is getting popular. Falling prices mean the
             market is being flooded or a strat is dying off. Based on the last {chgWindow}
             {mode === "demo" ? " (sample data in this preview)" : ""}.
+            {realBadges && " Divine-adjusted: a mechanic only counts as heating up if it outran the divine rate."}
           </p>
+          {realMode && rateReady && (
+            <div className="st-chart st-rate-strip">
+              <div className="st-chart-label">
+                Chaos per divine · <em>{fmtRate(activeRateHistory[activeRateHistory.length - 1].rate)}c</em>
+                {rateDrift && <> · {rateDrift.pct >= 0 ? "+" : "−"}{Math.abs(rateDrift.pct).toFixed(1)}% in {chgWindow}</>}
+                <span className="st-drag-hint"> · chaos deflates when this line climbs</span>
+              </div>
+              <ResponsiveContainer width="100%" height={130}>
+                <ComposedChart data={activeRateHistory} margin={{ top: 10, right: 18, bottom: 4, left: 0 }}>
+                  <CartesianGrid stroke="#3a332a" strokeDasharray="2 5" vertical={false} />
+                  <XAxis dataKey="day" type="number" domain={dayAxis(activeRateHistory).domain} ticks={dayAxis(activeRateHistory).ticks}
+                    tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay} />
+                  <YAxis tick={{ fill: "#7f9fb8", fontSize: 11 }} stroke="#4a4234" width={52}
+                    tickFormatter={fmtRate} domain={["auto", "auto"]} />
+                  <Tooltip
+                    contentStyle={{ background: "#211c15", border: "1px solid #5a4d33", borderRadius: 6, fontSize: 12 }}
+                    labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
+                    formatter={(v) => [`${fmtRate(v)}c`, "1 divine"]}
+                    labelFormatter={(d) => `Day ${fmtDay(d)}`} />
+                  <Line type="monotone" dataKey="rate" stroke="#6f97b3" strokeWidth={1.8} dot={false} isAnimationActive={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
           <div className="st-farms-cols">
             <div className="st-farms-col">
               <h3 className="st-farms-h up-h">Heating up</h3>
@@ -1009,7 +1176,7 @@ export default function ScarabTracker() {
                 <button key={g.name} className="st-mover" onClick={() => { setTab("prices"); setOpenGroup(g.name); setFocusScarab(null); }}>
                   <span className="st-mover-name"><ScarabIcon size={16} tone={GROUP_TONES[g.name] || "#c9a24b"} />{g.name}</span>
                   <span className="st-mover-bar"><i className="up" style={{ width: `${Math.min(100, (Math.abs(g[chgKey]) / movers.maxAbs) * 100)}%` }} /></span>
-                  <PctBadge v={g[chgKey]} />
+                  {chgBadge(g)}
                 </button>
               ))}
             </div>
@@ -1020,7 +1187,7 @@ export default function ScarabTracker() {
                 <button key={g.name} className="st-mover" onClick={() => { setTab("prices"); setOpenGroup(g.name); setFocusScarab(null); }}>
                   <span className="st-mover-name"><ScarabIcon size={16} tone={GROUP_TONES[g.name] || "#c9a24b"} />{g.name}</span>
                   <span className="st-mover-bar"><i className="down" style={{ width: `${Math.min(100, (Math.abs(g[chgKey]) / movers.maxAbs) * 100)}%` }} /></span>
-                  <PctBadge v={g[chgKey]} />
+                  {chgBadge(g)}
                 </button>
               ))}
             </div>
@@ -1031,7 +1198,7 @@ export default function ScarabTracker() {
               <button key={m.name} className="st-mover st-mover-scarab" onClick={() => { setTab("prices"); setOpenGroup(m.group); setFocusScarab(m.name); }}>
                 <span className="st-mover-name"><ScarabIcon size={16} tone={GROUP_TONES[m.group] || "#c9a24b"} />{m.name}</span>
                 <span className="st-mover-price">{fmtPrice(m.chaosValue, currency, divineRate)}</span>
-                <PctBadge v={m[chgKey]} />
+                {chgBadge(m)}
               </button>
             ))}
           </div>
@@ -1093,6 +1260,7 @@ const css = `
 .st-check { display: flex; flex-direction: row; align-items: center; gap: 7px; cursor: pointer; }
 .st-check input { accent-color: #c9a24b; width: 15px; height: 15px; }
 .st-check span { text-transform: none; letter-spacing: 0.02em; font-size: 13px; color: #c4b795; }
+.st-check-off { cursor: not-allowed; opacity: 0.45; }
 /* Per-tab control strip: same shell as the boss tab's toolbar so the two
    read as one pattern rather than two. */
 .st-tools {
@@ -1152,6 +1320,14 @@ const css = `
 .st-chart-label { font-size: 12px; color: #8d8371; padding: 0 0 6px 14px; }
 .st-chart-label em { color: #c4b795; }
 .st-drag-hint { color: #57503f; }
+.st-rate-key { color: #6f97b3; }
+.st-rate-swatch {
+  display: inline-block; width: 14px; height: 0; margin-right: 5px; vertical-align: middle;
+  border-top: 2px dashed #6f97b3;
+}
+.st-range-real { color: #8d8371; }
+.st-rate-strip { padding-bottom: 4px; margin-bottom: 6px; border-bottom: 1px solid #2a241b; }
+.st-banner-real { color: #8fb2c9; }
 .st-range {
   display: inline-flex; align-items: center; gap: 8px; margin: 2px 0 6px 14px;
   border: 1px solid #6b5730; background: #2a2214; color: #e0d0a0;
@@ -1187,6 +1363,12 @@ const css = `
 .st-pct.up { color: #8fd47f; }
 .st-pct.down { color: #d47f7f; }
 .st-pct.flat { color: #6f6656; }
+/* A divine-adjusted figure is a different measurement, not a different value —
+   the marker keeps it from being read as the chaos change. */
+.st-pct.real::after {
+  content: "div"; font-size: 8px; vertical-align: super; margin-left: 2px;
+  color: #6f97b3; letter-spacing: 0.04em;
+}
 .st-tabs {
   display: flex; gap: 4px; border-bottom: 1px solid #3a332a; margin: 4px 0 12px;
   overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
