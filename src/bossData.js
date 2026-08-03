@@ -33,7 +33,11 @@
 
    Only bosses that exist in the current PoE 1 build are listed. Anything
    that has been removed from the game (the Breachlord fights, the Atziri
-   apex, Aul, the Trialmaster, Lycia, Olroth) is deliberately absent.
+   apex, Aul, the Trialmaster, Lycia, Olroth, Saresh) is deliberately absent.
+
+   A handful of lines are marked "not listed on poe.ninja": the item drops,
+   but too rarely to have a price. They show as `no price` in the UI, which is
+   the honest answer — set your own value if you want them counted.
 
    `ttk` from the ledger set is the WHOLE cycle (their KPH = 3600/ttk),
    so those bosses carry overhead 0. Bosses where I estimated the time
@@ -100,7 +104,7 @@ const SHAPER_FRAGS = guaranteed([
 const SHAPER_EXTRA = [
   { item: "Shaper's Exalted Orb", chance: 0.12 },
   { item: "Orb of Dominance", chance: 0.03 },
-  { item: "Voidstorm", chance: 0.02 },
+  { item: "Voidstorm Support", label: "Voidstorm", chance: 0.02 },
 ];
 const SIRUS_EXTRA = [
   { item: "Awakener's Orb", chance: 0.20 },
@@ -152,7 +156,7 @@ export const BOSSES = [
       SHAPER_FRAGS,
       extra([
         { item: "Sublime Vision", label: "Unid Sublime Vision", chance: 0.02 },
-        { item: "Cosmic Reliquary Key", chance: 0.01 },
+        { item: "Cosmic Reliquary Key", chance: 0.01 },   // not listed on poe.ninja — too few sales
         ...SHAPER_EXTRA,
       ]),
     ],
@@ -182,7 +186,7 @@ export const BOSSES = [
         { item: "Elder's Exalted Orb", chance: 0.10 },
         { item: "Orb of Dominance", chance: 0.02 },
         { item: "Eldritch Blasphemy Support", chance: 0.02 },
-        { item: "Void of the Elements", chance: 0.01 },
+        { item: "Void of the Elements", chance: 0.01 },   // not listed on poe.ninja
       ]),
     ],
   },
@@ -205,9 +209,9 @@ export const BOSSES = [
         { item: "Watcher's Eye", label: "Unid Watcher's Eye (3-mod)", chance: 0.30 },
         { item: "Shaper's Exalted Orb", chance: 0.15 },
         { item: "Elder's Exalted Orb", chance: 0.10 },
-        { item: "Void Shockwave", chance: 0.10 },
+        { item: "Void Shockwave Support", label: "Void Shockwave", chance: 0.10 },
         { item: "Orb of Dominance", chance: 0.05 },
-        { item: "Void of the Elements", chance: 0.01 },
+        { item: "Void of the Elements", chance: 0.01 },   // not listed on poe.ninja
         { item: "Auspicious Ambitions", chance: 0.01 },
       ]),
     ],
@@ -229,12 +233,12 @@ export const BOSSES = [
         { item: "Watcher's Eye", label: "Unid Watcher's Eye (3-mod)", chance: 0.30 },
         { item: "Shaper's Exalted Orb", chance: 0.20 },
         { item: "Elder's Exalted Orb", chance: 0.15 },
-        { item: "Void Shockwave", chance: 0.10 },
+        { item: "Void Shockwave Support", label: "Void Shockwave", chance: 0.10 },
         { item: "Orb of Dominance", chance: 0.08 },
         { item: "Curio of Decay", chance: 0.05 },
         { item: "Sublime Vision", label: "Unid Sublime Vision", chance: 0.02 },
         { item: "Decaying Reliquary Key", chance: 0.015 },
-        { item: "Void of the Elements", chance: 0.01 },
+        { item: "Void of the Elements", chance: 0.01 },   // not listed on poe.ninja
         { item: "Auspicious Ambitions", chance: 0.01 },
       ]),
     ],
@@ -501,7 +505,7 @@ export const BOSSES = [
         { item: "Orb of Unravelling", chance: 0.33 },
         { item: "Bound by Destiny", label: "Unid Bound by Destiny", chance: 0.10 },
         { item: "Congregation Support", chance: 0.02 },
-        { item: "Reverent Reliquary Key", chance: 0.01 },
+        { item: "Reverent Reliquary Key", chance: 0.01 },   // not listed on poe.ninja — too few sales
       ]),
     ],
   },
@@ -590,9 +594,9 @@ export const BOSSES = [
       extra([
         { item: "Flesh of Xesht", chance: 0.20 },
         { item: "Something Dark", chance: 0.10 },
-        { item: "Foulgrasp", chance: 0.10 },
+        { item: "Foulgrasp Support", chance: 0.10 },
         { item: "The Escape", chance: 0.06 },
-        { item: "Summon Hiveborn", chance: 0.05 },
+        { item: "Hiveborn Support", label: "Summon Hiveborn", chance: 0.05 },
       ]),
     ],
   },
@@ -644,7 +648,7 @@ export const BOSSES = [
         { item: "Abhorrent Interrogation", share: 0.12 },
       ]),
       extra([
-        { item: "Sacred Crystallised Lifeforce", chance: 1.00 },
+        { item: "Sacred Lifeforce", label: "Sacred Crystallised Lifeforce", chance: 1.00 },
         { item: "Pacifism Support", chance: 0.12 },
         { item: "The Aspirant", chance: 0.10 },
         { item: "Greater Unleash Support", chance: 0.04 },
@@ -798,24 +802,8 @@ export const BOSSES = [
         { item: "The Burden of Shadows", share: 0.05 },
       ]),
       extra([
-        { item: "Bursting Toad", chance: 0.10 },
+        { item: "Bursting Toad", chance: 0.10 },   // not listed on poe.ninja
         { item: "Hexpass Support", chance: 0.10 },
-      ]),
-    ],
-  },
-  {
-    id: "saresh", name: "Saresh", group: "Other", rates: "ledger",
-    entry: [{ item: "The Black Barya" }],
-    ttk: 60, overhead: 0,
-    groups: [
-      pool([
-        { item: "Screams of the Desiccated", label: "Unid Screams of the Desiccated", share: 0.55 },
-        { item: "The Broken Elegy", share: 0.40 },
-        { item: "The Sands of Time", share: 0.05 },
-      ]),
-      extra([
-        { item: "Mirage Map", chance: 1.00 },
-        { item: "Transfusion Support", chance: 0.10 },
       ]),
     ],
   },
