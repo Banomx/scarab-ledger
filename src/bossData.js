@@ -357,6 +357,7 @@ export const BOSSES = [
         { item: "Exceptional Eldritch Ember", chance: 0.15 },
         ...ELDRITCH_ORBS,
         { item: "Curio of Absorption", chance: 0.05 },
+        { item: "Overheat Support", chance: 0.05 },
         { item: "Archive Reliquary Key", chance: 0.015 },
       ]),
     ],

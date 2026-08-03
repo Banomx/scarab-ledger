@@ -140,6 +140,12 @@ between a big average and a reliable one is visible without switching sort.
 - The boss list is exactly the set that exists in the current PoE 1 build.
   Content that has been removed from the game (the Breachlord fights, the Atziri
   apex, Aul, the Trialmaster, Lycia, Olroth) is deliberately absent.
+- Exceptional support gems are drop-restricted to named bosses, and
+  `test-boss.mjs` holds that mapping from poewiki and checks it **both ways** —
+  every gem must appear on each boss that drops it, and no boss may claim one it
+  shouldn't. Gems restricted to content this tool doesn't list (Legion generals,
+  the Zealot's and Arkhon's Vaults, Vruun, Ghorr, K'tash, Beidat, Zorath, Velka,
+  Kosis) are deliberately absent.
 - `rates` records provenance: `ledger` for the supplied drop tables, `estimate`
   where the drops are documented but no rate is published anywhere (badged `est`
   in the UI). A `wiki` value is also supported for adding a boss from poewiki.

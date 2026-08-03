@@ -205,6 +205,60 @@ const undated = computeBoss(
   makeResolver(P({}), { divineRate: 200 })).dropLines[0];
 ok(undated.fallback && undated.fallbackAge === null, "an undated fallback still prices, with no age");
 
+/* ---------------- exceptional support gems ----------------
+   Transcribed from poewiki's "Exceptional support gems" tables. These gems are
+   drop-restricted to named bosses, so the mapping is checkable both ways: every
+   gem must appear on each boss that drops it, and no boss may claim one it
+   doesn't. Gems restricted to content we don't list (Legion generals, the
+   Zealot's/Arkhon's Vaults, Vruun, Ghorr, K'tash, Beidat, Zorath, Velka,
+   Kosis) are deliberately absent. */
+const GEM_SOURCES = {
+  "Awakened Empower Support": ["uber-maven"],
+  "Awakened Enhance Support": ["uber-maven"],
+  "Awakened Enlighten Support": ["uber-maven"],
+  "Eclipse Support": ["uber-maven"],
+  "Invert the Rules Support": ["maven", "uber-maven"],
+  "Void Shockwave Support": ["uber-elder", "uber-uber-elder"],
+  "Eldritch Blasphemy Support": ["elder"],
+  "Voidstorm Support": ["shaper", "uber-shaper"],
+  "Annihilation Support": ["sirus", "uber-sirus"],
+  "Overheat Support": ["exarch", "uber-exarch"],
+  "Gluttony Support": ["eater", "uber-eater"],
+  "Greater Spell Echo Support": ["uber-atziri"],
+  "Vaal Sacrifice Support": ["uber-atziri"],
+  "Foulgrasp Support": ["esh-tul"],
+  "Hiveborn Support": ["esh-tul"],
+  "Hextoad Support": ["king-in-the-mists"],
+  "Hexpass Support": ["king-in-the-mists"],
+  "Greater Kinetic Instability Support": ["cortex", "uber-cortex"],
+  "Congregation Support": ["incarnation-dread", "uber-incarnation-dread"],
+  "Frostmage Support": ["incarnation-neglect", "uber-incarnation-neglect"],
+  "Greater Devour Support": ["incarnation-fear", "uber-incarnation-fear"],
+  "Pacifism Support": ["oshabi"],
+  "Greater Unleash Support": ["oshabi"],
+  "Communion Support": ["catarina", "t17-ziggurat"],
+  "Cast on Ward Break Support": ["t17-citadel"],
+  "Unholy Trinity Support": ["t17-abomination"],
+  "Overloaded Intensity Support": ["t17-fortress"],
+  "Scornful Herald Support": ["t17-sanctuary"],
+};
+const itemsOf = new Map(BOSSES.map((b) => [b.id, new Set(b.groups.flatMap((g) => g.drops.map((d) => d.item)))]));
+for (const [gem, sources] of Object.entries(GEM_SOURCES)) {
+  for (const id of sources) {
+    ok(itemsOf.has(id), `${gem}: unknown boss id ${id}`);
+    ok(itemsOf.get(id)?.has(gem), `${id} should drop ${gem} — poewiki restricts it to ${sources.join(" + ")}`);
+  }
+}
+for (const b of BOSSES) {
+  for (const g of b.groups) for (const d of g.drops) {
+    if (!/ Support$/.test(d.item)) continue;
+    const src = GEM_SOURCES[d.item];
+    ok(src, `${b.id}: ${d.item} isn't in the exceptional gem list — check the name`);
+    ok(!src || src.includes(b.id), `${b.id} claims ${d.item}, but poewiki restricts it to ${src?.join(" + ")}`);
+  }
+}
+console.log(`exceptional gems: ${Object.keys(GEM_SOURCES).length} mapped across ${new Set(Object.values(GEM_SOURCES).flat()).size} bosses`);
+
 /* ---------------- chance of profit ---------------- */
 // A guaranteed, always-profitable boss must read ~100%; a boss whose value
 // sits entirely in a rare drop must read well under it despite being +EV.
