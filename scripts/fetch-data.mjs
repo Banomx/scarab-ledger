@@ -526,7 +526,7 @@ function suggestNames(missing, allNames, k = 3) {
   return scored.filter(([sc]) => sc >= 0.3).slice(0, k).map(([, n]) => n);
 }
 
-async function reportUnpricedBossItems(prices) {
+async function reportUnpricedBossItems(prices, leagueName = "", detailed = true) {
   let mod;
   try {
     mod = { data: await import("../src/bossData.js"), calc: await import("../src/bossProfit.js") };
@@ -541,12 +541,20 @@ async function reportUnpricedBossItems(prices) {
     for (const l of c.entryLines) if (!l.found) missing.set(l.item, `entry: ${b.name}`);
     for (const l of c.dropLines) if (!l.found && l.qty > 0 && !missing.has(l.item)) missing.set(l.item, b.name);
   }
+  const tag = leagueName ? `${leagueName}: ` : "";
   if (!missing.size) {
-    console.log("    boss items: every referenced name resolved to a price");
+    console.log(`    ${tag}boss items — every referenced name resolved to a price`);
+    return;
+  }
+  // Only the current league gets the full breakdown. Old and hardcore leagues
+  // legitimately don't trade half these items, and printing 50 lines each just
+  // buries the one list that matters.
+  if (!detailed) {
+    console.log(`    ${tag}${missing.size} boss item(s) unpriced (expected — thin economy; rerun with the current league for detail)`);
     return;
   }
   const names = Object.keys(prices);
-  console.log(`    boss items with NO PRICE (${missing.size}) — closest priced names alongside:`);
+  console.log(`    ${tag}boss items with NO PRICE (${missing.size}) — closest priced names alongside:`);
   for (const [item, where] of [...missing].sort()) {
     const hints = suggestNames(item, names);
     console.log(`      ${item}  [${where}]  ->  ${hints.length ? hints.join(" | ") : "nothing similar is priced"}`);
@@ -777,7 +785,7 @@ async function main() {
         if (pm) {
           await writeFile(path.join(dir, "prices.json"), JSON.stringify({ generatedAt, divineRate, prices: pm.prices }));
           console.log(`  prices: ${Object.keys(pm.prices).length} names across ${pm.categories} sources (league=${pm.leagueParam})`);
-          await reportUnpricedBossItems(pm.prices);
+          await reportUnpricedBossItems(pm.prices, lg.name, li === 0);
         } else {
           console.log(`  prices: NO DATA for ${lg.name} — every endpoint family came back empty`);
         }
