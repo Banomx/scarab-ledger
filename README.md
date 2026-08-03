@@ -185,9 +185,29 @@ For the handful of drops in that state, a line can declare its own price:
 
 It is used *only* when poe.ninja returns nothing for that name — a real listing
 always wins — and `divine` is the better unit, since it tracks the divine rate
-instead of going stale the moment chaos moves. The UI badges these `set` so a
-hand-typed number is never mistaken for market data, and the snapshot lists them
-separately from genuine misses. Worth re-checking at league start.
+instead of going stale the moment chaos moves. `asOf` records when the figure was
+last checked: the UI badges these `set`, and `set 45d` once a month has passed,
+so an old hand-typed number announces itself rather than passing as current. The
+snapshot lists them with their age, separately from genuine misses.
+
+### Why not source these from GGG's official API?
+
+[api.pathofexile.com/currency-exchange](https://www.pathofexile.com/developer/docs/reference#currencyexchange)
+looks like the answer and mostly isn't, for three reasons:
+
+- It needs a **confidential OAuth client with the `service:cxapi` scope**,
+  registered with GGG, using the `client_credentials` grant. That means real
+  credentials living in CI secrets.
+- It returns **currency-pair market digests** (`market_id: "chaos|divine"`,
+  volumes, lowest/highest ratio) on an hourly lag — not item prices. Deriving a
+  chaos price per item is doable but is a rewrite, not a lookup.
+- It only covers what actually trades **on the in-game Currency Exchange**. The
+  items we need are missing from poe.ninja precisely *because* they barely
+  trade, and reliquary keys may not be exchange-tradable at all — so the odds it
+  carries them are poor.
+
+If those credentials ever exist it's worth revisiting, but the dated fallback
+above solves the maintenance problem for a fraction of the effort.
 
 `test-boss.mjs` checks every pool's shares sum to ~1, that drop keys are unique
 per boss, and that EV reproduces the reference tool's numbers for the same rates

@@ -540,11 +540,11 @@ async function reportUnpricedBossItems(prices, leagueName = "", detailed = true)
   for (const b of mod.data.BOSSES) {
     const c = mod.calc.computeBoss(b, resolve);
     for (const l of c.entryLines) {
-      if (l.fallback) declared.add(l.item);
+      if (l.fallback) declared.add(`${l.item}${l.fallbackAge != null ? ` (${l.fallbackAge}d old)` : ""}`);
       else if (!l.found) missing.set(l.item, `entry: ${b.name}`);
     }
     for (const l of c.dropLines) {
-      if (l.fallback) declared.add(l.item);
+      if (l.fallback) declared.add(`${l.item}${l.fallbackAge != null ? ` (${l.fallbackAge}d old)` : ""}`);
       else if (!l.found && l.qty > 0 && !missing.has(l.item)) missing.set(l.item, b.name);
     }
   }

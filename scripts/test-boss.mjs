@@ -197,6 +197,13 @@ const real = domLine(P({ "Orb of Dominance": 12 }), { divineRate: 200 });
 ok(near(real.unit, 12) && !real.fallback, `a live price must win, got ${real.unit}`);
 // and with no divine rate to convert against, it stays honestly unpriced
 ok(domLine(P({}), { divineRate: 0 }).found === false, "no divine rate means no fallback price");
+// declared prices carry their age so the UI can flag a stale one
+ok(fb.fallbackAge != null && fb.fallbackAge >= 0, `fallback should report its age, got ${fb.fallbackAge}`);
+const undated = computeBoss(
+  { id: "u", name: "u", group: "Other", rates: "ledger", entry: [], ttk: 60, overhead: 0,
+    groups: [{ id: "additional", kind: "independent", label: "x", drops: [{ item: "Nope", chance: 1, fallback: { chaos: 5 } }] }] },
+  makeResolver(P({}), { divineRate: 200 })).dropLines[0];
+ok(undated.fallback && undated.fallbackAge === null, "an undated fallback still prices, with no age");
 
 /* ---------------- chance of profit ---------------- */
 // A guaranteed, always-profitable boss must read ~100%; a boss whose value

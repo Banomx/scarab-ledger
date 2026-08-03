@@ -587,7 +587,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                         {l.qty !== 1 && (
                           <NumInput value={l.qty} width={40} title="Quantity" onCommit={(v) => setEntryQty(current.boss.id, l.item, v)} />
                         )}
-                        {l.fallback && <em className="bp-flag" title="poe.ninja lists no price for this — value declared in bossData.js">set</em>}
+                        {l.fallback && <FallbackFlag age={l.fallbackAge} />}
                         {!l.found && <em className="bp-flag warn" title="No poe.ninja price under this name">no price</em>}
                       </span>
                     ))}
@@ -626,7 +626,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                           <div key={l.key} className={`bp-tr ${!l.found && l.qty > 0 ? "unknown" : ""}`}>
                             <span className="bp-cell-name" title={l.item !== l.label ? `Priced as: ${l.item}` : undefined}>
                               {l.label}
-                              {l.fallback && <em className="bp-flag" title="poe.ninja lists no price for this — value declared in bossData.js">set</em>}
+                              {l.fallback && <FallbackFlag age={l.fallbackAge} />}
                               {!l.found && l.qty > 0 && <em className="bp-flag warn" title="No poe.ninja price under this name — set one manually">no price</em>}
                             </span>
                             <span className="bp-cell-rate">
@@ -659,6 +659,19 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
         </>
       )}
     </section>
+  );
+}
+
+/* A declared price, and how long since anyone checked it. */
+function FallbackFlag({ age }) {
+  const stale = age != null && age >= 30;
+  return (
+    <em className={`bp-flag ${stale ? "warn" : ""}`}
+      title={`poe.ninja lists no price for this, so the value is declared in bossData.js${
+        age != null ? ` — last checked ${age} day${age === 1 ? "" : "s"} ago` : ""}${
+        stale ? ". Worth re-checking." : ""}`}>
+      set{stale ? ` ${age}d` : ""}
+    </em>
   );
 }
 

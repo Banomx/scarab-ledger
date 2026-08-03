@@ -85,6 +85,13 @@ export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c", 
     return null;
   }
 
+  /* Days since a declared price was last checked, so the UI can say when one
+     has gone stale instead of quietly presenting an old number as current. */
+  function fallbackAge(fb, now = Date.now()) {
+    const t = fb && fb.asOf ? Date.parse(fb.asOf) : NaN;
+    return isFinite(t) ? Math.floor((now - t) / 86400000) : null;
+  }
+
   return function resolve(item, aliases = [], fallback = null) {
     // An override is always keyed on the name the dataset uses, so it wins
     // before any aliasing.
@@ -106,7 +113,13 @@ export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c", 
     }
     if (!entry) {
       const fb = fromFallback(fallback);
-      if (fb != null) return { chaos: fb, found: true, overridden: false, entry: null, fallback: true };
+      if (fb != null) {
+        return {
+          chaos: fb, found: true, overridden: false, entry: null,
+          fallback: true, fallbackAge: fallbackAge(fallback),
+          fallbackUnit: fallback.chaos > 0 ? "chaos" : "divine",
+        };
+      }
       return { chaos: 0, found: false, overridden: false, entry: null };
     }
     const chaos = entry[priceBasis] ?? entry.c ?? 0;
@@ -134,7 +147,7 @@ export function computeBoss(boss, resolve, settings = {}) {
   const entryLines = (boss.entry || []).map((e) => {
     const qty = num(entryOv[e.item], e.qty ?? 1);
     const p = resolve(e.item, e.aliases, e.fallback);
-    return { ...e, qty, unit: p.chaos, total: p.chaos * qty, found: p.found, overridden: p.overridden, fallback: p.fallback };
+    return { ...e, qty, unit: p.chaos, total: p.chaos * qty, found: p.found, overridden: p.overridden, fallback: p.fallback, fallbackAge: p.fallbackAge };
   });
   const entryCost = entryLines.reduce((s, l) => s + l.total, 0);
   const entryUnknown = entryLines.some((l) => !l.found && l.qty > 0);
@@ -170,7 +183,7 @@ export function computeBoss(boss, resolve, settings = {}) {
       return {
         key: dropKey(d), item: d.item, label, rate, pct, qty,
         unit: p.chaos, value: p.chaos * qty,
-        found: p.found, overridden: p.overridden, priceEntry: p.entry, fallback: p.fallback,
+        found: p.found, overridden: p.overridden, priceEntry: p.entry, fallback: p.fallback, fallbackAge: p.fallbackAge,
         kind: g.kind, groupId: g.id,
       };
     });

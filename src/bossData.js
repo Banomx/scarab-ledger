@@ -41,8 +41,9 @@
    price data — so a page existing does not mean a price does (verified with
    scripts/probe-price.mjs, which asks every endpoint family and type directly).
    Divine is the better unit for these: it tracks the divine rate instead of
-   going stale the moment chaos moves. The UI badges them `set` so a hand-typed
-   number is never mistaken for a market price. Check them at league start.
+   going stale the moment chaos moves. `asOf` records when the number was last
+   checked — the UI badges them `set`, and `set Nd` once they pass a month, so
+   an old hand-typed figure announces itself rather than passing as current.
 
    `ttk` from the ledger set is the WHOLE cycle (their KPH = 3600/ttk),
    so those bosses carry overhead 0. Bosses where I estimated the time
@@ -108,12 +109,12 @@ const SHAPER_FRAGS = guaranteed([
 ]);
 const SHAPER_EXTRA = [
   { item: "Shaper's Exalted Orb", chance: 0.12 },
-  { item: "Orb of Dominance", chance: 0.03, fallback: { divine: 3.7 } },
+  { item: "Orb of Dominance", chance: 0.03, fallback: { divine: 3.7, asOf: "2026-08-03" } },
   { item: "Voidstorm Support", label: "Voidstorm", chance: 0.02 },
 ];
 const SIRUS_EXTRA = [
   { item: "Awakener's Orb", chance: 0.20 },
-  { item: "Orb of Dominance", chance: 0.10, fallback: { divine: 3.7 } },
+  { item: "Orb of Dominance", chance: 0.10, fallback: { divine: 3.7, asOf: "2026-08-03" } },
   { item: "A Fate Worse Than Death", chance: 0.04 },
   { item: "Annihilation Support", chance: 0.02 },
 ];
@@ -161,7 +162,7 @@ export const BOSSES = [
       SHAPER_FRAGS,
       extra([
         { item: "Sublime Vision", label: "Unid Sublime Vision", chance: 0.02 },
-        { item: "Cosmic Reliquary Key", chance: 0.01, fallback: { divine: 9 } },
+        { item: "Cosmic Reliquary Key", chance: 0.01, fallback: { divine: 9, asOf: "2026-08-03" } },
         ...SHAPER_EXTRA,
       ]),
     ],
@@ -189,7 +190,7 @@ export const BOSSES = [
       extra([
         { item: "Watcher's Eye", label: "Unid Watcher's Eye (2-mod)", chance: 0.40 },
         { item: "Elder's Exalted Orb", chance: 0.10 },
-        { item: "Orb of Dominance", chance: 0.02, fallback: { divine: 3.7 } },
+        { item: "Orb of Dominance", chance: 0.02, fallback: { divine: 3.7, asOf: "2026-08-03" } },
         { item: "Eldritch Blasphemy Support", chance: 0.02 },
       ]),
     ],
@@ -214,7 +215,7 @@ export const BOSSES = [
         { item: "Shaper's Exalted Orb", chance: 0.15 },
         { item: "Elder's Exalted Orb", chance: 0.10 },
         { item: "Void Shockwave Support", label: "Void Shockwave", chance: 0.10 },
-        { item: "Orb of Dominance", chance: 0.05, fallback: { divine: 4 } },
+        { item: "Orb of Dominance", chance: 0.05, fallback: { divine: 4, asOf: "2026-08-03" } },
         { item: "Auspicious Ambitions", chance: 0.01 },
       ]),
     ],
@@ -237,7 +238,7 @@ export const BOSSES = [
         { item: "Shaper's Exalted Orb", chance: 0.20 },
         { item: "Elder's Exalted Orb", chance: 0.15 },
         { item: "Void Shockwave Support", label: "Void Shockwave", chance: 0.10 },
-        { item: "Orb of Dominance", chance: 0.08, fallback: { divine: 3.7 } },
+        { item: "Orb of Dominance", chance: 0.08, fallback: { divine: 3.7, asOf: "2026-08-03" } },
         { item: "Curio of Decay", chance: 0.05 },
         { item: "Sublime Vision", label: "Unid Sublime Vision", chance: 0.02 },
         { item: "Decaying Reliquary Key", chance: 0.015 },
@@ -393,7 +394,7 @@ export const BOSSES = [
         { item: "Exceptional Eldritch Ichor", chance: 0.15 },
         ...ELDRITCH_ORBS,
         { item: "Curio of Consumption", chance: 0.05 },
-        { item: "Visceral Reliquary Key", chance: 0.01, fallback: { divine: 5 } },
+        { item: "Visceral Reliquary Key", chance: 0.01, fallback: { divine: 5, asOf: "2026-08-03" } },
         { item: "Gluttony Support", chance: 0.02 },
       ]),
     ],
@@ -468,7 +469,7 @@ export const BOSSES = [
         { item: "Bound by Destiny", label: "Unid Bound by Destiny", chance: 0.10 },
         { item: "Frostmage Support", chance: 0.05 },
         { item: "Monochrome", chance: 0.03 },
-        { item: "Lonely Reliquary Key", chance: 0.01, fallback: { chaos: 30 } },
+        { item: "Lonely Reliquary Key", chance: 0.01, fallback: { chaos: 30, asOf: "2026-08-03" } },
       ]),
     ],
   },
@@ -507,7 +508,7 @@ export const BOSSES = [
         { item: "Orb of Unravelling", chance: 0.33 },
         { item: "Bound by Destiny", label: "Unid Bound by Destiny", chance: 0.10 },
         { item: "Congregation Support", chance: 0.02 },
-        { item: "Reverent Reliquary Key", chance: 0.01, fallback: { divine: 7 } },
+        { item: "Reverent Reliquary Key", chance: 0.01, fallback: { divine: 7, asOf: "2026-08-03" } },
       ]),
     ],
   },
