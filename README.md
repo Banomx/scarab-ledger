@@ -153,12 +153,21 @@ money most sessions.
   workflow that snapshots scarabs. Items with no poe.ninja listing are flagged
   `no price` rather than silently counted as zero.
 
-Two test scripts:
+Two test scripts and a probe:
 
 ```bash
-node scripts/test-boss.mjs          # dataset integrity + EV maths
-node scripts/test-fetch-shapes.mjs  # snapshot script vs. poe.ninja's endpoint shapes
+node scripts/test-boss.mjs                      # dataset integrity + EV maths
+node scripts/test-fetch-shapes.mjs              # snapshot vs. poe.ninja's endpoint shapes
+node scripts/probe-price.mjs "Orb of Dominance" # which endpoint actually carries an item
 ```
+
+`probe-price.mjs` exists because the snapshot has to decide up front which
+endpoint serves what, and the docs have been wrong about that more than once. It
+throws every type at every endpoint family and reports where a name really
+lives, plus how many rows each combination returned — so "this item has no
+price" becomes a fact instead of a guess. It writes nothing. `--counts` skips
+the search and just prints the per-endpoint totals, which is how you spot a
+category returning suspiciously few rows.
 
 `test-boss.mjs` checks every pool's shares sum to ~1, that drop keys are unique
 per boss, and that EV reproduces the reference tool's numbers for the same rates
