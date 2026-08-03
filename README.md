@@ -164,12 +164,28 @@ node scripts/test-fetch-shapes.mjs  # snapshot script vs. poe.ninja's endpoint s
 per boss, and that EV reproduces the reference tool's numbers for the same rates
 and prices (including quantity scaling and the weighted gem group).
 
-`test-fetch-shapes.mjs` matters because poe.ninja keeps moving PoE 1 economy data
-between endpoint families. It stubs `fetch`, makes every legacy `/api/data/*`
-path 404, and runs the real script end to end — so the next migration fails a
-test instead of silently shipping an empty `prices.json`. `DATA_OUT` redirects
-the script's output directory, which is how the test avoids touching
-`public/data/`.
+`test-fetch-shapes.mjs` guards the two things that have actually broken here:
+
+1. **Which endpoint serves what.** Per [poe.ninja's docs](https://poe.ninja/docs/api),
+   bulk goods — currency, *fragments*, scarabs, astrolabes, omens, embers — come
+   from `exchange/current/overview`, while uniques, gems, div cards and maps come
+   from `stash/current/item/overview`. Reading fragments from the currency
+   endpoint gives numbers that look plausible and are wrong.
+2. **The chaos conversion.** Exchange lines quote `primaryValue` in a *primary
+   reference currency* that isn't always chaos, and the docs don't define the
+   sign of `core.rates`. So the script calibrates on Chaos Orb itself —
+   `chaos = primaryValue / primaryValue(Chaos Orb)` — which is exact whatever the
+   primary is, and logs Chaos Orb's computed price as a self-check (it must be 1).
+
+The test stubs `fetch` with a deliberately **non-chaos primary**, makes every
+legacy `/api/data/*` path 404, and runs the real script end to end. `DATA_OUT`
+redirects the output directory so it never touches `public/data/`.
+
+One wrinkle it also pins: poe.ninja's line ids are slugs, and slugs lose
+apostrophes — `awakeners-orb` can't be turned back into `Awakener's Orb` by
+guessing. The script borrows real names from the stash currency overview as a
+dictionary (names only; its prices are not what we quote against) and matches
+them on letters and digits alone.
 
 ## Where things live
 

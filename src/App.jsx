@@ -231,9 +231,14 @@ const CATEGORY_TABS = {
 const SMALL_WORDS = new Set(["of", "the", "a", "and", "in"]);
 function slugToName(slug) {
   if (!slug || typeof slug !== "string") return null;
-  return slug.split("-").map((w, i) =>
-    (i > 0 && SMALL_WORDS.has(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1)
-  ).join(" ");
+  // poe.ninja slugs turn apostrophes into separators, so a lone "s" segment
+  // is a possessive: "the-maven-s-writ" -> "The Maven's Writ".
+  const out = [];
+  for (const [i, w] of slug.split("-").entries()) {
+    if (w === "s" && out.length) { out[out.length - 1] += "'s"; continue; }
+    out.push((i > 0 && SMALL_WORDS.has(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1));
+  }
+  return out.join(" ");
 }
 
 const EXCHANGE_BASES = ["/ninja/poe1/api/economy", "https://poe.ninja/poe1/api/economy"];
