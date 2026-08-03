@@ -669,10 +669,14 @@ export const BOSSES = [
      assumed uniform across the map's types; nobody publishes a split.
 
      The unique drops are a flat 5% — a community figure off Reddit, not
-     measured data. Everything here is a starting point, not a source. */
+     measured data. Everything here is a starting point, not a source.
+
+     Entry cost: poe.ninja does not price the five tier 17s separately — it
+     lists one "Nightmare Map" line covering all of them, so that is what
+     every entry resolves to. The label keeps the real map name on screen. */
   {
     id: "t17-abomination", name: "Abomination", group: "T17", rates: "estimate",
-    entry: [{ item: "Abomination Map", aliases: ["Abomination", "Nightmare Map (Abomination)"] }],
+    entry: [{ item: "Nightmare Map", label: "Abomination Map", aliases: ["Abomination Map", "Abomination"] }],
     ttk: 240, overhead: 60,
     note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
     groups: [
@@ -688,7 +692,7 @@ export const BOSSES = [
   },
   {
     id: "t17-citadel", name: "Citadel", group: "T17", rates: "estimate",
-    entry: [{ item: "Citadel Map", aliases: ["Citadel", "Nightmare Map (Citadel)"] }],
+    entry: [{ item: "Nightmare Map", label: "Citadel Map", aliases: ["Citadel Map", "Citadel"] }],
     ttk: 240, overhead: 60,
     note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
     groups: [
@@ -704,7 +708,7 @@ export const BOSSES = [
   },
   {
     id: "t17-fortress", name: "Fortress", group: "T17", rates: "estimate",
-    entry: [{ item: "Fortress Map", aliases: ["Fortress", "Nightmare Map (Fortress)"] }],
+    entry: [{ item: "Nightmare Map", label: "Fortress Map", aliases: ["Fortress Map", "Fortress"] }],
     ttk: 240, overhead: 60,
     note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
     groups: [
@@ -720,7 +724,7 @@ export const BOSSES = [
   },
   {
     id: "t17-ziggurat", name: "Ziggurat", group: "T17", rates: "estimate",
-    entry: [{ item: "Ziggurat Map", aliases: ["Ziggurat", "Nightmare Map (Ziggurat)"] }],
+    entry: [{ item: "Nightmare Map", label: "Ziggurat Map", aliases: ["Ziggurat Map", "Ziggurat"] }],
     ttk: 240, overhead: 60,
     note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
     groups: [
@@ -738,7 +742,7 @@ export const BOSSES = [
   },
   {
     id: "t17-sanctuary", name: "Sanctuary", group: "T17", rates: "estimate",
-    entry: [{ item: "Sanctuary Map", aliases: ["Sanctuary", "Nightmare Map (Sanctuary)"] }],
+    entry: [{ item: "Nightmare Map", label: "Sanctuary Map", aliases: ["Sanctuary Map", "Sanctuary"] }],
     ttk: 240, overhead: 60,
     note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
     groups: [

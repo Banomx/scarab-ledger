@@ -76,7 +76,8 @@ const STASH_ITEMS = {
     { id: 11, name: "Awakened Spell Echo Support", chaosValue: 700, gemLevel: 1, gemQuality: 0, corrupted: false },
     { id: 12, name: "Awakened Spell Echo Support", chaosValue: 9000, gemLevel: 5, gemQuality: 20, corrupted: true },
   ],
-  Map: [{ id: 20, name: "Ziggurat Map", chaosValue: 31 }],
+  // poe.ninja lists one "Nightmare Map" line for all five tier 17s
+  Map: [{ id: 20, name: "Nightmare Map", chaosValue: 32 }],
   // Boss entry costs — these were unpriced because the type was never fetched
   Invitation: [
     { id: 30, name: "Polaric Invitation", chaosValue: 21.7 },
@@ -190,7 +191,7 @@ ok(near(P["Omen of Amelioration"]?.c, 42), `Omen ${P["Omen of Amelioration"]?.c}
 ok(near(P["Starforge"]?.c, 4200) && near(P["Starforge"]?.hi, 5100), `Starforge ${JSON.stringify(P["Starforge"])}`);
 ok(near(P["Awakened Spell Echo Support"]?.c, 700), `gem base variant ${P["Awakened Spell Echo Support"]?.c}`);
 ok(near(P["Atziri's Splendour"]?.c, 40), `two-variant unique should take the cheaper: ${P["Atziri's Splendour"]?.c}`);
-ok(near(P["Ziggurat Map"]?.c, 31), `T17 map entry cost ${P["Ziggurat Map"]?.c}`);
+ok(near(P["Nightmare Map"]?.c, 32), `T17 map entry cost ${P["Nightmare Map"]?.c}`);
 
 // the scarab tab shares the calibration, so it must survive a non-chaos primary too
 const scarabs = JSON.parse(await readFile(path.join(OUT_DIR, "Allflame", "scarabs.json"), "utf8"));

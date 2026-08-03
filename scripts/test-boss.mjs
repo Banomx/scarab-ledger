@@ -123,8 +123,11 @@ ok(near(san.groups.find((g) => g.id === "pool").subtotal, 180, 0.2), "3-type map
 // display name. Exact match wins, then aliases, then a punctuation-insensitive
 // match with and without a trailing "Map".
 const zigEntry = (prices) => computeBoss(BOSSES.find((b) => b.id === "t17-ziggurat"), makeResolver(prices)).entryLines[0];
-ok(near(zigEntry(P({ "Ziggurat Map": 941 })).unit, 941), "exact map name");
-ok(near(zigEntry(P({ "Ziggurat": 941 })).unit, 941), "alias without the Map suffix");
+// poe.ninja prices the tier 17s as one "Nightmare Map" line
+ok(near(zigEntry(P({ "Nightmare Map": 32 })).unit, 32), "nightmare map entry cost");
+ok(zigEntry(P({ "Nightmare Map": 32 })).label === "Ziggurat Map", "entry keeps the real map name on screen");
+// the per-map names stay as aliases in case they ever get listed separately
+ok(near(zigEntry(P({ "Ziggurat Map": 941 })).unit, 941), "per-map alias still wins if listed");
 ok(near(zigEntry(P({ "ziggurat map": 941 })).unit, 941), "case-insensitive fallback");
 ok(zigEntry(P({ "Citadel Map": 941 })).found === false, "must not match a different map");
 ok(near(computeBoss(BOSSES.find((b) => b.id === "maven"),

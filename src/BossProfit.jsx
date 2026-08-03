@@ -551,8 +551,9 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                   <div className="bp-entry">
                     <span className="bp-entry-lbl">Entry</span>
                     {current.entryLines.map((l) => (
-                      <span key={l.item} className={`bp-entry-item ${!l.found ? "unknown" : ""}`}>
-                        {l.item}
+                      <span key={l.item} className={`bp-entry-item ${!l.found ? "unknown" : ""}`}
+                        title={l.label && l.label !== l.item ? `Priced as: ${l.item}` : undefined}>
+                        {l.label || l.item}
                         <PriceCell item={l.item} chaos={l.unit} overridden={l.overridden} onSet={setPriceOverride} money={money} />
                         {l.qty !== 1 && (
                           <NumInput value={l.qty} width={40} title="Quantity" onCommit={(v) => setEntryQty(current.boss.id, l.item, v)} />

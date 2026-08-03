@@ -500,8 +500,26 @@ async function getPriceMap(lgParams, ctx) {
 }
 
 /* Every item the boss tab references, checked against what we actually got.
-   Anything listed here shows "no price" in the UI, so the run should say so
-   plainly rather than leaving it to be noticed on the site. */
+   Anything listed here shows "no price" in the UI. For each miss we also
+   suggest the closest names that ARE priced, which distinguishes the two
+   causes: a spelling that drifted (fixable in bossData.js) versus an item
+   poe.ninja genuinely doesn't list (nothing to fix). */
+function suggestNames(missing, allNames, k = 3) {
+  const tok = (x) => new Set(String(x).toLowerCase().match(/[a-z0-9]+/g) || []);
+  const want = tok(missing);
+  if (!want.size) return [];
+  const scored = [];
+  for (const n of allNames) {
+    const have = tok(n);
+    let shared = 0;
+    for (const t of want) if (have.has(t)) shared++;
+    if (!shared) continue;
+    scored.push([shared / Math.max(want.size, have.size), n]);
+  }
+  scored.sort((a, b) => b[0] - a[0]);
+  return scored.filter(([sc]) => sc >= 0.3).slice(0, k).map(([, n]) => n);
+}
+
 async function reportUnpricedBossItems(prices) {
   let mod;
   try {
@@ -511,18 +529,21 @@ async function reportUnpricedBossItems(prices) {
     return;
   }
   const resolve = mod.calc.makeResolver(prices);
-  const missing = new Set();
+  const missing = new Map();   // item name -> where it appears
   for (const b of mod.data.BOSSES) {
     const c = mod.calc.computeBoss(b, resolve);
-    for (const l of c.entryLines) if (!l.found) missing.add(`${l.item} (entry: ${b.name})`);
-    for (const l of c.dropLines) if (!l.found && l.qty > 0) missing.add(l.item);
+    for (const l of c.entryLines) if (!l.found) missing.set(l.item, `entry: ${b.name}`);
+    for (const l of c.dropLines) if (!l.found && l.qty > 0 && !missing.has(l.item)) missing.set(l.item, b.name);
   }
-  if (missing.size) {
-    const list = [...missing].sort();
-    const shown = list.slice(0, 30);
-    console.log(`    boss items with NO PRICE (${missing.size}): ${shown.join(", ")}${list.length > shown.length ? `, ... and ${list.length - shown.length} more` : ""}`);
-  } else {
+  if (!missing.size) {
     console.log("    boss items: every referenced name resolved to a price");
+    return;
+  }
+  const names = Object.keys(prices);
+  console.log(`    boss items with NO PRICE (${missing.size}) — closest priced names alongside:`);
+  for (const [item, where] of [...missing].sort()) {
+    const hints = suggestNames(item, names);
+    console.log(`      ${item}  [${where}]  ->  ${hints.length ? hints.join(" | ") : "nothing similar is priced"}`);
   }
 }
 
