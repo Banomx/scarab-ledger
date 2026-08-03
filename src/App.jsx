@@ -182,7 +182,10 @@ function fmtChaos(v) {
   if (v >= 10) return v.toFixed(1);
   return v.toFixed(1);
 }
-function fmtDiv(v) { return v >= 10 ? v.toFixed(1) : v.toFixed(2); }
+/* Two decimals is fine for whole-divine sums, but the boss tab shows per-drop
+   expected values that are often a few chaos — those collapsed to "0.00 div".
+   Below 0.1 divine, show three. */
+function fmtDiv(v) { return v >= 10 ? v.toFixed(1) : v >= 0.1 ? v.toFixed(2) : v.toFixed(3); }
 function fmtDay(d) { const n = Math.round(d * 10) / 10; return Number.isInteger(n) ? String(n) : n.toFixed(1); }
 /* Whole-day hardpoints, always: domain snaps outward to full days (day 0,
    day 1, ...) and every 4h data point still plots at its true position. */
@@ -682,7 +685,13 @@ export default function ScarabTracker() {
         <button className={tab === "farms" ? "on" : ""} onClick={() => { setTab("farms"); setDragSel(null); }}>Popular farms</button>
         <button className={tab === "astrolabes" ? "on" : ""} onClick={() => { setTab("astrolabes"); setDragSel(null); }}>Astrolabes</button>
         <button className={tab === "catalysts" ? "on" : ""} onClick={() => { setTab("catalysts"); setDragSel(null); }}>Catalysts</button>
-        <button className={tab === "bosses" ? "on" : ""} onClick={() => { setTab("bosses"); setDragSel(null); }}>Boss profit</button>
+        <button className={tab === "bosses" ? "on" : ""}
+          onClick={() => {
+            setTab("bosses"); setDragSel(null);
+            // Boss values run to thousands of chaos; divine is the readable unit
+            // here, so entering the tab switches to it.
+            setCurrency("divine");
+          }}>Boss profit</button>
       </nav>
 
       {mode === "demo" && (
@@ -1208,7 +1217,7 @@ const css = `
 }
 .bp-import-err { color: #d9c48a; font-size: 12.5px; margin: 7px 0; }
 .bp-import-go { margin-top: 8px; }
-.bp-body { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.bp-body { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 1040px) { .bp-body { grid-template-columns: 1fr; } }
 .bp-list { border: 1px solid #3a332a; border-radius: 8px; background: #1d1811; overflow: hidden; max-height: 78vh; overflow-y: auto; }
 .bp-list-head {
@@ -1227,8 +1236,8 @@ const css = `
 .bp-item-main { flex: 1; min-width: 0; }
 .bp-item-name { display: flex; align-items: center; gap: 7px; color: #e5d9b8; }
 .bp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); flex-shrink: 0; }
-.bp-item-meta { display: block; font-size: 11px; color: #7d7462; margin: 2px 0 5px 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bp-safe { font-style: normal; margin-left: 6px; padding: 0 4px; border-radius: 3px; font-size: 10.5px; white-space: nowrap; }
+.bp-item-meta { display: block; font-size: 11px; color: #7d7462; margin: 2px 0 5px 15px; line-height: 1.5; }
+.bp-safe { font-style: normal; margin: 0 2px 0 6px; padding: 0 4px; border-radius: 3px; font-size: 10.5px; white-space: nowrap; }
 .bp-safe.ok { color: #a5d48f; background: rgba(79, 122, 69, 0.22); }
 .bp-safe.risk { color: #d9a86a; background: rgba(122, 92, 51, 0.22); }
 .bp-meter { display: block; height: 5px; background: #26211a; border-radius: 999px; overflow: hidden; margin-left: 15px; }

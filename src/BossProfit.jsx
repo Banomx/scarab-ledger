@@ -512,13 +512,14 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                         {r.missingPrices > 0 && <em className="bp-flag warn" title={`${r.missingPrices} drop(s) have no price`}>?</em>}
                       </span>
                       <span className="bp-item-meta">
-                        {r.boss.group} · {fmtTime(r.runSeconds)}/run · {r.runsPerHour.toFixed(1)} kph
+                        {r.boss.group}
                         {safety[r.boss.id] != null && (
                           <em className={`bp-safe ${safety[r.boss.id] >= 0.5 ? "ok" : "risk"}`}
                             title={`Simulated: ${Math.round(safety[r.boss.id] * 100)}% of ${runs}-run stretches finish in profit`}>
                             {Math.round(safety[r.boss.id] * 100)}% safe
                           </em>
                         )}
+                        {" · "}{fmtTime(r.runSeconds)}/run · {r.runsPerHour.toFixed(1)}/hr
                       </span>
                       <span className="bp-meter"><i className={r.profitPerHour >= 0 ? "up" : "down"} style={{ width: `${w}%` }} /></span>
                     </span>
