@@ -373,9 +373,23 @@ async function getPriceMap(lgParams, ctx) {
       let n = 0;
       for (const l of lines) {
         const chaos = l.chaosValue ?? l.chaosEquivalent;
-        if (l.name && chaos > 0) { add(l.name, chaos, isBaseVariant(t, l)); n++; }
+        if (!l.name || !(chaos > 0)) continue;
+        add(l.name, chaos, isBaseVariant(t, l));
+        // Maps get labelled inconsistently — poe.ninja groups the tier 17s
+        // under "Nightmare Map" and the base type isn't always the display
+        // name. Index both so a lookup hits whichever string is used.
+        if (t === "Map" && l.baseType && l.baseType !== l.name) add(l.baseType, chaos, true);
+        n++;
       }
       if (n) counts[t] = n; else missed.push(t);
+      // Print what the tier 17 maps are actually called, so their entry costs
+      // can be named correctly instead of guessed at.
+      if (t === "Map" && n) {
+        const t17 = lines
+          .filter((l) => /citadel|fortress|sanctuary|ziggurat|abomination|nightmare/i.test(`${l.name} ${l.baseType || ""}`))
+          .map((l) => `${l.name}${l.baseType && l.baseType !== l.name ? ` [${l.baseType}]` : ""}${l.variant ? ` (${l.variant})` : ""} ${Math.round(l.chaosValue)}c`);
+        console.log(`    tier 17 map listings: ${t17.length ? t17.join(", ") : "none matched"}`);
+      }
     }
 
     for (const t of LEGACY_ITEM_TYPES) {

@@ -29,9 +29,38 @@ export const dropKey = (d) => d.key || d.item;
 
 /* ---------- price resolution ---------- */
 
+/* Item names have to match poe.ninja's exactly, and they don't always: the
+   API's slugs lose apostrophes, and map base types get labelled inconsistently
+   ("Ziggurat Map" vs "Ziggurat"). Rather than let a near-miss read as "no
+   price", fall back to a punctuation- and case-insensitive match, and try the
+   name with and without a trailing "Map". */
+const normKey = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+function candidates(item) {
+  const out = [item];
+  if (/ map$/i.test(item)) out.push(item.replace(/ map$/i, ""));
+  else out.push(`${item} Map`);
+  return out;
+}
+
 /* prices.json shape: { "Item Name": { c, lo, hi, n } } */
 export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c" } = {}) {
   const synthCache = {};
+  let normIndex = null;
+
+  function lookupLoose(name) {
+    if (!priceMap) return null;
+    if (normIndex === null) {
+      normIndex = {};
+      for (const [n, e] of Object.entries(priceMap)) {
+        const k = normKey(n);
+        // on collision keep the shorter name — the plainer listing
+        if (!normIndex[k] || n.length < normIndex[k].name.length) normIndex[k] = { name: n, entry: e };
+      }
+    }
+    const hit = normIndex[normKey(name)];
+    return hit ? hit.entry : null;
+  }
 
   function synthetic(key) {
     if (synthCache[key] !== undefined) return synthCache[key];
@@ -46,11 +75,25 @@ export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c" }
     return (synthCache[key] = { c: mean, lo: Math.min(...vals), hi: Math.max(...vals), n: vals.length, synthetic: true });
   }
 
-  return function resolve(item) {
+  return function resolve(item, aliases = []) {
+    // An override is always keyed on the name the dataset uses, so it wins
+    // before any aliasing.
     if (priceOverrides[item] != null && isFinite(priceOverrides[item])) {
       return { chaos: Number(priceOverrides[item]), overridden: true, found: true, entry: null };
     }
-    const entry = item.startsWith("@") ? synthetic(item) : (priceMap ? priceMap[item] : null);
+    let entry = null;
+    if (item.startsWith("@")) {
+      entry = synthetic(item);
+    } else if (priceMap) {
+      const names = [item, ...aliases];
+      for (const n of names) { if (priceMap[n]) { entry = priceMap[n]; break; } }
+      if (!entry) {
+        for (const n of names) {
+          for (const c of candidates(n)) { entry = lookupLoose(c); if (entry) break; }
+          if (entry) break;
+        }
+      }
+    }
     if (!entry) return { chaos: 0, found: false, overridden: false, entry: null };
     const chaos = entry[priceBasis] ?? entry.c ?? 0;
     return { chaos, found: chaos > 0, overridden: false, entry };
@@ -76,7 +119,7 @@ export function computeBoss(boss, resolve, settings = {}) {
 
   const entryLines = (boss.entry || []).map((e) => {
     const qty = num(entryOv[e.item], e.qty ?? 1);
-    const p = resolve(e.item);
+    const p = resolve(e.item, e.aliases);
     return { ...e, qty, unit: p.chaos, total: p.chaos * qty, found: p.found, overridden: p.overridden };
   });
   const entryCost = entryLines.reduce((s, l) => s + l.total, 0);
@@ -108,7 +151,7 @@ export function computeBoss(boss, resolve, settings = {}) {
         pct = rate;
         qty = rate * (scaled ? qMul : 1);
       }
-      const p = resolve(d.item);
+      const p = resolve(d.item, d.aliases);
       const label = d.label || (d.item.startsWith("@") ? SYNTHETIC[d.item]?.label : null) || d.item;
       return {
         key: dropKey(d), item: d.item, label, rate, pct, qty,

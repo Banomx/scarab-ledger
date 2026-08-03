@@ -118,6 +118,18 @@ const san = computeBoss(BOSSES.find((b) => b.id === "t17-sanctuary"),
   makeResolver(P({ "Lonely Fragment": 90, "Traumatic Fragment": 90, "Reverent Fragment": 90 })));
 ok(near(san.groups.find((g) => g.id === "pool").subtotal, 180, 0.2), "3-type map still yields 2 fragments total");
 
+// Name resolution has to survive poe.ninja's inconsistent labelling: the T17
+// maps are grouped under "Nightmare Map" and the base type isn't always the
+// display name. Exact match wins, then aliases, then a punctuation-insensitive
+// match with and without a trailing "Map".
+const zigEntry = (prices) => computeBoss(BOSSES.find((b) => b.id === "t17-ziggurat"), makeResolver(prices)).entryLines[0];
+ok(near(zigEntry(P({ "Ziggurat Map": 941 })).unit, 941), "exact map name");
+ok(near(zigEntry(P({ "Ziggurat": 941 })).unit, 941), "alias without the Map suffix");
+ok(near(zigEntry(P({ "ziggurat map": 941 })).unit, 941), "case-insensitive fallback");
+ok(zigEntry(P({ "Citadel Map": 941 })).found === false, "must not match a different map");
+ok(near(computeBoss(BOSSES.find((b) => b.id === "maven"),
+  makeResolver(P({ "The Maven's Writ": 8.52 }))).entryLines[0].unit, 8.52), "apostrophe name");
+
 /* ---------------- engine behaviour ---------------- */
 const prices = P({
   "Fragment of the Hydra": 10, "Fragment of the Phoenix": 10,

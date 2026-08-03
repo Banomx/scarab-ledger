@@ -181,11 +181,19 @@ The test stubs `fetch` with a deliberately **non-chaos primary**, makes every
 legacy `/api/data/*` path 404, and runs the real script end to end. `DATA_OUT`
 redirects the output directory so it never touches `public/data/`.
 
-One wrinkle it also pins: poe.ninja's line ids are slugs, and slugs lose
-apostrophes — `awakeners-orb` can't be turned back into `Awakener's Orb` by
-guessing. The script borrows real names from the stash currency overview as a
-dictionary (names only; its prices are not what we quote against) and matches
-them on letters and digits alone.
+Two naming wrinkles it also pins:
+
+- poe.ninja's line ids are slugs, and slugs lose apostrophes — `awakeners-orb`
+  can't be turned back into `Awakener's Orb` by guessing. The script borrows real
+  names from the stash currency overview as a dictionary (names only; its prices
+  are not what we quote against) and matches them on letters and digits alone.
+- Maps are labelled inconsistently: the tier 17s are grouped under "Nightmare
+  Map" and the base type isn't always the display name. The snapshot indexes map
+  lines under both `name` and `baseType`, and prints the tier 17 listings it
+  found so their entry costs can be named from fact rather than guesswork. On the
+  app side, a price lookup falls back to aliases and then to a
+  punctuation-insensitive match, trying the name with and without a trailing
+  "Map" — so a near-miss doesn't silently read as `no price`.
 
 ## Where things live
 
