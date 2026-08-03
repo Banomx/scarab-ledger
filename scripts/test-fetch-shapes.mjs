@@ -77,6 +77,13 @@ const STASH_ITEMS = {
     { id: 12, name: "Awakened Spell Echo Support", chaosValue: 9000, gemLevel: 5, gemQuality: 20, corrupted: true },
   ],
   Map: [{ id: 20, name: "Ziggurat Map", chaosValue: 31 }],
+  // Boss entry costs — these were unpriced because the type was never fetched
+  Invitation: [
+    { id: 30, name: "Polaric Invitation", chaosValue: 21.7 },
+    { id: 31, name: "Writhing Invitation", chaosValue: 5 },
+    { id: 32, name: "Incandescent Invitation", chaosValue: 103 },
+    { id: 33, name: "Screaming Invitation", chaosValue: 106 },
+  ],
 };
 
 globalThis.fetch = async (url) => {
@@ -156,6 +163,13 @@ ok(near(P["Orb of Remembrance"]?.c, 63), `Orb of Remembrance ${P["Orb of Remembr
 // cards read as unpriced.
 ok(near(P["A Fate Worse Than Death"]?.c, 8), `div card ${P["A Fate Worse Than Death"]?.c} != 8`);
 
+// Invitations are the entry cost for four bosses and live under the stash
+// item overview, which the type list used to omit entirely.
+for (const [n, v] of [["Polaric Invitation", 21.7], ["Writhing Invitation", 5],
+                      ["Incandescent Invitation", 103], ["Screaming Invitation", 106]]) {
+  ok(near(P[n]?.c, v), `${n} ${P[n]?.c} != ${v}`);
+}
+
 // Stash currency only fills gaps; it must never overwrite the exchange.
 ok(near(P["Curio of Potential"]?.c, 8), `Curio of Potential ${P["Curio of Potential"]?.c} != 8 (gap-fill failed)`);
 ok(near(P["Echo of Trauma"]?.c, 126), `Echo of Trauma ${P["Echo of Trauma"]?.c} != 126 (gap-fill failed)`);
@@ -192,10 +206,11 @@ ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=Frag
 ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=DivinationCard"), "divination cards come from the exchange");
 ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=Astrolabe"), "astrolabes come from the exchange");
 ok(hits.some((h) => h === "/poe1/api/economy/stash/current/currency/overview?type=Currency"), "stash currency is still consulted for gap-fill");
-// types the docs don't list for PoE 1 shouldn't be requested at all
-for (const bogus of ["Incubator", "Vial", "Catalyst", "Coffin"]) {
-  ok(!hits.includes(`/poe1/api/economy/exchange/current/overview?type=${bogus}`), `${bogus} is not a documented PoE 1 exchange type`);
-}
+ok(hits.some((h) => h === "/poe1/api/economy/stash/current/item/overview?type=Invitation"), "invitations must be fetched");
+// A type that answers from its documented family should not also be retried
+// against the other one — the cross-check is a fallback, not a second request.
+ok(!hits.includes("/poe1/api/economy/exchange/current/overview?type=Invitation"),
+   "Invitation answered from stash, so it should not have been retried on the exchange");
 ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=Astrolabe"), "astrolabes must be fetched");
 ok(hits.some((h) => h === "/poe1/api/economy/stash/current/item/overview?type=UniqueWeapon"), "uniques must come from the stash endpoint");
 

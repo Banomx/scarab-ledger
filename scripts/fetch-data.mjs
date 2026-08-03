@@ -288,12 +288,20 @@ const EXCHANGE_TYPES = [
 const STASH_ITEM_TYPES = [
   "UniqueWeapon", "UniqueArmour", "UniqueAccessory", "UniqueFlask", "UniqueJewel",
   "SkillGem", "Map", "UniqueMap", "BlightedMap", "BlightRavagedMap",
+  // Boss entry costs live here: the Incandescent / Screaming / Polaric /
+  // Writhing Invitations are all "Invitation".
+  "Invitation", "Incubator", "Vial", "Memory", "Beast", "Coffin", "Tincture",
+  "UniqueRelic",
 ];
 /* PoE 1 only, and the same goods the exchange already covers — used solely to
    fill names the exchange didn't return. */
 const STASH_CURRENCY_TYPES = ["Currency", "Fragment"];
-/* Anything none of the documented families answer for. */
-const LEGACY_TYPES = ["UniqueRelic", "Memory", "Tincture", "Coffin", "Incubator", "Vial"];
+/* The published type lists have disagreed with reality more than once, so any
+   type that comes back empty from its documented family is retried against the
+   other one before we give up on it. */
+const CROSS_CHECK = ["Invitation", "Incubator", "Vial", "Memory", "Beast", "Coffin", "Tincture", "UniqueRelic"];
+/* Last resort: the pre-migration endpoint. */
+const LEGACY_TYPES = ["UniqueRelic", "Memory", "Tincture", "Coffin", "Incubator", "Vial", "Invitation"];
 
 const exchUrl = (p, t) => `${NINJA}/poe1/api/economy/exchange/current/overview?league=${encodeURIComponent(p)}&type=${t}`;
 const stashItemUrl = (p, t) => `${NINJA}/poe1/api/economy/stash/current/item/overview?league=${encodeURIComponent(p)}&type=${t}`;
@@ -433,6 +441,19 @@ async function getPriceMap(lgParams, ctx) {
     }
     tally(`stash:${t}`, n);
     if (filled) console.log(`    stash ${t} filled ${filled} name(s) the exchange did not list`);
+  }
+
+  // 3b. cross-family retry — a type the docs place in one family sometimes
+  //     only answers from the other.
+  for (const t of CROSS_CHECK) {
+    if (counts[t]) continue;
+    const j = await tryJson(exchUrl(p, t));
+    await sleep(DELAY_MS);
+    const rows = exchangeRows(j, ctx?.dict);
+    if (!rows.length) continue;
+    for (const r of rows) add(0, r.name, r.primaryValue / div, true);
+    counts[`exch:${t}`] = rows.length;
+    console.log(`    ${t} answered from the exchange, not the stash item overview`);
   }
 
   // 4. legacy, for anything the documented families never answered

@@ -185,12 +185,14 @@ and prices (including quantity scaling and the weighted gem group).
    | rank | endpoint | covers | units |
    |---|---|---|---|
    | 1 | `exchange/current/overview` | everything fungible: currency, fragments, scarabs, astrolabes, omens, essences, oils, divination cards | needs calibration |
-   | 1 | `stash/current/item/overview` | non-fungible, priced per listing: uniques, gems, maps | chaos |
+   | 1 | `stash/current/item/overview` | non-fungible, priced per listing: uniques, gems, maps, **invitations**, incubators, vials, memories, beasts | chaos |
    | 2 | `stash/current/currency/overview` | PoE 1 only, same goods as the exchange priced the older way — gap-fill only | chaos |
 
-   Every run prints which sources answered, how many names the gap-fill added,
-   and the boss items that ended up with no price at all — so a name mismatch
-   shows up in the workflow log instead of on the site.
+   The published type lists have disagreed with reality more than once, so any
+   type that comes back empty from its documented family is retried against the
+   other one before being written off. Every run prints which sources answered,
+   how many names the gap-fill added, and the boss items that ended up with no
+   price at all — so a gap shows up in the workflow log instead of on the site.
 
 The test stubs `fetch` with a deliberately **non-chaos primary**, makes every
 legacy `/api/data/*` path 404, and runs the real script end to end. `DATA_OUT`
