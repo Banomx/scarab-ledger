@@ -146,8 +146,9 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
     () => makeResolver(priceMap && priceMap !== "missing" ? priceMap : null, {
       priceOverrides: profile?.priceOverrides || {},
       priceBasis: basis,
+      divineRate,
     }),
-    [priceMap, profile, basis]
+    [priceMap, profile, basis, divineRate]
   );
 
   const rows = useMemo(
@@ -558,6 +559,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                         {l.qty !== 1 && (
                           <NumInput value={l.qty} width={40} title="Quantity" onCommit={(v) => setEntryQty(current.boss.id, l.item, v)} />
                         )}
+                        {l.fallback && <em className="bp-flag" title="poe.ninja lists no price for this — value declared in bossData.js">set</em>}
                         {!l.found && <em className="bp-flag warn" title="No poe.ninja price under this name">no price</em>}
                       </span>
                     ))}
@@ -596,6 +598,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                           <div key={l.key} className={`bp-tr ${!l.found && l.qty > 0 ? "unknown" : ""}`}>
                             <span className="bp-cell-name" title={l.item !== l.label ? `Priced as: ${l.item}` : undefined}>
                               {l.label}
+                              {l.fallback && <em className="bp-flag" title="poe.ninja lists no price for this — value declared in bossData.js">set</em>}
                               {!l.found && l.qty > 0 && <em className="bp-flag warn" title="No poe.ninja price under this name — set one manually">no price</em>}
                             </span>
                             <span className="bp-cell-rate">

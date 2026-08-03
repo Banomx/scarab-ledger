@@ -184,6 +184,20 @@ const zeroLine = zc.dropLines.find((l) => l.item === "Unpriced Mystery");
 ok(zeroLine && zeroLine.qty === 0 && zeroLine.value === 0, "chance:0 line present and contributes nothing");
 ok(zc.missingPrices === 0, `chance:0 line must not count as a missing price (got ${zc.missingPrices})`);
 
+// A declared fallback fills in only where poe.ninja returns nothing, is quoted
+// in divine so it tracks the rate, and is flagged so the UI can say so.
+const domLine = (prices, opts) => computeBoss(BOSSES.find((b) => b.id === "shaper"), makeResolver(prices, opts))
+  .dropLines.find((l) => l.item === "Orb of Dominance");
+const fb = domLine(P({}), { divineRate: 200 });
+ok(fb.found && fb.fallback === true, "fallback should price the line and be flagged");
+ok(near(fb.unit, 740), `3.7 divine at 200c/div should be 740c, got ${fb.unit}`);
+ok(near(domLine(P({}), { divineRate: 100 }).unit, 370), "fallback tracks the divine rate");
+// a real listing always beats the declared number
+const real = domLine(P({ "Orb of Dominance": 12 }), { divineRate: 200 });
+ok(near(real.unit, 12) && !real.fallback, `a live price must win, got ${real.unit}`);
+// and with no divine rate to convert against, it stays honestly unpriced
+ok(domLine(P({}), { divineRate: 0 }).found === false, "no divine rate means no fallback price");
+
 /* ---------------- chance of profit ---------------- */
 // A guaranteed, always-profitable boss must read ~100%; a boss whose value
 // sits entirely in a rare drop must read well under it despite being +EV.

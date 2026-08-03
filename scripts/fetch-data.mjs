@@ -534,12 +534,22 @@ async function reportUnpricedBossItems(prices, leagueName = "", detailed = true)
     console.log(`    (boss item check skipped: ${e.message})`);
     return;
   }
-  const resolve = mod.calc.makeResolver(prices);
+  const resolve = mod.calc.makeResolver(prices, { divineRate: prices["Divine Orb"]?.c || 0 });
   const missing = new Map();   // item name -> where it appears
+  const declared = new Set();  // priced from bossData's fallback, not the API
   for (const b of mod.data.BOSSES) {
     const c = mod.calc.computeBoss(b, resolve);
-    for (const l of c.entryLines) if (!l.found) missing.set(l.item, `entry: ${b.name}`);
-    for (const l of c.dropLines) if (!l.found && l.qty > 0 && !missing.has(l.item)) missing.set(l.item, b.name);
+    for (const l of c.entryLines) {
+      if (l.fallback) declared.add(l.item);
+      else if (!l.found) missing.set(l.item, `entry: ${b.name}`);
+    }
+    for (const l of c.dropLines) {
+      if (l.fallback) declared.add(l.item);
+      else if (!l.found && l.qty > 0 && !missing.has(l.item)) missing.set(l.item, b.name);
+    }
+  }
+  if (declared.size && detailed) {
+    console.log(`    ${leagueName ? leagueName + ": " : ""}priced from a declared fallback, not the API (${declared.size}): ${[...declared].sort().join(", ")}`);
   }
   const tag = leagueName ? `${leagueName}: ` : "";
   if (!missing.size) {

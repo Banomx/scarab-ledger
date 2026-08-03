@@ -44,7 +44,7 @@ function candidates(item) {
 }
 
 /* prices.json shape: { "Item Name": { c, lo, hi, n } } */
-export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c" } = {}) {
+export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c", divineRate = 0 } = {}) {
   const synthCache = {};
   let normIndex = null;
 
@@ -75,7 +75,17 @@ export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c" }
     return (synthCache[key] = { c: mean, lo: Math.min(...vals), hi: Math.max(...vals), n: vals.length, synthetic: true });
   }
 
-  return function resolve(item, aliases = []) {
+  /* A declared price for something poe.ninja doesn't list. Quoted in divine
+     where that's how it's traded, so it tracks the divine rate instead of
+     going stale the moment chaos moves. */
+  function fromFallback(fb) {
+    if (!fb) return null;
+    if (fb.chaos > 0) return fb.chaos;
+    if (fb.divine > 0 && divineRate > 0) return fb.divine * divineRate;
+    return null;
+  }
+
+  return function resolve(item, aliases = [], fallback = null) {
     // An override is always keyed on the name the dataset uses, so it wins
     // before any aliasing.
     if (priceOverrides[item] != null && isFinite(priceOverrides[item])) {
@@ -94,7 +104,11 @@ export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c" }
         }
       }
     }
-    if (!entry) return { chaos: 0, found: false, overridden: false, entry: null };
+    if (!entry) {
+      const fb = fromFallback(fallback);
+      if (fb != null) return { chaos: fb, found: true, overridden: false, entry: null, fallback: true };
+      return { chaos: 0, found: false, overridden: false, entry: null };
+    }
     const chaos = entry[priceBasis] ?? entry.c ?? 0;
     return { chaos, found: chaos > 0, overridden: false, entry };
   };
@@ -119,8 +133,8 @@ export function computeBoss(boss, resolve, settings = {}) {
 
   const entryLines = (boss.entry || []).map((e) => {
     const qty = num(entryOv[e.item], e.qty ?? 1);
-    const p = resolve(e.item, e.aliases);
-    return { ...e, qty, unit: p.chaos, total: p.chaos * qty, found: p.found, overridden: p.overridden };
+    const p = resolve(e.item, e.aliases, e.fallback);
+    return { ...e, qty, unit: p.chaos, total: p.chaos * qty, found: p.found, overridden: p.overridden, fallback: p.fallback };
   });
   const entryCost = entryLines.reduce((s, l) => s + l.total, 0);
   const entryUnknown = entryLines.some((l) => !l.found && l.qty > 0);
@@ -151,12 +165,12 @@ export function computeBoss(boss, resolve, settings = {}) {
         pct = rate;
         qty = rate * (scaled ? qMul : 1);
       }
-      const p = resolve(d.item, d.aliases);
+      const p = resolve(d.item, d.aliases, d.fallback);
       const label = d.label || (d.item.startsWith("@") ? SYNTHETIC[d.item]?.label : null) || d.item;
       return {
         key: dropKey(d), item: d.item, label, rate, pct, qty,
         unit: p.chaos, value: p.chaos * qty,
-        found: p.found, overridden: p.overridden, priceEntry: p.entry,
+        found: p.found, overridden: p.overridden, priceEntry: p.entry, fallback: p.fallback,
         kind: g.kind, groupId: g.id,
       };
     });

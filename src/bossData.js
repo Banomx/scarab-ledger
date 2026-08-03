@@ -35,12 +35,14 @@
    that has been removed from the game (the Breachlord fights, the Atziri
    apex, Aul, the Trialmaster, Lycia, Olroth, Saresh) is deliberately absent.
 
-   A handful of lines are marked "not listed on poe.ninja". The site renders a
-   page for every known item, but the API's overview endpoints only return items
-   that have confirmed price data — so a page existing does not mean a price
-   does. Verified with scripts/probe-price.mjs, which asks every endpoint family
-   and type directly. These show as `no price` in the UI, which is the honest
-   answer; set your own value if you want them counted.
+   `fallback: { divine: N }` (or `{ chaos: N }`) is a declared price, used only
+   when poe.ninja returns nothing for that name. The site renders a page for
+   every known item, but the overview endpoints only return items with confirmed
+   price data — so a page existing does not mean a price does (verified with
+   scripts/probe-price.mjs, which asks every endpoint family and type directly).
+   Divine is the better unit for these: it tracks the divine rate instead of
+   going stale the moment chaos moves. The UI badges them `set` so a hand-typed
+   number is never mistaken for a market price. Check them at league start.
 
    `ttk` from the ledger set is the WHOLE cycle (their KPH = 3600/ttk),
    so those bosses carry overhead 0. Bosses where I estimated the time
@@ -106,12 +108,12 @@ const SHAPER_FRAGS = guaranteed([
 ]);
 const SHAPER_EXTRA = [
   { item: "Shaper's Exalted Orb", chance: 0.12 },
-  { item: "Orb of Dominance", chance: 0.03 },   // not listed on poe.ninja — no confirmed sales
+  { item: "Orb of Dominance", chance: 0.03, fallback: { divine: 3.7 } },
   { item: "Voidstorm Support", label: "Voidstorm", chance: 0.02 },
 ];
 const SIRUS_EXTRA = [
   { item: "Awakener's Orb", chance: 0.20 },
-  { item: "Orb of Dominance", chance: 0.10 },   // not listed on poe.ninja — no confirmed sales
+  { item: "Orb of Dominance", chance: 0.10, fallback: { divine: 3.7 } },
   { item: "A Fate Worse Than Death", chance: 0.04 },
   { item: "Annihilation Support", chance: 0.02 },
 ];
@@ -159,7 +161,7 @@ export const BOSSES = [
       SHAPER_FRAGS,
       extra([
         { item: "Sublime Vision", label: "Unid Sublime Vision", chance: 0.02 },
-        { item: "Cosmic Reliquary Key", chance: 0.01 },   // not listed on poe.ninja — too few sales
+        { item: "Cosmic Reliquary Key", chance: 0.01, fallback: { divine: 9 } },
         ...SHAPER_EXTRA,
       ]),
     ],
@@ -187,9 +189,8 @@ export const BOSSES = [
       extra([
         { item: "Watcher's Eye", label: "Unid Watcher's Eye (2-mod)", chance: 0.40 },
         { item: "Elder's Exalted Orb", chance: 0.10 },
-        { item: "Orb of Dominance", chance: 0.02 },   // not listed on poe.ninja — no confirmed sales
+        { item: "Orb of Dominance", chance: 0.02, fallback: { divine: 3.7 } },
         { item: "Eldritch Blasphemy Support", chance: 0.02 },
-        { item: "Void of the Elements", chance: 0.01 },   // not listed on poe.ninja
       ]),
     ],
   },
@@ -214,7 +215,6 @@ export const BOSSES = [
         { item: "Elder's Exalted Orb", chance: 0.10 },
         { item: "Void Shockwave Support", label: "Void Shockwave", chance: 0.10 },
         { item: "Orb of Dominance", chance: 0.05 },
-        { item: "Void of the Elements", chance: 0.01 },   // not listed on poe.ninja
         { item: "Auspicious Ambitions", chance: 0.01 },
       ]),
     ],
@@ -237,11 +237,10 @@ export const BOSSES = [
         { item: "Shaper's Exalted Orb", chance: 0.20 },
         { item: "Elder's Exalted Orb", chance: 0.15 },
         { item: "Void Shockwave Support", label: "Void Shockwave", chance: 0.10 },
-        { item: "Orb of Dominance", chance: 0.08 },   // not listed on poe.ninja — no confirmed sales
+        { item: "Orb of Dominance", chance: 0.08, fallback: { divine: 3.7 } },
         { item: "Curio of Decay", chance: 0.05 },
         { item: "Sublime Vision", label: "Unid Sublime Vision", chance: 0.02 },
         { item: "Decaying Reliquary Key", chance: 0.015 },
-        { item: "Void of the Elements", chance: 0.01 },   // not listed on poe.ninja
         { item: "Auspicious Ambitions", chance: 0.01 },
       ]),
     ],
@@ -508,7 +507,7 @@ export const BOSSES = [
         { item: "Orb of Unravelling", chance: 0.33 },
         { item: "Bound by Destiny", label: "Unid Bound by Destiny", chance: 0.10 },
         { item: "Congregation Support", chance: 0.02 },
-        { item: "Reverent Reliquary Key", chance: 0.01 },   // not listed on poe.ninja — too few sales
+        { item: "Reverent Reliquary Key", chance: 0.01, fallback: { divine: 7 } },
       ]),
     ],
   },
@@ -805,7 +804,7 @@ export const BOSSES = [
         { item: "The Burden of Shadows", share: 0.05 },
       ]),
       extra([
-        { item: "Bursting Toad", chance: 0.10 },   // not listed on poe.ninja
+        { item: "Hextoad Support", label: "Bursting Toad", chance: 0.10 },
         { item: "Hexpass Support", chance: 0.10 },
       ]),
     ],

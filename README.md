@@ -172,8 +172,19 @@ category returning suspiciously few rows.
 Its most useful finding so far: **poe.ninja renders a page for every known item,
 but the overview endpoints only return items with confirmed price data.** A URL
 like `/poe1/economy/allflame/currency/orb-of-dominance` existing does not mean
-the API will price it. A few boss drops are in that state and are commented as
-such in `bossData.js`; they show `no price` rather than a made-up number.
+the API will price it.
+
+For the handful of drops in that state, a line can declare its own price:
+
+```js
+{ item: "Orb of Dominance", chance: 0.03, fallback: { divine: 3.7 } }
+```
+
+It is used *only* when poe.ninja returns nothing for that name — a real listing
+always wins — and `divine` is the better unit, since it tracks the divine rate
+instead of going stale the moment chaos moves. The UI badges these `set` so a
+hand-typed number is never mistaken for market data, and the snapshot lists them
+separately from genuine misses. Worth re-checking at league start.
 
 `test-boss.mjs` checks every pool's shares sum to ~1, that drop keys are unique
 per boss, and that EV reproduces the reference tool's numbers for the same rates
