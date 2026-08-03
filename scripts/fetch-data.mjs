@@ -262,33 +262,38 @@ function adaptExchange(j, nameRe = /scarab/i, divisor = null) {
 /* Sources, in priority order. A name found by an earlier source is not
    overwritten by a later one.
 
-   1. stash/current/currency/overview — what the site's Currency and Fragment
-      tabs show. Returns `chaosEquivalent`, i.e. chaos already, with no
-      conversion to get wrong, and carries the FULL list including things that
-      are never bulk-traded (Orb of Intention, curios, reliquary keys).
-   2. stash/current/item/overview — uniques, gems, divination cards, maps.
-      Also already chaos.
-   3. exchange/current/overview — bulk-traded goods, and the only home for
-      scarabs, astrolabes, omens, tattoos and embers. Quotes `primaryValue`
-      in a primary reference currency, so it needs the chaos calibration.
+   poe.ninja documents three families (https://poe.ninja/docs/api):
 
-   Getting this order wrong is what left Orb of Intention unpriced: the
-   exchange only lists what people trade in bulk, so anything else vanished. */
-const STASH_CURRENCY_TYPES = ["Currency", "Fragment"];
-const STASH_ITEM_TYPES = [
-  "UniqueWeapon", "UniqueArmour", "UniqueAccessory", "UniqueFlask", "UniqueJewel",
-  "UniqueMap", "UniqueRelic", "SkillGem", "DivinationCard", "Map", "Memory",
-];
+     exchange/current/overview        "Currency-exchange pricing for a
+                                      category" — the in-game bulk market.
+                                      This is the right source for anything
+                                      fungible: currency, fragments, scarabs,
+                                      astrolabes, omens, essences, oils,
+                                      divination cards.
+     stash/current/item/overview      "Stash-based item pricing" — things that
+                                      aren't fungible and are priced per
+                                      listing: uniques, gems, maps.
+     stash/current/currency/overview  "Stash-based currency pricing", PoE 1
+                                      only. Same goods as the exchange, priced
+                                      the older way. Kept purely as gap-fill.
+
+   The exchange type list below is exactly what the docs enumerate for PoE 1 —
+   guessing extra ones (Incubator, Vial, Catalyst...) just burns requests, and
+   leaving DivinationCard out of it is why cards went unpriced. */
 const EXCHANGE_TYPES = [
   "Currency", "Fragment", "Scarab", "Astrolabe", "Omen", "Tattoo",
-  "AllflameEmber", "Runegraft", "DjinnCoin", "Essence", "Fossil", "Resonator",
-  "Oil", "DeliriumOrb", "Incubator", "Vial", "Coffin", "Artifact", "Catalyst",
+  "AllflameEmber", "Runegraft", "DjinnCoin", "DivinationCard", "Artifact",
+  "Oil", "DeliriumOrb", "Fossil", "Resonator", "Essence",
 ];
-/* Anything the two documented families don't answer for. */
-const LEGACY_TYPES = [
-  "Essence", "Fossil", "Resonator", "Oil", "DeliriumOrb", "Incubator", "Vial",
-  "Coffin", "Artifact", "Tincture", "Memory", "UniqueRelic", "DivinationCard",
+const STASH_ITEM_TYPES = [
+  "UniqueWeapon", "UniqueArmour", "UniqueAccessory", "UniqueFlask", "UniqueJewel",
+  "SkillGem", "Map", "UniqueMap", "BlightedMap", "BlightRavagedMap",
 ];
+/* PoE 1 only, and the same goods the exchange already covers — used solely to
+   fill names the exchange didn't return. */
+const STASH_CURRENCY_TYPES = ["Currency", "Fragment"];
+/* Anything none of the documented families answer for. */
+const LEGACY_TYPES = ["UniqueRelic", "Memory", "Tincture", "Coffin", "Incubator", "Vial"];
 
 const exchUrl = (p, t) => `${NINJA}/poe1/api/economy/exchange/current/overview?league=${encodeURIComponent(p)}&type=${t}`;
 const stashItemUrl = (p, t) => `${NINJA}/poe1/api/economy/stash/current/item/overview?league=${encodeURIComponent(p)}&type=${t}`;
@@ -379,20 +384,17 @@ async function getPriceMap(lgParams, ctx) {
   };
   const tally = (t, n) => { if (n) counts[t] = (counts[t] || 0) + n; else missed.push(t); };
 
-  // 1. stash currency — the Currency and Fragment tabs, already in chaos
-  for (const t of STASH_CURRENCY_TYPES) {
-    const j = await tryJson(stashCurrUrl(p, t));
-    await sleep(DELAY_MS);
-    let n = 0;
-    for (const l of (j?.lines || [])) {
-      const name = l.currencyTypeName || l.name;
-      const chaos = l.chaosEquivalent ?? l.chaosValue;
-      if (name && chaos > 0) { add(0, name, chaos, true); n++; }
-    }
-    tally(`stash:${t}`, n);
+  // 1. exchange — the bulk market, and the documented home for everything
+  //    fungible. Needs the chaos calibration.
+  for (const t of EXCHANGE_TYPES) {
+    const j = (t === "Currency" && ctx?.currency) ? ctx.currency : await tryJson(exchUrl(p, t));
+    if (!(t === "Currency" && ctx?.currency)) await sleep(DELAY_MS);
+    const rows = exchangeRows(j, ctx?.dict);
+    for (const r of rows) add(0, r.name, r.primaryValue / div, true);
+    tally(`exch:${t}`, rows.length);
   }
 
-  // 2. stash items — uniques, gems, cards, maps; also already in chaos
+  // 2. stash items — uniques, gems, maps; priced per listing, already chaos
   for (const t of STASH_ITEM_TYPES) {
     const j = await tryJson(stashItemUrl(p, t));
     await sleep(DELAY_MS);
@@ -401,10 +403,10 @@ async function getPriceMap(lgParams, ctx) {
     for (const l of lines) {
       const chaos = l.chaosValue ?? l.chaosEquivalent;
       if (!l.name || !(chaos > 0)) continue;
-      add(1, l.name, chaos, isBaseVariant(t, l));
+      add(0, l.name, chaos, isBaseVariant(t, l));
       // Maps are labelled inconsistently — the tier 17s group under
       // "Nightmare Map" and baseType isn't always the display name.
-      if (t === "Map" && l.baseType && l.baseType !== l.name) add(1, l.baseType, chaos, true);
+      if (/Map$/.test(t) && l.baseType && l.baseType !== l.name) add(0, l.baseType, chaos, true);
       n++;
     }
     tally(t, n);
@@ -416,13 +418,21 @@ async function getPriceMap(lgParams, ctx) {
     }
   }
 
-  // 3. exchange — scarabs, astrolabes, omens, embers, and bulk gap-fill
-  for (const t of EXCHANGE_TYPES) {
-    const j = (t === "Currency" && ctx?.currency) ? ctx.currency : await tryJson(exchUrl(p, t));
-    if (!(t === "Currency" && ctx?.currency)) await sleep(DELAY_MS);
-    const rows = exchangeRows(j, ctx?.dict);
-    for (const r of rows) add(2, r.name, r.primaryValue / div, true);
-    tally(`exch:${t}`, rows.length);
+  // 3. stash currency — gap-fill only, for names the exchange didn't carry
+  for (const t of STASH_CURRENCY_TYPES) {
+    const j = await tryJson(stashCurrUrl(p, t));
+    await sleep(DELAY_MS);
+    let n = 0, filled = 0;
+    for (const l of (j?.lines || [])) {
+      const name = l.currencyTypeName || l.name;
+      const chaos = l.chaosEquivalent ?? l.chaosValue;
+      if (!name || !(chaos > 0)) continue;
+      if (!acc[name]) filled++;
+      add(1, name, chaos, true);
+      n++;
+    }
+    tally(`stash:${t}`, n);
+    if (filled) console.log(`    stash ${t} filled ${filled} name(s) the exchange did not list`);
   }
 
   // 4. legacy, for anything the documented families never answered
