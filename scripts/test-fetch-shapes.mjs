@@ -69,8 +69,12 @@ const STASH_ITEMS = {
   ],
   UniqueArmour: [
     { id: 4, name: "Shaper's Touch", chaosValue: 12, links: 0 },
-    { id: 5, name: "Atziri's Splendour", chaosValue: 40, variant: "Armour" },
-    { id: 6, name: "Atziri's Splendour", chaosValue: 900, variant: "ES/Eva" },
+    // Every listing is a roll variant, and they run three orders apart. A drop
+    // is a random roll, so the floor is what a random one is worth — the median
+    // (40) reads as if half of them hit the good bases.
+    { id: 5, name: "Atziri's Splendour", chaosValue: 8, variant: "Armour" },
+    { id: 6, name: "Atziri's Splendour", chaosValue: 40, variant: "Armour/ES" },
+    { id: 7, name: "Atziri's Splendour", chaosValue: 900, variant: "ES/Eva" },
   ],
   SkillGem: [
     { id: 11, name: "Awakened Spell Echo Support", chaosValue: 700, gemLevel: 1, gemQuality: 0, corrupted: false },
@@ -204,10 +208,14 @@ for (const [n, v] of [["Pacifism Support", 1050], ["Awakened Spell Echo Support"
      `${n} should be ${v} on all three bases, got ${JSON.stringify(p)}`);
 }
 // ...but a unique whose listings are all genuine roll variants keeps its spread.
-ok(near(P["Atziri's Splendour"]?.lo, 40) && near(P["Atziri's Splendour"]?.hi, 900),
+ok(near(P["Atziri's Splendour"]?.lo, 8) && near(P["Atziri's Splendour"]?.hi, 900),
    `roll-variant spread lost: ${JSON.stringify(P["Atziri's Splendour"])}`);
 ok(near(P["Awakened Spell Echo Support"]?.c, 700), `gem base variant ${P["Awakened Spell Echo Support"]?.c}`);
-ok(near(P["Atziri's Splendour"]?.c, 40), `two-variant unique should take the cheaper: ${P["Atziri's Splendour"]?.c}`);
+ok(near(P["Atziri's Splendour"]?.c, 8),
+   `a roll-variant unique must quote its floor, not the median: ${JSON.stringify(P["Atziri's Splendour"])}`);
+// The rule is specific to items whose listings are ALL roll variants. Where a
+// base listing exists it still wins outright, floor or not.
+ok(near(P["Starforge"]?.c, 4200), `base listing must win over the 6L: ${JSON.stringify(P["Starforge"])}`);
 ok(near(P["Nightmare Map"]?.c, 32), `T17 map entry cost ${P["Nightmare Map"]?.c}`);
 
 // the scarab tab shares the calibration, so it must survive a non-chaos primary too

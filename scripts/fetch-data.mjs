@@ -488,7 +488,7 @@ async function getPriceMap(lgParams, ctx) {
 
   // Lower-middle median: with an even number of listings (a unique with two
   // variants) the shared median() helper returns the dearer one, biasing every
-  // EV upward. Cheaper side wins; the UI has a "Best roll" toggle.
+  // EV upward. Cheaper side wins.
   const midLow = (arr) => {
     const a = arr.filter((v) => isFinite(v) && v > 0).sort((x, y) => x - y);
     return a.length ? a[Math.ceil(a.length / 2) - 1] : 0;
@@ -505,8 +505,17 @@ async function getPriceMap(lgParams, ctx) {
     // Where base variants exist they ARE the drop; where none do (every listing
     // carries a roll variant) the full spread is the real spread.
     const pick = e.base.length ? e.base : e.all;
+    // ...and when every listing is a roll variant, the drop is a RANDOM one, so
+    // the floor is the honest quote, not the middle. poe.ninja's variant list
+    // isn't weighted by how often each roll occurs, and the dear variants are
+    // dear precisely because they are the rare rolls — a median over the list
+    // reads as if half your drops hit them. Atziri's Splendour is the case in
+    // point: it sells for single-digit chaos, but its list runs from that to
+    // several hundred, and the median put it over 40c inside Uber Atziri's
+    // pool, where it carries 39% of the loot share.
+    const typical = e.base.length ? midLow(pick) : Math.min(...pick);
     prices[name] = {
-      c: Math.round(midLow(pick) * 100) / 100,
+      c: Math.round(typical * 100) / 100,
       lo: Math.round(Math.min(...pick) * 100) / 100,
       hi: Math.round(Math.max(...pick) * 100) / 100,
       n: pick.length,
