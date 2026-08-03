@@ -27,6 +27,19 @@ export const ACTIVE_KEY = "sl.boss.activeProfile.v2";
    (Catarina's three Cinderswallow Urns), and those need separate rows. */
 export const dropKey = (d) => d.key || d.item;
 
+/* Every item name a boss touches — its entry cost and every drop line.
+   Price overrides are stored by item name and shared across bosses (a Divine
+   Orb is a Divine Orb wherever it lands), so "reset this boss" needs this list
+   to know which of them belong to the boss you are resetting. */
+export function bossItems(boss) {
+  const out = new Set();
+  for (const e of (boss?.entry || [])) if (e.item) out.add(e.item);
+  for (const g of (boss?.groups || [])) {
+    for (const d of (g.drops || [])) if (d.item) out.add(d.item);
+  }
+  return out;
+}
+
 /* ---------- price resolution ---------- */
 
 /* Item names have to match poe.ninja's exactly, and they don't always: the

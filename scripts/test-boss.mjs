@@ -2,7 +2,7 @@
    Run: node scripts/test-boss.mjs */
 
 import { BOSSES, SYNTHETIC, GROUP_ORDER } from "../src/bossData.js";
-import { makeResolver, computeBoss, profitChance, sanitizeProfile, dropKey } from "../src/bossProfit.js";
+import { makeResolver, computeBoss, profitChance, sanitizeProfile, dropKey, bossItems } from "../src/bossProfit.js";
 
 let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log("FAIL:", m); } };
@@ -318,6 +318,35 @@ for (const b of BOSSES) {
   ok(isFinite(c.profitPerHour) && isFinite(c.gross) && isFinite(c.net), `${b.id}: non-finite result`);
   ok(c.dropLines.length === b.groups.reduce((s, g) => s + g.drops.length, 0), `${b.id}: dropped a line`);
 }
+
+/* ---------------- reset scope ----------------
+   "Reset this boss" clears p.bosses[id] AND the price overrides for that
+   boss's items. Price overrides are keyed by item name, not by boss, so the
+   button needs bossItems() to know which of them are its own; without that it
+   cleared the kill time and left every edited price behind, which read as the
+   button doing nothing. */
+for (const b of BOSSES) {
+  const items = bossItems(b);
+  const expect = new Set([
+    ...(b.entry || []).map((e) => e.item),
+    ...b.groups.flatMap((g) => g.drops.map((d) => d.item)),
+  ].filter(Boolean));
+  ok(items.size === expect.size && [...expect].every((i) => items.has(i)),
+     `${b.id}: bossItems missed ${[...expect].filter((i) => !items.has(i)).join(", ") || "nothing, but sizes differ"}`);
+  ok(items.size > 0, `${b.id}: no items at all`);
+}
+ok(bossItems(undefined).size === 0, "bossItems(undefined) must not throw");
+ok(bossItems({}).size === 0, "bossItems({}) must not throw");
+
+/* The entry cost is an override target too — resetting a boss whose only edit
+   was its entry price has to clear that, or the button is a no-op again. */
+{
+  const withEntry = BOSSES.find((b) => (b.entry || []).length);
+  ok(withEntry && bossItems(withEntry).has(withEntry.entry[0].item),
+     "entry-cost items must be in the reset scope");
+}
+
+console.log(`reset scope: ${BOSSES.length} bosses, ${new Set(BOSSES.flatMap((b) => [...bossItems(b)])).size} distinct items`);
 
 console.log(fails ? `\n${fails} FAILURES` : "\nAll checks passed.");
 process.exit(fails ? 1 : 0);

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { BOSSES, GROUP_ORDER, GROUP_TONES } from "./bossData.js";
 import {
   makeResolver, computeBoss, profitChance, loadProfiles, saveProfiles, loadActive, saveActive,
-  defaultProfile, sanitizeProfile, uniqueName,
+  defaultProfile, sanitizeProfile, uniqueName, bossItems,
 } from "./bossProfit.js";
 
 /* ================================================================
@@ -193,6 +193,17 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   const maxProfit = Math.max(1, ...rows.map((r) => Math.abs(r.profitPerHour)));
 
   const current = rows.find((r) => r.boss.id === selected) || rows[0];
+
+  /* Does the open boss actually have anything to reset? A button that looks
+     live but does nothing is indistinguishable from a broken one, so it goes
+     disabled when there is no override to clear. */
+  const bossDirty = useMemo(() => {
+    if (!current) return false;
+    if (Object.keys((profile?.bosses || {})[current.boss.id] || {}).length) return true;
+    const po = profile?.priceOverrides || {};
+    for (const item of bossItems(current.boss)) if (po[item] != null) return true;
+    return false;
+  }, [current, profile]);
   const chance = useMemo(
     () => (current && current.gross > 0 ? profitChance(current, runs, 6000) : null),
     [current, runs]
@@ -254,11 +265,23 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
     });
   }, [mutate]);
 
+  /* "Reset this boss" has to clear BOTH kinds of override, or it looks broken:
+     kill times and drop rates live under p.bosses[id], but edited prices live
+     in p.priceOverrides keyed by item name, because a price belongs to an item
+     rather than to a boss. Clearing only the first left every price edit in
+     place, which is what made the button read as a no-op.
+     Prices being shared is deliberate and it cuts both ways: correcting Divine
+     Orb once fixes it on every boss that drops one, and resetting any of those
+     bosses puts it back to the market price everywhere. */
   const resetBoss = useCallback((bossId) => {
+    const items = bossItems(BOSSES.find((b) => b.id === bossId));
     mutate((p) => {
       const next = { ...p.bosses };
       delete next[bossId];
+      const po = { ...p.priceOverrides };
+      for (const item of items) delete po[item];
       p.bosses = next;
+      p.priceOverrides = po;
       return p;
     });
   }, [mutate]);
@@ -540,7 +563,10 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                         : " · rates are a placeholder"}
                     </div>
                   </div>
-                  <button className="st-close" onClick={() => resetBoss(current.boss.id)}>Reset this boss</button>
+                  <button className="st-close" onClick={() => resetBoss(current.boss.id)} disabled={!bossDirty}
+                    title={bossDirty
+                      ? "Clear this boss's kill time, drop-rate and price edits. Prices are shared, so any other boss dropping the same item goes back to the market price too."
+                      : "Nothing overridden on this boss"}>Reset this boss</button>
                 </div>
 
                 {current.boss.note && <p className="bp-note">{current.boss.note}</p>}

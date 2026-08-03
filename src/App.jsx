@@ -1398,6 +1398,8 @@ const css = `
   padding: 5px 12px; cursor: pointer; font-family: inherit; font-size: 12.5px;
 }
 .st-close:hover { color: #ead9a8; border-color: #8d7442; }
+.st-close:disabled { opacity: 0.42; cursor: default; }
+.st-close:disabled:hover { color: #a99c7f; border-color: #5a4d33; }
 .st-panel-body { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 0; }
 @media (max-width: 860px) { .st-panel-body { grid-template-columns: 1fr; } }
 .st-chart { padding: 12px 8px 8px 4px; min-width: 0; }
