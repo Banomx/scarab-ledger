@@ -1227,7 +1227,10 @@ const css = `
 .bp-item-main { flex: 1; min-width: 0; }
 .bp-item-name { display: flex; align-items: center; gap: 7px; color: #e5d9b8; }
 .bp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); flex-shrink: 0; }
-.bp-item-meta { display: block; font-size: 11px; color: #7d7462; margin: 2px 0 5px 15px; }
+.bp-item-meta { display: block; font-size: 11px; color: #7d7462; margin: 2px 0 5px 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bp-safe { font-style: normal; margin-left: 6px; padding: 0 4px; border-radius: 3px; font-size: 10.5px; white-space: nowrap; }
+.bp-safe.ok { color: #a5d48f; background: rgba(79, 122, 69, 0.22); }
+.bp-safe.risk { color: #d9a86a; background: rgba(122, 92, 51, 0.22); }
 .bp-meter { display: block; height: 5px; background: #26211a; border-radius: 999px; overflow: hidden; margin-left: 15px; }
 .bp-meter i { display: block; height: 100%; border-radius: 999px; }
 .bp-meter i.up { background: linear-gradient(90deg, #4e7a45, #8fd47f); }

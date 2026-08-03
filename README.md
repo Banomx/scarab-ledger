@@ -124,10 +124,13 @@ Area item quantity matters on the Eldritch fights — regular Exarch and Eater
 default to 70%, Black Star and Infinite Hunger to 50%, which is what the
 reference tool assumes. It's an editable field on those bosses.
 
-Alongside EV there's **profit in 10 runs**: a seeded Monte Carlo of ten
-consecutive runs, reporting how often they finish in the black. EV alone hides
-variance — a boss can be solidly +EV on the back of a 1% drop and still lose you
-money most sessions.
+Alongside EV there's **profit in N runs**: a seeded Monte Carlo reporting how
+often N consecutive runs finish in the black. EV alone hides variance — a boss
+can be solidly +EV on the back of a 1% drop and still lose you money most
+sessions. The run count is configurable (default 10), and **Sort by → Safest**
+ranks every boss by that probability rather than by expected value, breaking
+ties on profit/hour. Each row carries its own `N% safe` badge, so the trade-off
+between a big average and a reliable one is visible without switching sort.
 
 - **`src/bossData.js`** is the dataset: one block per boss. Add a boss by copying
   a block; no other file changes. Lines carry an optional `label` (when the

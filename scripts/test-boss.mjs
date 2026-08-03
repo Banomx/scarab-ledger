@@ -212,7 +212,14 @@ ok(cSure === 1, `guaranteed-profit boss should be 1.0, got ${cSure}`);
 ok(cLotto > 0.05 && cLotto < 0.75, `lottery boss should be uncertain, got ${cLotto}`);
 ok(computeBoss(lottery, rc).net > 0, "lottery boss is +EV despite low win rate");
 ok(profitChance(computeBoss(lottery, rc), 10, 3000) === cLotto, "profitChance must be deterministic");
-console.log(`profit chance: guaranteed ${(cSure*100).toFixed(0)}%, lottery ${(cLotto*100).toFixed(0)}% (EV positive either way)`);
+// More runs pull a +EV boss toward certainty — that's the whole point of
+// letting the run count be configured.
+const lottoComputed = computeBoss(lottery, rc);
+const c1 = profitChance(lottoComputed, 1, 3000);
+const c50 = profitChance(lottoComputed, 50, 3000);
+ok(c50 > c1, `50 runs (${c50}) should be safer than 1 run (${c1}) for a +EV boss`);
+ok(c1 >= 0 && c50 <= 1, "chance stays a probability");
+console.log(`profit chance: guaranteed ${(cSure*100).toFixed(0)}%, lottery ${(cLotto*100).toFixed(0)}% over 10 runs -> ${(c1*100).toFixed(0)}% over 1, ${(c50*100).toFixed(0)}% over 50`);
 
 /* ---------------- profile sanitising ---------------- */
 const dirty = sanitizeProfile({

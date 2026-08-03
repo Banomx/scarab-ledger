@@ -111,6 +111,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   const [selected, setSelected] = useState(BOSSES[0].id);
   const [basis, setBasis] = useState("c");
   const [sortKey, setSortKey] = useState("profitPerHour");
+  const [runs, setRuns] = useState(10);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importMsg, setImportMsg] = useState("");
@@ -156,11 +157,27 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
     [resolve, profile]
   );
 
+  /* Variance matters as much as EV — a boss can be +EV entirely on a 1% drop
+     and still lose money most nights. Simulated for every boss so the list can
+     be ranked by it, at a lower trial count to stay responsive; the open boss
+     is re-run at full precision below. */
+  const safety = useMemo(() => {
+    const out = {};
+    for (const r of rows) out[r.boss.id] = r.gross > 0 ? profitChance(r, runs, 1200) : null;
+    return out;
+  }, [rows, runs]);
+
   const visible = useMemo(() => {
     let list = rows;
     if (groupFilter !== "all") list = list.filter((r) => r.boss.group === groupFilter);
     if (uberFilter !== "all") list = list.filter((r) => !!r.boss.uber === (uberFilter === "uber"));
     return list.slice().sort((a, b) => {
+      if (sortKey === "safety") {
+        // Certainty first, then size of the win — a coin-flip boss that pays
+        // more is still the better of two equally safe ones.
+        const sa = safety[a.boss.id] ?? -1, sb = safety[b.boss.id] ?? -1;
+        return sb - sa || b.profitPerHour - a.profitPerHour;
+      }
       if (sortKey === "name") return a.boss.name.localeCompare(b.boss.name);
       if (sortKey === "group") {
         const d = GROUP_ORDER.indexOf(a.boss.group) - GROUP_ORDER.indexOf(b.boss.group);
@@ -168,16 +185,14 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
       }
       return b[sortKey] - a[sortKey];
     });
-  }, [rows, sortKey, groupFilter, uberFilter]);
+  }, [rows, sortKey, groupFilter, uberFilter, safety]);
 
   const maxProfit = Math.max(1, ...rows.map((r) => Math.abs(r.profitPerHour)));
-  const current = rows.find((r) => r.boss.id === selected) || rows[0];
 
-  /* Variance matters as much as EV — a boss can be +EV entirely on a 1%
-     drop and still lose money most nights. Only the open boss is simulated. */
+  const current = rows.find((r) => r.boss.id === selected) || rows[0];
   const chance = useMemo(
-    () => (current && current.gross > 0 ? profitChance(current, 10, 4000) : null),
-    [current]
+    () => (current && current.gross > 0 ? profitChance(current, runs, 6000) : null),
+    [current, runs]
   );
 
   /* ---- profile mutation ---- */
@@ -459,10 +474,16 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                 {groupsPresent.map((g) => <option key={g} value={g}>{g}</option>)}
               </select>
             </label>
+            <label className="st-ctl" title="How many consecutive runs the profit chance is simulated over">
+              <span>Runs simulated</span>
+              <NumInput value={runs} min={1} width={54}
+                onCommit={(v) => setRuns(Math.max(1, Math.min(500, Math.round(v))))} />
+            </label>
             <label className="st-ctl">
               <span>Sort by</span>
               <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
                 <option value="profitPerHour">Profit / hour</option>
+                <option value="safety">Safest (chance of profit)</option>
                 <option value="net">Profit / kill</option>
                 <option value="gross">Drop value / kill</option>
                 <option value="entryCost">Entry cost</option>
@@ -492,6 +513,12 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                       </span>
                       <span className="bp-item-meta">
                         {r.boss.group} · {fmtTime(r.runSeconds)}/run · {r.runsPerHour.toFixed(1)} kph
+                        {safety[r.boss.id] != null && (
+                          <em className={`bp-safe ${safety[r.boss.id] >= 0.5 ? "ok" : "risk"}`}
+                            title={`Simulated: ${Math.round(safety[r.boss.id] * 100)}% of ${runs}-run stretches finish in profit`}>
+                            {Math.round(safety[r.boss.id] * 100)}% safe
+                          </em>
+                        )}
                       </span>
                       <span className="bp-meter"><i className={r.profitPerHour >= 0 ? "up" : "down"} style={{ width: `${w}%` }} /></span>
                     </span>
@@ -524,10 +551,10 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                   <Stat label="Entry" value={current.entryCost ? money(current.entryCost) : "free"} />
                   <Stat label="EV / kill" value={signed(current.net)} tone={current.net >= 0 ? "pos" : "neg"} />
                   <Stat label="Profit / hour" value={signed(current.profitPerHour)} tone={current.profitPerHour >= 0 ? "pos" : "neg"} big />
-                  <Stat label="Profit in 10 runs"
+                  <Stat label={`Profit in ${runs} runs`}
                     value={chance == null ? "—" : `${Math.round(chance * 100)}%`}
                     tone={chance == null ? null : chance >= 0.5 ? "pos" : "warn"}
-                    title="Simulated: how often 10 consecutive runs finish in the black. EV alone hides the variance." />
+                    title={`Simulated over ${runs} consecutive runs: how often the total finishes in the black. EV alone hides the variance.`} />
                 </div>
 
                 <div className="bp-timing">
