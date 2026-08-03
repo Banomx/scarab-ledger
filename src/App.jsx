@@ -1305,4 +1305,68 @@ const css = `
 .bp-price-reset { background: none; border: none; color: #6f6656; cursor: pointer; font-size: 12px; padding: 0 2px; }
 .bp-price-reset:hover { color: #ead9a8; }
 .bp-foot { margin: 14px 16px 0; font-size: 11.5px; color: #6f6656; line-height: 1.55; }
+.bp-views {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;
+  border-bottom: 1px solid #3a332a; padding-bottom: 10px;
+}
+.bp-views > button {
+  background: #211c15; color: #a99c7f; border: 1px solid #5a4d33; border-radius: 5px;
+  padding: 7px 14px; cursor: pointer; font-family: inherit; font-size: 13px;
+}
+.bp-views > button.on { background: #4a3c20; color: #f0e2b6; border-color: #8d7442; }
+.bp-views > button:hover { color: #ead9a8; }
+.bp-views-active { font-size: 12px; color: #7d7462; margin-left: 6px; }
+.bp-views-active strong { color: #c4b795; font-weight: normal; }
+.bp-views .bp-reset { margin-left: auto; }
+.bp-manage { display: block; }
+.bp-manage-head { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; }
+.bp-manage-head h3 { margin: 0 6px 0 0; font-size: 17px; color: #ead9a8; letter-spacing: 0.04em; }
+.bp-manage-head button, .bp-prof-btns button, .bp-prof-foot button {
+  background: #211c15; color: #a99c7f; border: 1px solid #5a4d33; border-radius: 5px;
+  padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 12.5px;
+}
+.bp-manage-head button:hover, .bp-prof-btns button:hover, .bp-prof-foot button:hover { color: #ead9a8; border-color: #8d7442; }
+.bp-primary { background: #4a3c20 !important; color: #f0e2b6 !important; border-color: #8d7442 !important; }
+.bp-danger:hover { color: #d47f7f !important; border-color: #7a4545 !important; }
+.bp-prof { border: 1px solid #3a332a; border-radius: 8px; background: #1d1811; margin-bottom: 10px; }
+.bp-prof.active { border-color: #6b5730; }
+.bp-prof.editing { border-color: #8d7442; }
+.bp-prof-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 14px; }
+.bp-prof-title { font-size: 15px; color: #ead9a8; font-weight: normal; display: inline-flex; align-items: center; gap: 8px; }
+.bp-prof-title em {
+  font-style: normal; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: #8fd47f; border: 1px solid #4e7a45; border-radius: 3px; padding: 1px 5px;
+}
+.bp-prof-name {
+  background: #17130e; color: #ead9a8; border: 1px solid #5a4d33; border-radius: 5px;
+  padding: 6px 10px; font-family: inherit; font-size: 14px; width: min(240px, 50vw);
+}
+.bp-prof-meta { font-size: 12px; color: #7d7462; }
+.bp-prof-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.bp-prof-hint { padding: 0 14px 10px; font-size: 12px; color: #8d8371; line-height: 1.5; }
+.bp-prof-hint code { color: #c4b795; }
+.bp-prof-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px; padding: 0 14px 4px; align-items: start;
+}
+.bp-prof-section { border: 1px solid #2c261d; border-radius: 6px; background: #1a160f; overflow: hidden; }
+.bp-prof-section-head {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #a99c7f;
+  padding: 7px 10px; border-bottom: 1px solid #2c261d; border-left: 3px solid var(--tone);
+}
+.bp-prof-cell {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 10px; font-size: 12.5px; color: #cfc3a2; border-bottom: 1px solid #221d16;
+}
+.bp-prof-cell:last-child { border-bottom: none; }
+.bp-prof-cell > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-prof-foot { padding: 10px 14px 14px; }
+.bp-time {
+  background: #17130e; color: #e5d9b8; border: 1px solid #4a4234; border-radius: 4px;
+  padding: 4px 6px; font-family: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums;
+  text-align: center; flex-shrink: 0;
+}
+.bp-time:focus-visible { outline: 2px solid #d8b355; outline-offset: 0; }
+.bp-time.custom { border-color: #8d7442; color: #f0dfa8; background: #241d13; }
+.bp-timing label { gap: 7px; }
 `;

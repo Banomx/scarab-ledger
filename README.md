@@ -141,7 +141,14 @@ money most sessions.
   where the drops are documented but no rate is published anywhere (badged `est`
   in the UI). A `wiki` value is also supported for adding a boss from poewiki.
 - Everything is editable — times, rates, weights, quantity, entry counts and
-  prices. Edits live in **TTK profiles** in `localStorage`, exportable as JSON.
+  prices. Edits live in **TTK profiles** saved to `localStorage`.
+- The **TTK profiles** view manages those profiles: create, duplicate, rename,
+  export/import as JSON, switch which one is in use, and edit every boss's kill
+  time in one grid laid out by content type. Times are `m:ss` (a plain number is
+  read as seconds); fields that differ from the default are highlighted, and
+  clearing a profile's overrides puts every boss back to the built-in time.
+- Default kill times match the reference tool's own TTK profile, so the kills-per-hour
+  figures line up out of the box.
 - Prices come from `public/data/<league>/prices.json`, written by the same
   workflow that snapshots scarabs. Items with no poe.ninja listing are flagged
   `no price` rather than silently counted as zero.
