@@ -169,6 +169,12 @@ price" becomes a fact instead of a guess. It writes nothing. `--counts` skips
 the search and just prints the per-endpoint totals, which is how you spot a
 category returning suspiciously few rows.
 
+Its most useful finding so far: **poe.ninja renders a page for every known item,
+but the overview endpoints only return items with confirmed price data.** A URL
+like `/poe1/economy/allflame/currency/orb-of-dominance` existing does not mean
+the API will price it. A few boss drops are in that state and are commented as
+such in `bossData.js`; they show `no price` rather than a made-up number.
+
 `test-boss.mjs` checks every pool's shares sum to ~1, that drop keys are unique
 per boss, and that EV reproduces the reference tool's numbers for the same rates
 and prices (including quantity scaling and the weighted gem group).

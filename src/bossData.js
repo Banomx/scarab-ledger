@@ -35,9 +35,12 @@
    that has been removed from the game (the Breachlord fights, the Atziri
    apex, Aul, the Trialmaster, Lycia, Olroth, Saresh) is deliberately absent.
 
-   A handful of lines are marked "not listed on poe.ninja": the item drops,
-   but too rarely to have a price. They show as `no price` in the UI, which is
-   the honest answer — set your own value if you want them counted.
+   A handful of lines are marked "not listed on poe.ninja". The site renders a
+   page for every known item, but the API's overview endpoints only return items
+   that have confirmed price data — so a page existing does not mean a price
+   does. Verified with scripts/probe-price.mjs, which asks every endpoint family
+   and type directly. These show as `no price` in the UI, which is the honest
+   answer; set your own value if you want them counted.
 
    `ttk` from the ledger set is the WHOLE cycle (their KPH = 3600/ttk),
    so those bosses carry overhead 0. Bosses where I estimated the time
@@ -103,12 +106,12 @@ const SHAPER_FRAGS = guaranteed([
 ]);
 const SHAPER_EXTRA = [
   { item: "Shaper's Exalted Orb", chance: 0.12 },
-  { item: "Orb of Dominance", chance: 0.03 },
+  { item: "Orb of Dominance", chance: 0.03 },   // not listed on poe.ninja — no confirmed sales
   { item: "Voidstorm Support", label: "Voidstorm", chance: 0.02 },
 ];
 const SIRUS_EXTRA = [
   { item: "Awakener's Orb", chance: 0.20 },
-  { item: "Orb of Dominance", chance: 0.10 },
+  { item: "Orb of Dominance", chance: 0.10 },   // not listed on poe.ninja — no confirmed sales
   { item: "A Fate Worse Than Death", chance: 0.04 },
   { item: "Annihilation Support", chance: 0.02 },
 ];
@@ -184,7 +187,7 @@ export const BOSSES = [
       extra([
         { item: "Watcher's Eye", label: "Unid Watcher's Eye (2-mod)", chance: 0.40 },
         { item: "Elder's Exalted Orb", chance: 0.10 },
-        { item: "Orb of Dominance", chance: 0.02 },
+        { item: "Orb of Dominance", chance: 0.02 },   // not listed on poe.ninja — no confirmed sales
         { item: "Eldritch Blasphemy Support", chance: 0.02 },
         { item: "Void of the Elements", chance: 0.01 },   // not listed on poe.ninja
       ]),
@@ -234,7 +237,7 @@ export const BOSSES = [
         { item: "Shaper's Exalted Orb", chance: 0.20 },
         { item: "Elder's Exalted Orb", chance: 0.15 },
         { item: "Void Shockwave Support", label: "Void Shockwave", chance: 0.10 },
-        { item: "Orb of Dominance", chance: 0.08 },
+        { item: "Orb of Dominance", chance: 0.08 },   // not listed on poe.ninja — no confirmed sales
         { item: "Curio of Decay", chance: 0.05 },
         { item: "Sublime Vision", label: "Unid Sublime Vision", chance: 0.02 },
         { item: "Decaying Reliquary Key", chance: 0.015 },

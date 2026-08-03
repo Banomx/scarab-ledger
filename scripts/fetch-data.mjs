@@ -290,18 +290,24 @@ const STASH_ITEM_TYPES = [
   "SkillGem", "Map", "UniqueMap", "BlightedMap", "BlightRavagedMap",
   // Boss entry costs live here: the Incandescent / Screaming / Polaric /
   // Writhing Invitations are all "Invitation".
-  "Invitation", "Incubator", "Vial", "Memory", "Beast", "Coffin", "Tincture",
-  "UniqueRelic",
+  "Invitation", "Vial", "Beast", "UniqueRelic",
 ];
+/* Probed 2026-08 on Allflame and served by nothing, in any family: Incubator,
+   Memory, Coffin, Tincture, Catalyst, and both legacy paths. Re-check with
+   scripts/probe-price.mjs before adding any of them back. BaseType answers
+   with ~18k rows of item bases and is deliberately not fetched. */
 /* PoE 1 only, and the same goods the exchange already covers — used solely to
    fill names the exchange didn't return. */
 const STASH_CURRENCY_TYPES = ["Currency", "Fragment"];
 /* The published type lists have disagreed with reality more than once, so any
    type that comes back empty from its documented family is retried against the
    other one before we give up on it. */
-const CROSS_CHECK = ["Invitation", "Incubator", "Vial", "Memory", "Beast", "Coffin", "Tincture", "UniqueRelic"];
+const CROSS_CHECK = ["Invitation", "Vial", "Beast", "UniqueRelic"];
 /* Last resort: the pre-migration endpoint. */
-const LEGACY_TYPES = ["UniqueRelic", "Memory", "Tincture", "Coffin", "Incubator", "Vial", "Invitation"];
+/* Both legacy families answered nothing when probed, but the fallback only
+   fires for types the documented families left empty, so it costs nothing
+   until the new API moves again. */
+const LEGACY_TYPES = ["UniqueRelic", "Vial", "Invitation"];
 
 const exchUrl = (p, t) => `${NINJA}/poe1/api/economy/exchange/current/overview?league=${encodeURIComponent(p)}&type=${t}`;
 const stashItemUrl = (p, t) => `${NINJA}/poe1/api/economy/stash/current/item/overview?league=${encodeURIComponent(p)}&type=${t}`;
