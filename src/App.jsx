@@ -79,6 +79,20 @@ const GROUPS = {
   Universal: ["Scarab of Monstrous Lineage", "Scarab of Adversaries", "Scarab of Divinity", "Scarab of Hunted Traitors", "Scarab of Stability", "Scarab of Wisps", "Scarab of the Sinistral", "Scarab of the Dextral", "Scarab of Radiant Storms"],
 };
 
+/* Search terms are ANDed, so "breach hive" and "hive breach" both find the
+   same scarab and word order doesn't matter. */
+function searchTerms(q) {
+  return (q || "").toLowerCase().split(/\s+/).filter(Boolean);
+}
+function matchesAll(name, terms) {
+  const n = name.toLowerCase();
+  return terms.every((t) => n.includes(t));
+}
+/* "Breach Scarab of the Hive" -> "the Hive"; base scarabs keep their full name. */
+function shortScarab(name) {
+  return name.replace(/^.*Scarab( of)? ?/, "").trim() || name;
+}
+
 /* Assign any scarab name (incl. ones poe.ninja adds later) to a group. */
 function groupForName(name) {
   for (const [g, list] of Object.entries(GROUPS)) if (list.includes(name)) return g;
@@ -390,6 +404,7 @@ export default function ScarabTracker() {
   const [catHist, setCatHist] = useState({});             // tab key -> {name: [{day,value}]}
   const [catSelected, setCatSelected] = useState({});     // tab key -> selected item name
   const [catFilter, setCatFilter] = useState({});         // tab key -> filter text
+  const [scarabFilter, setScarabFilter] = useState("");   // search box on the Scarabs tab
   const [dragSel, setDragSel] = useState(null);           // {start, end, active} in day units
   const [rateHistory, setRateHistory] = useState([]);     // [{day, rate}] chaos per divine
   const [realMode, setRealMode] = useState(false);        // read every % in divine terms
@@ -622,6 +637,23 @@ export default function ScarabTracker() {
 
   const openGroupData = openGroup ? groups.find((g) => g.name === openGroup) : null;
 
+  /* Search on the Scarabs tab. The grid is mechanics, not scarabs, so a query
+     keeps a mechanic when the mechanic itself matches OR any of its scarabs do,
+     and the card reports which ones hit. `groups` stays unfiltered on purpose —
+     Popular farms reads it and shouldn't follow the search box. */
+  const scarabTerms = useMemo(() => searchTerms(scarabFilter), [scarabFilter]);
+  const visibleGroups = useMemo(() => {
+    const ranked = groups.map((g, i) => ({ ...g, rank: sortDir === "desc" ? i + 1 : groups.length - i }));
+    if (!scarabTerms.length) return ranked.map((g) => ({ ...g, matches: [] }));
+    return ranked
+      .map((g) => {
+        const matches = g.members.filter((m) => matchesAll(m.name, scarabTerms)).map((m) => m.name);
+        const groupHit = matchesAll(`${g.name} scarabs`, scarabTerms);
+        return (groupHit || matches.length) ? { ...g, matches } : null;
+      })
+      .filter(Boolean);
+  }, [groups, scarabTerms, sortDir]);
+
   const chartData = useMemo(() => {
     if (!openGroupData) return [];
     const memberHists = openGroupData.members.map((m) => histories[m.name]).filter((h) => h && h.length);
@@ -835,6 +867,24 @@ export default function ScarabTracker() {
                 />
               </label>
             )}
+            {tab === "prices" && (
+              <label className="st-ctl">
+                <span>Search</span>
+                <div className="st-tool-search">
+                  <input
+                    className="st-tool-filter"
+                    type="text"
+                    placeholder="Scarab or mechanic"
+                    value={scarabFilter}
+                    onChange={(e) => setScarabFilter(e.target.value)}
+                  />
+                  {scarabFilter && (
+                    <button type="button" className="st-tool-clear" aria-label="Clear search"
+                      onClick={() => setScarabFilter("")}>✕</button>
+                  )}
+                </div>
+              </label>
+            )}
             {showChecks && (
               <div className="st-ctl st-checks">
                 <span>Include</span>
@@ -956,7 +1006,7 @@ export default function ScarabTracker() {
               </div>
               {openGroupData.members.map((m) => (
                 <button key={m.name}
-                  className={`st-row ${focusScarab === m.name ? "focused" : ""}`}
+                  className={`st-row ${focusScarab === m.name ? "focused" : ""} ${scarabTerms.length && matchesAll(m.name, scarabTerms) ? "hit" : ""}`}
                   onClick={() => setFocusScarab(focusScarab === m.name ? null : m.name)}
                   title="Show this scarab on the chart">
                   <span className="st-row-name">
@@ -1106,23 +1156,39 @@ export default function ScarabTracker() {
       )}
 
       {/* ---------- mechanic grid ---------- */}
-      {tab === "prices" && (
+      {tab === "prices" && !visibleGroups.length && (
+        <div className="st-cat-note">No scarab or mechanic matches “{scarabFilter}”.</div>
+      )}
+
+      {tab === "prices" && !!visibleGroups.length && (
       <main className="st-grid">
-        {groups.map((g, i) => {
+        {visibleGroups.map((g) => {
           const tone = GROUP_TONES[g.name] || "#c9a24b";
           const top = g.members[0];
           return (
             <button key={g.name}
               className={`st-card ${openGroup === g.name ? "open" : ""}`}
               style={{ "--tone": tone }}
-              onClick={() => { setOpenGroup(openGroup === g.name ? null : g.name); setFocusScarab(null); setDragSel(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
-              <div className="st-card-rank">{sortDir === "desc" ? i + 1 : groups.length - i}</div>
+              onClick={() => {
+                const opening = openGroup !== g.name;
+                setOpenGroup(opening ? g.name : null);
+                // One search hit in this mechanic? Put it straight on the graph.
+                setFocusScarab(opening && g.matches.length === 1 ? g.matches[0] : null);
+                setDragSel(null);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}>
+              <div className="st-card-rank">{g.rank}</div>
               <div className="st-card-main">
                 <div className="st-card-name">
                   <ScarabIcon size={20} tone={tone} />
                   <span>{g.name}</span>
                 </div>
-                <div className="st-card-meta">{g.members.length} scarabs · top: {top?.name.replace(/^.*Scarab( of)? ?/, "") || "—"}</div>
+                <div className="st-card-meta">{g.members.length} scarabs · top: {top ? shortScarab(top.name) : "—"}</div>
+                {g.matches.length > 0 && (
+                  <div className="st-card-hits">
+                    {g.matches.length} match{g.matches.length > 1 ? "es" : ""} · {g.matches.map(shortScarab).join(", ")}
+                  </div>
+                )}
               </div>
               <div className="st-card-total">
                 <div className="st-card-total-num">{chgBadge(g)} {fmtPrice(g.total, currency, divineRate)}</div>
@@ -1274,6 +1340,14 @@ const css = `
   padding: 7px 10px; font-family: inherit; font-size: 13px; width: min(240px, 46vw);
 }
 .st-tool-filter::placeholder { color: #6f6656; }
+.st-tool-search { position: relative; display: inline-flex; }
+.st-tool-search .st-tool-filter { padding-right: 26px; }
+.st-tool-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: #8d8371; cursor: pointer;
+  font-family: inherit; font-size: 12px; line-height: 1; padding: 4px 5px; border-radius: 4px;
+}
+.st-tool-clear:hover { color: #e8d9ae; }
 .st-tool-filter:focus-visible, .st-check input:focus-visible { outline: 2px solid #d8b355; outline-offset: 1px; }
 .st-banner {
   border: 1px solid #6b5730; background: #2a2214; color: #d9c48a; font-size: 13px;
@@ -1298,6 +1372,11 @@ const css = `
 .st-tag { font-size: 10.5px; color: #8d8371; font-style: italic; }
 .st-tag-panel { font-size: 12.5px; white-space: nowrap; }
 .st-card-meta { font-size: 11.5px; color: #8d8371; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Match list can be long — let it run to two lines before it gets clipped. */
+.st-card-hits {
+  font-size: 11.5px; color: #d8b355; margin-top: 3px; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 .st-card-total { text-align: right; }
 .st-card-total-num { font-size: 17px; color: #f0dfa8; font-variant-numeric: tabular-nums; }
 .st-card-total-lbl { font-size: 10px; color: #6f6656; text-transform: uppercase; letter-spacing: 0.12em; }
@@ -1355,6 +1434,7 @@ const css = `
 }
 .st-row:hover { background: #241e15; }
 .st-row.focused { background: #2c2414; color: #f0dfa8; }
+.st-row.hit { box-shadow: inset 2px 0 0 #d8b355; }
 .st-row-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .st-row-price { font-variant-numeric: tabular-nums; color: #e5d49c; white-space: nowrap; }
 .st-breakdown-hint { padding: 8px 14px 12px; font-size: 11px; color: #6f6656; }
