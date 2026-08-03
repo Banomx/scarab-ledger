@@ -1279,6 +1279,9 @@ const css = `
 .bp-group-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: #a99c7f; }
 .bp-group-title em { font-style: normal; text-transform: none; letter-spacing: 0.02em; color: #6f6656; margin-left: 6px; font-size: 11px; }
 .bp-group-sub { font-size: 12.5px; color: #8fd47f; font-variant-numeric: tabular-nums; }
+.bp-group-ctl { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.bp-group-ctl .bp-num input { padding: 2px 4px; font-size: 11.5px; }
+.bp-group-ctl .bp-num em { font-size: 10px; }
 .bp-table { padding: 0 4px 4px; }
 .bp-tr {
   display: grid; grid-template-columns: minmax(0, 1fr) 74px 66px 56px; gap: 6px; align-items: center;

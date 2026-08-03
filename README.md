@@ -100,9 +100,25 @@ Drops don't all roll the same way, so each boss splits them into groups:
 
 | kind | meaning | maths |
 |---|---|---|
-| `pool` | one guaranteed drop picked from the group (the unique pool, and the guaranteed fragment / astrolabe tables) | `share x rolls` |
+| `pool` | `rolls` drops picked from the group (the unique pool, the guaranteed fragment / astrolabe tables, and T17 fragment stacks, which use rolls > 1) | `share x rolls` |
 | `weighted` | the group as a whole has a `base` chance; if it hits, one line is picked by `weight` (Uber Maven's awakened gems: 2% base, three gems at equal weight) | `base x weight / totalWeight` |
 | `independent` | each line rolls on its own | `chance`, x `(1 + quantity/100)` when the group is `quantityScaled` |
+
+The five **Tier 17 maps** are in here too, since they're the only source of uber
+fragments and so belong next to the bosses those fragments open. Their fragments
+drop as a *stack* sized by area item quantity, not as independent per-item rolls,
+so they're modelled as a pool with multiple rolls:
+
+| Area IIQ | fragments | roll count |
+|---|---|---|
+| below 235% | 1-3 | 2 |
+| 235-250% | 2-3 | 2.5 |
+| 250%+ | 2-4 | 3 |
+
+Defaults sit at the low-IIQ midpoint; the roll count is editable in the group
+header. Which fragment type you get is assumed uniform across the map's types.
+The unique drops on those maps are a flat 5% — a community figure, not measured
+data — so T17 is the one part of the dataset that's guesswork rather than source.
 
 Area item quantity matters on the Eldritch fights — regular Exarch and Eater
 default to 70%, Black Star and Infinite Hunger to 50%, which is what the
@@ -118,9 +134,12 @@ money most sessions.
   display name differs from the name used for pricing, e.g. unidentified or
   variant items) and an optional `key` (needed only when a boss lists the same
   item twice — Catarina's three Cinderswallow Urn variants).
-- `rates` records provenance: `ledger` for the supplied drop tables, `wiki` for
-  poewiki-sourced bosses the ledger set doesn't cover, `estimate` for the two
-  where nobody publishes a split. The last two are badged in the UI.
+- The boss list is exactly the set that exists in the current PoE 1 build.
+  Content that has been removed from the game (the Breachlord fights, the Atziri
+  apex, Aul, the Trialmaster, Lycia, Olroth) is deliberately absent.
+- `rates` records provenance: `ledger` for the supplied drop tables, `estimate`
+  where the drops are documented but no rate is published anywhere (badged `est`
+  in the UI). A `wiki` value is also supported for adding a boss from poewiki.
 - Everything is editable — times, rates, weights, quantity, entry counts and
   prices. Edits live in **TTK profiles** in `localStorage`, exportable as JSON.
 - Prices come from `public/data/<league>/prices.json`, written by the same

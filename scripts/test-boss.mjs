@@ -99,6 +99,25 @@ ok(urns.length === 3, `expected 3 urn rows, got ${urns.length}`);
 ok(new Set(urns.map((l) => l.key)).size === 3, "urn rows need distinct keys");
 ok(near(urns.reduce((s, l) => s + l.value, 0), 30), "urn rows total 0.30 x 100c");
 
+// T17 fragments are a multi-roll pool, not per-item chances: 2 rolls split
+// evenly across the map's fragment types, and the roll count is what area
+// quantity moves.
+const zig = computeBoss(BOSSES.find((b) => b.id === "t17-ziggurat"),
+  makeResolver(P({ "Devouring Fragment": 100, "Blazing Fragment": 100, "Ziggurat Map": 50 })));
+const zigFrags = zig.groups.find((g) => g.id === "pool");
+ok(zigFrags.rolls === 2, `ziggurat fragment rolls ${zigFrags.rolls} != 2`);
+ok(near(zigFrags.subtotal, 200), `2 rolls x 100c should be 200c, got ${zigFrags.subtotal}`);
+ok(near(zigFrags.lines[0].qty, 1), "even split of 2 rolls across 2 types = 1 each");
+// raising the roll count for higher IIQ scales linearly
+const zigHigh = computeBoss(BOSSES.find((b) => b.id === "t17-ziggurat"),
+  makeResolver(P({ "Devouring Fragment": 100, "Blazing Fragment": 100, "Ziggurat Map": 50 })),
+  { groups: { pool: { rolls: 3 } } });
+ok(near(zigHigh.groups.find((g) => g.id === "pool").subtotal, 300), "3 rolls at 250%+ IIQ = 300c");
+// Sanctuary splits across three types
+const san = computeBoss(BOSSES.find((b) => b.id === "t17-sanctuary"),
+  makeResolver(P({ "Lonely Fragment": 90, "Traumatic Fragment": 90, "Reverent Fragment": 90 })));
+ok(near(san.groups.find((g) => g.id === "pool").subtotal, 180, 0.2), "3-type map still yields 2 fragments total");
+
 /* ---------------- engine behaviour ---------------- */
 const prices = P({
   "Fragment of the Hydra": 10, "Fragment of the Phoenix": 10,
@@ -139,11 +158,16 @@ ok(rSyn("@nope").found === false, "unknown synthetic resolves to not-found");
 const blind = computeBoss(BOSSES.find((b) => b.id === "shaper"), makeResolver({}));
 ok(blind.gross === 0 && blind.missingPrices === blind.dropLines.length, `blind missing ${blind.missingPrices}`);
 ok(blind.entryUnknown === true, "blind entryUnknown");
-const flawless = computeBoss(BOSSES.find((b) => b.id === "chayula-flawless"), r);
-const presence = flawless.dropLines.find((l) => l.item === "Presence of Chayula");
-ok(presence && presence.qty === 0, "chance:0 line present and contributes nothing");
-ok(!flawless.dropLines.some((l) => l.item === "Presence of Chayula" && !l.found && l.qty > 0),
-   "chance:0 line must not count as a missing price");
+// A chance:0 line — an item that's documented as dropping but has no published
+// rate — must survive into the table so it can be edited, without polluting the
+// missing-price count.
+const zeroBoss = { id: "z", name: "z", group: "Other", rates: "estimate", entry: [], ttk: 60, overhead: 0,
+  groups: [{ id: "additional", kind: "independent", label: "x",
+    drops: [{ item: "Voidwalker", chance: 0.5 }, { item: "Unpriced Mystery", chance: 0 }] }] };
+const zc = computeBoss(zeroBoss, r);
+const zeroLine = zc.dropLines.find((l) => l.item === "Unpriced Mystery");
+ok(zeroLine && zeroLine.qty === 0 && zeroLine.value === 0, "chance:0 line present and contributes nothing");
+ok(zc.missingPrices === 0, `chance:0 line must not count as a missing price (got ${zc.missingPrices})`);
 
 /* ---------------- chance of profit ---------------- */
 // A guaranteed, always-profitable boss must read ~100%; a boss whose value

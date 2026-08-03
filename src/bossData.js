@@ -25,8 +25,15 @@
    `rates`:
      "ledger"   — from the drop tables Marcel supplied (2026-08 league
                   data, matches the numbers he's running against).
-     "wiki"     — poewiki.net, for bosses the ledger set doesn't cover.
-     "estimate" — pool known, split not published; spread evenly.
+     "estimate" — the drops are documented but the rates aren't published
+                  anywhere; the numbers are placeholders. Badged in the UI.
+     "wiki"     — poewiki.net. Nothing uses this now that the boss list is
+                  exactly the ledger set, but it stays supported so a boss
+                  can be added from the wiki without touching the engine.
+
+   Only bosses that exist in the current PoE 1 build are listed. Anything
+   that has been removed from the game (the Breachlord fights, the Atziri
+   apex, Aul, the Trialmaster, Lycia, Olroth) is deliberately absent.
 
    `ttk` from the ledger set is the WHOLE cycle (their KPH = 3600/ttk),
    so those bosses carry overhead 0. Bosses where I estimated the time
@@ -37,7 +44,7 @@
 
 export const GROUP_ORDER = [
   "Pinnacle", "Eldritch", "Incarnation", "Vaal", "Breach",
-  "Synthesis", "Harvest", "Delve", "Other",
+  "Synthesis", "Harvest", "T17", "Other",
 ];
 
 export const GROUP_TONES = {
@@ -48,7 +55,7 @@ export const GROUP_TONES = {
   "Breach": "#b06ad4",
   "Synthesis": "#7f8fd4",
   "Harvest": "#5fc9b0",
-  "Delve": "#6ac3d4",
+  "T17": "#d4a86a",
   "Other": "#8fb46a",
 };
 
@@ -540,31 +547,6 @@ export const BOSSES = [
 
   /* ================= Vaal ================= */
   {
-    id: "atziri", name: "Atziri, Queen of the Vaal", group: "Vaal", rates: "wiki",
-    entry: [
-      { item: "Sacrifice at Dusk" }, { item: "Sacrifice at Noon" },
-      { item: "Sacrifice at Midnight" }, { item: "Sacrifice at Dawn" },
-    ],
-    ttk: 90, overhead: 120,
-    note: "Not in the ledger drop tables — rates are poewiki crowdsourced 3.28, n=424.",
-    groups: [
-      pool([
-        { item: "Atziri's Promise", share: 0.48 },
-        { item: "Triumvirate Authority", share: 0.18 },
-        { item: "Atziri's Step", share: 0.15 },
-        { item: "Doryani's Invitation", share: 0.15 },
-        { item: "Doryani's Catalyst", share: 0.03 },
-        { item: "Pledge of Hands", share: 0.005 },
-      ]),
-      extra([
-        { item: "Mortal Grief", chance: 0.18 },
-        { item: "Mortal Rage", chance: 0.08 },
-        { item: "Mortal Hope", chance: 0.06 },
-        { item: "Mortal Ignorance", chance: 0.03 },
-      ]),
-    ],
-  },
-  {
     id: "uber-atziri", name: "Uber Atziri", group: "Vaal", uber: true, rates: "ledger",
     entry: [
       { item: "Mortal Grief" }, { item: "Mortal Ignorance" },
@@ -611,44 +593,6 @@ export const BOSSES = [
         { item: "Foulgrasp", chance: 0.10 },
         { item: "The Escape", chance: 0.06 },
         { item: "Summon Hiveborn", chance: 0.05 },
-      ]),
-    ],
-  },
-  {
-    id: "chayula", name: "Chayula, Who Dreamt", group: "Breach", rates: "wiki",
-    entry: [{ item: "Chayula's Breachstone" }],
-    ttk: 40, overhead: 60,
-    note: "Not in the ledger drop tables — rates are poewiki crowdsourced 3.25, n=200.",
-    groups: [
-      extra([
-        { item: "Severed in Sleep", chance: 0.35 },
-        { item: "Blessing of Chayula", chance: 0.10 },
-        { item: "Skin of the Loyal", chance: 0.05 },
-        { item: "The Red Dream", chance: 0.05 },
-        { item: "The Green Dream", chance: 0.05 },
-        { item: "The Blue Dream", chance: 0.05 },
-        { item: "The Escape", chance: 0.05 },
-        { item: "Something Dark", chance: 0.05 },
-        { item: "The Undisputed", chance: 0.05 },
-      ]),
-    ],
-  },
-  {
-    id: "chayula-flawless", name: "Chayula (Flawless)", group: "Breach", rates: "wiki",
-    entry: [{ item: "Chayula's Flawless Breachstone" }],
-    ttk: 70, overhead: 60,
-    note: "Not in the ledger drop tables — poewiki crowdsourced 3.25, n=562. Presence of Chayula's rate is printed as \"?\", so it sits at 0 for you to fill in.",
-    groups: [
-      extra([
-        { item: "United in Dream", chance: 0.33 },
-        { item: "Grasping Mail", chance: 0.13 },
-        { item: "Vaal Breach", chance: 0.085 },
-        { item: "Skin of the Lords", chance: 0.04 },
-        { item: "The Red Nightmare", chance: 0.04 },
-        { item: "The Blue Nightmare", chance: 0.04 },
-        { item: "The Green Nightmare", chance: 0.04 },
-        { item: "Uul-Netol's Vow", chance: 0.02 },
-        { item: "Presence of Chayula", chance: 0 },
       ]),
     ],
   },
@@ -708,21 +652,105 @@ export const BOSSES = [
     ],
   },
 
-  /* ================= Delve ================= */
+
+  /* ================= Tier 17 maps =================
+     The only source of uber fragments, so they belong next to the bosses
+     those fragments open.
+
+     Fragments drop as a STACK whose size scales with area item quantity,
+     not as an independent per-item roll — so they're a pool with multiple
+     rolls, and the roll count is the editable number in the group header:
+
+        below 235% IIQ   1-3 fragments   -> 2
+        235-250% IIQ     2-3 fragments   -> 2.5
+        250%+ IIQ        2-4 fragments   -> 3
+
+     Defaults sit at the low-IIQ midpoint. Which fragment type you get is
+     assumed uniform across the map's types; nobody publishes a split.
+
+     The unique drops are a flat 5% — a community figure off Reddit, not
+     measured data. Everything here is a starting point, not a source. */
   {
-    id: "aul", name: "Aul, the Crystal King", group: "Delve", rates: "wiki",
-    entry: [],
-    ttk: 60, overhead: 900,
-    note: "Not in the ledger drop tables — poewiki crowdsourced 3.25, n=100. No fragment cost; the overhead is the sulphite and delving to depth 130+.",
+    id: "t17-abomination", name: "Abomination", group: "T17", rates: "estimate",
+    entry: [{ item: "Abomination Map" }],
+    ttk: 240, overhead: 60,
+    note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
     groups: [
-      pool([
-        { item: "Aul's Uprising", share: 0.61 },
-        { item: "Crown of the Tyrant", share: 0.15 },
-        { item: "Ahkeli's Meadow", share: 0.08 },
-        { item: "Uzaza's Valley", share: 0.08 },
-        { item: "Putembo's Mountain", share: 0.08 },
+      { id: "pool", kind: "pool", label: "Fragments", rolls: 2, drops: [
+        { item: "Awakening Fragment", share: 0.5 },
+        { item: "Reality Fragment", share: 0.5 },
+      ] },
+      extra([
+        { item: "Malachai's Mark", chance: 0.05 },
+        { item: "Unholy Trinity Support", chance: 0.05 },
       ]),
-      extra([{ item: "Luminous Trove", chance: 0.16 }]),
+    ],
+  },
+  {
+    id: "t17-citadel", name: "Citadel", group: "T17", rates: "estimate",
+    entry: [{ item: "Citadel Map" }],
+    ttk: 240, overhead: 60,
+    note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
+    groups: [
+      { id: "pool", kind: "pool", label: "Fragments", rolls: 2, drops: [
+        { item: "Cosmic Fragment", share: 0.5 },
+        { item: "Synthesising Fragment", share: 0.5 },
+      ] },
+      extra([
+        { item: "Manastorm", chance: 0.05 },
+        { item: "Cast on Ward Break Support", chance: 0.05 },
+      ]),
+    ],
+  },
+  {
+    id: "t17-fortress", name: "Fortress", group: "T17", rates: "estimate",
+    entry: [{ item: "Fortress Map" }],
+    ttk: 240, overhead: 60,
+    note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
+    groups: [
+      { id: "pool", kind: "pool", label: "Fragments", rolls: 2, drops: [
+        { item: "Decaying Fragment", share: 0.5 },
+        { item: "Synthesising Fragment", share: 0.5 },
+      ] },
+      extra([
+        { item: "Yoke of Suffering", chance: 0.05 },
+        { item: "Overloaded Intensity Support", chance: 0.05 },
+      ]),
+    ],
+  },
+  {
+    id: "t17-ziggurat", name: "Ziggurat", group: "T17", rates: "estimate",
+    entry: [{ item: "Ziggurat Map" }],
+    ttk: 240, overhead: 60,
+    note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
+    groups: [
+      { id: "pool", kind: "pool", label: "Fragments", rolls: 2, drops: [
+        { item: "Devouring Fragment", share: 0.5 },
+        { item: "Blazing Fragment", share: 0.5 },
+      ] },
+      extra([
+        { item: "Keeper's Corruption", chance: 0.05 },
+        { item: "Nook's Crown", chance: 0.05 },
+        { item: "Wraithlord", chance: 0.05 },
+        { item: "Communion Support", chance: 0.05 },
+      ]),
+    ],
+  },
+  {
+    id: "t17-sanctuary", name: "Sanctuary", group: "T17", rates: "estimate",
+    entry: [{ item: "Sanctuary Map" }],
+    ttk: 240, overhead: 60,
+    note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
+    groups: [
+      { id: "pool", kind: "pool", label: "Fragments", rolls: 2, drops: [
+        { item: "Lonely Fragment", share: 0.3333 },
+        { item: "Traumatic Fragment", share: 0.3333 },
+        { item: "Reverent Fragment", share: 0.3333 },
+      ] },
+      extra([
+        { item: "The Dark Seer", chance: 0.05 },
+        { item: "Scornful Herald Support", chance: 0.05 },
+      ]),
     ],
   },
 
@@ -784,53 +812,6 @@ export const BOSSES = [
       extra([
         { item: "Mirage Map", chance: 1.00 },
         { item: "Transfusion Support", chance: 0.10 },
-      ]),
-    ],
-  },
-  {
-    id: "trialmaster", name: "The Trialmaster", group: "Other", rates: "wiki",
-    entry: [{ item: "Ultimatum Scarab of Dueling" }],
-    ttk: 120, overhead: 180,
-    note: "Not in the ledger drop tables — poewiki crowdsourced 3.24–3.26, n=300. The shares are of the one unique he drops on defeat; he only appears in ~8% of maps unaided, which the scarab fixes.",
-    groups: [
-      pool([
-        { item: "Ixchel's Temptation", share: 0.40 },
-        { item: "Glimpse of Chaos", share: 0.40 },
-        { item: "Yaomac's Accord", share: 0.095 },
-        { item: "Mahuxotl's Machination", share: 0.095 },
-        { item: "Hateforge", share: 0.01 },
-      ]),
-      extra([
-        { item: "Machinations Support", chance: 0.10 },
-        { item: "Vaal Temptation Support", chance: 0.05 },
-      ]),
-    ],
-  },
-  {
-    id: "lycia", name: "Lycia, Herald of the Scourge", group: "Other", rates: "estimate",
-    entry: [{ item: "Forbidden Tome" }],
-    ttk: 90, overhead: 900,
-    note: "Not in the ledger drop tables, and poewiki prints no rates. Her uniques aren't random — each drops when its matching relic is on the altar (Original Sin needs a level 83 Tome, Eternal Damnation 80+, Sandstorm Visage 75+, The Winds of Fate 83). Set the one you run to 1 and the rest to 0.",
-    groups: [
-      extra([
-        { item: "The Balance of Terror", chance: 0.2 },
-        { item: "Eternal Damnation", chance: 0.2 },
-        { item: "Original Sin", chance: 0.2 },
-        { item: "Sandstorm Visage", chance: 0.2 },
-        { item: "The Winds of Fate", chance: 0.2 },
-      ]),
-    ],
-  },
-  {
-    id: "olroth", name: "Olroth, Origin of the Fall", group: "Other", rates: "estimate",
-    entry: [],
-    ttk: 90, overhead: 420,
-    note: "Not in the ledger drop tables and poewiki prints no rates — the even split is a placeholder. Knights of the Sun logbook, area level 81+.",
-    groups: [
-      pool([
-        { item: "Olroth's Resolve", share: 1 / 3 },
-        { item: "Cadigan's Crown", share: 1 / 3 },
-        { item: "Vorana's March", share: 1 / 3 },
       ]),
     ],
   },

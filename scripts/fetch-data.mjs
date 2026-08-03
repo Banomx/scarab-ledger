@@ -209,6 +209,7 @@ const PRICE_ITEM_TYPES = [
   "UniqueMap", "UniqueRelic", "DivinationCard", "SkillGem", "Essence", "Artifact",
   "Omen", "Invitation", "Vial", "Beast", "Fossil", "Oil", "Coffin", "Allflame",
   "Tincture", "Incubator", "Memory", "DeliriumOrb", "Scarab",
+  "Map",   // T17 maps are the entry cost for the tier-17 boss rows
 ];
 
 function isBaseVariant(type, l) {

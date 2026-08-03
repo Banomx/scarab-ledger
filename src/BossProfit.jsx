@@ -430,11 +430,22 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                   <div className="bp-group-head">
                     <span className="bp-group-title">
                       {g.label}
-                      {g.kind === "pool" && <em>(1 of {g.lines.length})</em>}
-                      {g.kind === "weighted" && <em>({pctText(g.base)} base)</em>}
+                      {g.kind === "pool" && <em>({g.rolls === 1 ? "1" : g.rolls} of {g.lines.length})</em>}
                       {g.kind === "independent" && <em>{g.scaled ? "(independent · quantity)" : "(independent)"}</em>}
                     </span>
-                    <span className="bp-group-sub">{money(g.subtotal)}</span>
+                    <span className="bp-group-ctl">
+                      {g.kind === "pool" && (
+                        <NumInput value={g.rolls} step={0.5} width={42} suffix="rolls"
+                          title="How many drops this group yields per kill — fractional is fine"
+                          onCommit={(v) => setGroupField(current.boss.id, g.id, "rolls", v)} />
+                      )}
+                      {g.kind === "weighted" && (
+                        <NumInput value={round4(g.base * 100)} step={0.5} width={46} suffix="% base"
+                          title="Chance this group drops anything at all"
+                          onCommit={(v) => setGroupField(current.boss.id, g.id, "base", v / 100)} />
+                      )}
+                      <span className="bp-group-sub">{money(g.subtotal)}</span>
+                    </span>
                   </div>
                   <div className="bp-table">
                     <div className="bp-tr bp-th">
