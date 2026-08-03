@@ -149,9 +149,12 @@ ok(near(shaper.runsPerHour, 15), `shaper kph ${shaper.runsPerHour} != 15 (refere
 ok(near(shaper.profitPerHour, 132 * 15), "shaper profit/hr");
 console.log(`shaper: gross ${shaper.gross}c, entry ${shaper.entryCost}c, net ${shaper.net}c, ${shaper.runsPerHour} kph`);
 
-// price basis + overrides
-ok(computeBoss(BOSSES.find((b) => b.id === "shaper"), makeResolver({ ...prices, "Dying Sun": { c: 1000, lo: 500, hi: 4000, n: 3 } }, { priceBasis: "hi" })).gross > shaper.gross,
-   "hi basis should raise gross");
+/* Only the typical price is ever used. lo/hi survive in the snapshot for the
+   listing-spread tooltip, but must never move an EV — a "best roll" basis
+   priced drops nobody gets (a corrupted 21/20 gem, the dearest stat roll). */
+ok(near(computeBoss(BOSSES.find((b) => b.id === "shaper"),
+     makeResolver({ ...prices, "Dying Sun": { c: prices["Dying Sun"].c, lo: 1, hi: 40000, n: 3 } })).gross, shaper.gross),
+   "lo/hi in the price map must not change gross");
 const ov = computeBoss(BOSSES.find((b) => b.id === "shaper"), makeResolver(prices, { priceOverrides: { "Dying Sun": 0 } }));
 ok(near(ov.gross, 152), `price override gross ${ov.gross} != 152`);
 

@@ -14,11 +14,13 @@ import {
    every boss's kill time is editable in one grid.
    ================================================================ */
 
-const PRICE_BASIS = {
-  c: { label: "Typical", hint: "median listed price across the item's roll variants" },
-  lo: { label: "Cheapest", hint: "worst roll variant — pessimistic. Same as Typical for items that don't roll." },
-  hi: { label: "Best roll", hint: "best roll variant — optimistic. Same as Typical for items that don't roll; corrupted or linked copies a boss never drops are excluded." },
-};
+/* Prices are always the typical listing — the median across whatever poe.ninja
+   lists for the base item. There used to be Cheapest / Best roll toggles on top
+   of that, but neither described a drop you can actually get: "best roll" meant
+   the corrupted 21/20 gem or the dearest stat roll of a unique, and a boss
+   hands you a random one. A single honest number beats three, two of which
+   flatter the EV. The listing spread is still shown on each price as a tooltip.
+   The snapshot keeps lo/hi for that. */
 
 const RATE_BADGE = {
   ledger: null,
@@ -109,7 +111,6 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   const [view, setView] = useState("bosses");       // bosses | profiles
   const [editingProfile, setEditingProfile] = useState(null);
   const [selected, setSelected] = useState(BOSSES[0].id);
-  const [basis, setBasis] = useState("c");
   const [sortKey, setSortKey] = useState("profitPerHour");
   const [runs, setRuns] = useState(10);
   const [importOpen, setImportOpen] = useState(false);
@@ -146,10 +147,9 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   const resolve = useMemo(
     () => makeResolver(priceMap && priceMap !== "missing" ? priceMap : null, {
       priceOverrides: profile?.priceOverrides || {},
-      priceBasis: basis,
       divineRate,
     }),
-    [priceMap, profile, basis, divineRate]
+    [priceMap, profile, divineRate]
   );
 
   const rows = useMemo(
@@ -451,14 +451,6 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                 {profiles.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
               </select>
             </label>
-            <div className="st-ctl">
-              <span>Price basis</span>
-              <div className="st-seg">
-                {Object.entries(PRICE_BASIS).map(([k, v]) => (
-                  <button key={k} className={basis === k ? "on" : ""} title={v.hint} onClick={() => setBasis(k)}>{v.label}</button>
-                ))}
-              </div>
-            </div>
             <div className="st-ctl">
               <span>Variant</span>
               <div className="st-seg">

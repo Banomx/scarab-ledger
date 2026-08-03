@@ -44,7 +44,7 @@ function candidates(item) {
 }
 
 /* prices.json shape: { "Item Name": { c, lo, hi, n } } */
-export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c", divineRate = 0 } = {}) {
+export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } = {}) {
   const synthCache = {};
   let normIndex = null;
 
@@ -122,7 +122,7 @@ export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c", 
       }
       return { chaos: 0, found: false, overridden: false, entry: null };
     }
-    const chaos = entry[priceBasis] ?? entry.c ?? 0;
+    const chaos = entry.c ?? 0;
     return { chaos, found: chaos > 0, overridden: false, entry };
   };
 }
