@@ -4,6 +4,7 @@ import {
   ReferenceDot, ReferenceArea, ResponsiveContainer,
 } from "recharts";
 import BossProfit from "./BossProfit.jsx";
+import { SMART_DIV_AT, fmtChaos, fmtDiv, fmtPrice, unitFor, unitForSeries } from "./money.js";
 
 /* ================================================================
    POE 1 SCARAB PRICE TRACKER
@@ -211,16 +212,6 @@ function buildDemoData() {
 
 /* ---------------- shared helpers ------------------------------- */
 
-function fmtChaos(v) {
-  if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
-  if (v >= 100) return Math.round(v).toString();
-  if (v >= 10) return v.toFixed(1);
-  return v.toFixed(1);
-}
-/* Two decimals is fine for whole-divine sums, but the boss tab shows per-drop
-   expected values that are often a few chaos — those collapsed to "0.00 div".
-   Below 0.1 divine, show three. */
-function fmtDiv(v) { return v >= 10 ? v.toFixed(1) : v >= 0.1 ? v.toFixed(2) : v.toFixed(3); }
 function fmtDay(d) { const n = Math.round(d * 10) / 10; return Number.isInteger(n) ? String(n) : n.toFixed(1); }
 /* Whole-day hardpoints, always: domain snaps outward to full days (day 0,
    day 1, ...) and every 4h data point still plots at its true position. */
@@ -233,10 +224,6 @@ function dayAxis(rows) {
   for (let d = min; d <= max; d += step) ticks.push(d);
   return { domain: [min, max], ticks };
 }
-function fmtPrice(chaos, currency, rate) {
-  return currency === "chaos" ? `${fmtChaos(chaos)}c` : `${fmtDiv(chaos / rate)} div`;
-}
-
 /* ---- divine-rate helpers ----
    The rate series shares its x axis with the price history, so "what did a
    divine cost on day d" is a nearest-point lookup. */
@@ -386,7 +373,7 @@ export default function ScarabTracker() {
   const [league, setLeague] = useState("");
   const [items, setItems] = useState([]);                 // {id,name,group,chaosValue,divineValue}
   const [divineRate, setDivineRate] = useState(DEMO_DIVINE_RATE);
-  const [currency, setCurrency] = useState("chaos");      // chaos | divine
+  const [currency, setCurrency] = useState("smart");      // chaos | divine | smart
   const [sortDir, setSortDir] = useState("desc");         // desc | asc
   const [showUniversal, setShowUniversal] = useState(true);
   const [showHorned, setShowHorned] = useState(true);
@@ -654,30 +641,43 @@ export default function ScarabTracker() {
       .filter(Boolean);
   }, [groups, scarabTerms, sortDir]);
 
-  const chartData = useMemo(() => {
-    if (!openGroupData) return [];
+  const chart = useMemo(() => {
+    if (!openGroupData) return { rows: [], cur: currency === "smart" ? "chaos" : currency };
     const memberHists = openGroupData.members.map((m) => histories[m.name]).filter((h) => h && h.length);
-    if (!memberHists.length) return [];
+    if (!memberHists.length) return { rows: [], cur: currency === "smart" ? "chaos" : currency };
     // Self-history uses fractional days (multiple snapshots per day), so build
     // one row per distinct day value instead of iterating integer days.
     const daySet = new Set();
     for (const h of memberHists) for (const p of h) daySet.add(p.day);
     const days = [...daySet].sort((a, b) => a - b);
-    const div = currency === "divine" ? divineRate : 1;
-    return days.map((d) => {
+    // Build in chaos first: under Smart the unit depends on how big the series
+    // gets, which isn't known until every point exists.
+    const raw = days.map((d) => {
       let total = 0, focus = null;
       for (const m of openGroupData.members) {
         const h = histories[m.name];
         if (!h || !h.length) continue;
         const pt = h.find((p) => p.day === d) ?? h.reduce((best, p) => (Math.abs(p.day - d) < Math.abs(best.day - d) ? p : best), h[0]);
         total += pt.value;
-        if (focusScarab === m.name) focus = Math.round((pt.value / div) * 100) / 100;
+        if (focusScarab === m.name) focus = pt.value;
       }
-      // chaosTotal stays unscaled: the real-% maths has to divide by the rate
-      // that applied on that day, not by today's.
-      return { day: d, total: Math.round((total / div) * 100) / 100, focus, chaosTotal: total, rate: rateAt(rateHistory, d) };
+      return { day: d, chaosTotal: total, chaosFocus: focus, rate: rateAt(rateHistory, d) };
     });
+    const cur = unitForSeries(raw.map((r) => r.chaosTotal), currency, divineRate);
+    const div = cur === "divine" ? divineRate : 1;
+    // chaosTotal stays unscaled: the real-% maths has to divide by the rate
+    // that applied on that day, not by today's.
+    const rows = raw.map((r) => ({
+      day: r.day, chaosTotal: r.chaosTotal, rate: r.rate,
+      total: Math.round((r.chaosTotal / div) * 100) / 100,
+      focus: r.chaosFocus == null ? null : Math.round((r.chaosFocus / div) * 100) / 100,
+    }));
+    return { rows, cur };
   }, [openGroupData, histories, currency, divineRate, focusScarab, rateHistory]);
+
+  const chartData = chart.rows;
+  const chartCur = chart.cur;                       // the panel graph's single unit
+  const chartUnit = chartCur === "chaos" ? "c" : "div";
 
   // Axis wording: ninja history is aligned to league days; our own snapshots
   // count from the first run.
@@ -693,7 +693,6 @@ export default function ScarabTracker() {
     return { hi, lo };
   }, [chartData]);
 
-  const unit = currency === "chaos" ? "c" : "div";
   const CHG_KEYS = { "4h": "change4", "8h": "change8", "12h": "change12", "24h": "change24", "48h": "change48" };
   const chgKey = CHG_KEYS[chgWindow] || "change24";
 
@@ -770,6 +769,8 @@ export default function ScarabTracker() {
             <div className="st-seg">
               <button className={currency === "chaos" ? "on" : ""} onClick={() => setCurrency("chaos")}>Chaos</button>
               <button className={currency === "divine" ? "on" : ""} onClick={() => setCurrency("divine")}>Divine</button>
+              <button className={currency === "smart" ? "on" : ""} onClick={() => setCurrency("smart")}
+                title={`Chaos below ${SMART_DIV_AT} divine, divine above it — each value in whichever unit reads cleanly`}>Smart</button>
             </div>
           </div>
         </div>
@@ -783,9 +784,10 @@ export default function ScarabTracker() {
         <button className={tab === "bosses" ? "on" : ""}
           onClick={() => {
             setTab("bosses"); setDragSel(null);
-            // Boss values run to thousands of chaos; divine is the readable unit
-            // here, so entering the tab switches to it.
-            setCurrency("divine");
+            // Boss values run to thousands of chaos, so chaos is the wrong unit
+            // here and entering the tab switches away from it. Smart already
+            // quotes the big numbers in divine, so leave that choice alone.
+            setCurrency((c) => (c === "chaos" ? "divine" : c));
           }}>Boss profit</button>
       </nav>
 
@@ -935,10 +937,10 @@ export default function ScarabTracker() {
                 const p1 = at(a), p2 = at(b);
                 const pct = p1.total > 0 ? (p2.total / p1.total - 1) * 100 : null;
                 const rpct = (realMode && rateReady) ? realPct(p1.chaosTotal, p1.rate, p2.chaosTotal, p2.rate) : null;
-                const f = (v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v));
+                const f = (v) => (chartCur === "chaos" ? fmtChaos(v) : fmtDiv(v));
                 return (
                   <div className="st-range">
-                    Day {fmtDay(p1.day)} → Day {fmtDay(p2.day)}: {f(p1.total)}{unit} → {f(p2.total)}{unit}
+                    Day {fmtDay(p1.day)} → Day {fmtDay(p2.day)}: {f(p1.total)}{chartUnit} → {f(p2.total)}{chartUnit}
                     {" "}<PctBadge v={pct} />
                     {rpct != null && (
                       <span className="st-range-real"> · real <PctBadge v={rpct} real /></span>
@@ -966,7 +968,7 @@ export default function ScarabTracker() {
                       tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay}
                       label={{ value: scarabAxisLabel, position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
                     <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
-                      tickFormatter={(v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
+                      tickFormatter={(v) => (chartCur === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
                     {realMode && rateReady && (
                       <YAxis yAxisId="rate" orientation="right" width={46} stroke="#4a4234"
                         tick={{ fill: "#7f9fb8", fontSize: 11 }} tickFormatter={fmtRate}
@@ -977,7 +979,7 @@ export default function ScarabTracker() {
                       labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
                       formatter={(v, n) => (n === "rate"
                         ? [`${fmtRate(v)}c`, "1 divine"]
-                        : [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, n === "total" ? "Set total" : focusScarab])}
+                        : [`${chartCur === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${chartUnit}`, n === "total" ? "Set total" : focusScarab])}
                       labelFormatter={(d) => `Day ${fmtDay(d)}`} />
                     {dragSel && dragSel.start !== dragSel.end && (
                       <ReferenceArea x1={Math.min(dragSel.start, dragSel.end)} x2={Math.max(dragSel.start, dragSel.end)}
@@ -990,9 +992,9 @@ export default function ScarabTracker() {
                         strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
                     )}
                     {extremes && <ReferenceDot x={extremes.hi.day} y={extremes.hi.total} r={4} fill="#8fd47f" stroke="#1b150c"
-                      label={{ value: `High ${currency === "chaos" ? fmtChaos(extremes.hi.total) : fmtDiv(extremes.hi.total)}${unit} · d${fmtDay(extremes.hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
+                      label={{ value: `High ${chartCur === "chaos" ? fmtChaos(extremes.hi.total) : fmtDiv(extremes.hi.total)}${chartUnit} · d${fmtDay(extremes.hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
                     {extremes && <ReferenceDot x={extremes.lo.day} y={extremes.lo.total} r={4} fill="#d47f7f" stroke="#1b150c"
-                      label={{ value: `Low ${currency === "chaos" ? fmtChaos(extremes.lo.total) : fmtDiv(extremes.lo.total)}${unit} · d${fmtDay(extremes.lo.day)}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
+                      label={{ value: `Low ${chartCur === "chaos" ? fmtChaos(extremes.lo.total) : fmtDiv(extremes.lo.total)}${chartUnit} · d${fmtDay(extremes.lo.day)}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (
@@ -1040,7 +1042,9 @@ export default function ScarabTracker() {
         if (q) list = list.filter((m) => m.name.toLowerCase().includes(q));
         const selName = (catSelected[tab] && list.some((m) => m.name === catSelected[tab])) ? catSelected[tab] : list[0]?.name;
         const series = ((catHist[tab] || {})[selName] || []);
-        const div = currency === "divine" ? rate : 1;
+        const catCur = unitForSeries(series.map((p) => p.value), currency, rate);
+        const catUnit = catCur === "chaos" ? "c" : "div";
+        const div = catCur === "divine" ? rate : 1;
         const rows = series.map((p) => ({
           day: p.day, value: Math.round((p.value / div) * 100) / 100,
           chaos: p.value, rate: rateAt(activeRateHistory, p.day),
@@ -1061,10 +1065,10 @@ export default function ScarabTracker() {
                 const p1 = at(a), p2 = at(b);
                 const pct = p1.value > 0 ? (p2.value / p1.value - 1) * 100 : null;
                 const rpct = (realMode && rateReady) ? realPct(p1.chaos, p1.rate, p2.chaos, p2.rate) : null;
-                const f = (v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v));
+                const f = (v) => (catCur === "chaos" ? fmtChaos(v) : fmtDiv(v));
                 return (
                   <div className="st-range">
-                    Day {fmtDay(p1.day)} → Day {fmtDay(p2.day)}: {f(p1.value)}{unit} → {f(p2.value)}{unit}
+                    Day {fmtDay(p1.day)} → Day {fmtDay(p2.day)}: {f(p1.value)}{catUnit} → {f(p2.value)}{catUnit}
                     {" "}<PctBadge v={pct} />
                     {rpct != null && (
                       <span className="st-range-real"> · real <PctBadge v={rpct} real /></span>
@@ -1092,7 +1096,7 @@ export default function ScarabTracker() {
                       tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay}
                       label={{ value: (cd.historySource === "ninja" ? "league day" : "days since first snapshot"), position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
                     <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
-                      tickFormatter={(v) => (currency === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
+                      tickFormatter={(v) => (catCur === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
                     {realMode && rateReady && (
                       <YAxis yAxisId="rate" orientation="right" width={46} stroke="#4a4234"
                         tick={{ fill: "#7f9fb8", fontSize: 11 }} tickFormatter={fmtRate}
@@ -1103,7 +1107,7 @@ export default function ScarabTracker() {
                       labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
                       formatter={(v, n) => (n === "rate"
                         ? [`${fmtRate(v)}c`, "1 divine"]
-                        : [`${currency === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${unit}`, selName])}
+                        : [`${catCur === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${catUnit}`, selName])}
                       labelFormatter={(d) => `Day ${fmtDay(d)}`} />
                     {dragSel && dragSel.start !== dragSel.end && (
                       <ReferenceArea x1={Math.min(dragSel.start, dragSel.end)} x2={Math.max(dragSel.start, dragSel.end)}
@@ -1115,9 +1119,9 @@ export default function ScarabTracker() {
                         strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
                     )}
                     {hi && <ReferenceDot x={hi.day} y={hi.value} r={4} fill="#8fd47f" stroke="#1b150c"
-                      label={{ value: `High ${currency === "chaos" ? fmtChaos(hi.value) : fmtDiv(hi.value)}${unit} · d${fmtDay(hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
+                      label={{ value: `High ${catCur === "chaos" ? fmtChaos(hi.value) : fmtDiv(hi.value)}${catUnit} · d${fmtDay(hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
                     {lo && <ReferenceDot x={lo.day} y={lo.value} r={4} fill="#d47f7f" stroke="#1b150c"
-                      label={{ value: `Low ${currency === "chaos" ? fmtChaos(lo.value) : fmtDiv(lo.value)}${unit} · d${fmtDay(lo.day)}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
+                      label={{ value: `Low ${catCur === "chaos" ? fmtChaos(lo.value) : fmtDiv(lo.value)}${catUnit} · d${fmtDay(lo.day)}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (
@@ -1152,6 +1156,7 @@ export default function ScarabTracker() {
           fmtPrice={fmtPrice}
           fmtChaos={fmtChaos}
           fmtDiv={fmtDiv}
+          unitFor={unitFor}
         />
       )}
 

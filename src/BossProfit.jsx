@@ -103,7 +103,10 @@ function TimeInput({ value, onCommit, width = 58, title, custom }) {
   );
 }
 
-export default function BossProfit({ league, staticBase, currency, divineRate, fmtPrice, fmtChaos, fmtDiv }) {
+/* unitFor resolves the "smart" currency to chaos or divine for one value;
+   for the fixed modes it just hands the mode back. */
+export default function BossProfit({ league, staticBase, currency, divineRate, fmtPrice, fmtChaos, fmtDiv,
+                                     unitFor = (chaos, cur) => cur }) {
   const [priceMap, setPriceMap] = useState(null);   // null = loading, "missing" = no snapshot
   const [generatedAt, setGeneratedAt] = useState(null);
   const [profiles, setProfiles] = useState(() => loadProfiles());
@@ -311,11 +314,13 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   };
 
   const money = (chaos) => fmtPrice(chaos, currency, divineRate);
-  const unit = currency === "chaos" ? "c" : "div";
+  // Under Smart the unit is per value, so it has to be resolved inside, not
+  // hoisted: a 40c entry cost and a 12 divine payout sit in the same row.
   const signed = (chaos) => {
-    const v = currency === "chaos" ? chaos : chaos / divineRate;
-    const f = currency === "chaos" ? fmtChaos : fmtDiv;
-    return `${v < 0 ? "−" : ""}${f(Math.abs(v))}${unit}`;
+    const u = unitFor(chaos, currency, divineRate);
+    const v = u === "chaos" ? chaos : chaos / divineRate;
+    const f = u === "chaos" ? fmtChaos : fmtDiv;
+    return `${v < 0 ? "−" : ""}${f(Math.abs(v))}${u === "chaos" ? "c" : "div"}`;
   };
 
   const groupsPresent = useMemo(() => GROUP_ORDER.filter((g) => BOSSES.some((b) => b.group === g)), []);
