@@ -1,14 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { BOSSES, GROUP_ORDER, GROUP_TONES } from "./bossData.js";
 import {
-  makeResolver, computeBoss, loadProfiles, saveProfiles, loadActive, saveActive,
+  makeResolver, computeBoss, profitChance, loadProfiles, saveProfiles, loadActive, saveActive,
   defaultProfile, sanitizeProfile, uniqueName,
 } from "./bossProfit.js";
 
 /* ================================================================
    BOSS PROFITABILITY
-   Expected value per kill from the drop pool, minus what it costs to
-   open the fight, divided by how long a run takes you.
+   Expected value per kill from the drop groups, minus what it costs to
+   open the fight, over how long a run takes you.
    ================================================================ */
 
 const PRICE_BASIS = {
@@ -17,31 +17,37 @@ const PRICE_BASIS = {
   hi: { label: "Best roll", hint: "highest-priced variant — optimistic" },
 };
 
+const RATE_BADGE = {
+  ledger: null,
+  wiki: { text: "wiki", title: "Rates from poewiki, not the ledger drop tables" },
+  estimate: { text: "est", title: "Drop split is a placeholder — no published rates" },
+};
+
 function fmtTime(sec) {
   const s = Math.round(sec);
-  if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
   const r = s % 60;
-  return r ? `${m}m ${r}s` : `${m}m`;
+  if (!m) return `${r}s`;
+  return r ? `${m}:${String(r).padStart(2, "0")}` : `${m}:00`;
 }
 
 function pctText(v) {
+  if (v == null || !isFinite(v)) return "—";
   if (v >= 0.1) return `${(v * 100).toFixed(0)}%`;
   if (v >= 0.01) return `${(v * 100).toFixed(1)}%`;
   if (v > 0) return `${(v * 100).toFixed(2)}%`;
   return "—";
 }
 
-/* Small controlled number input that lets you clear the field while typing. */
-function NumInput({ value, onCommit, step = 1, min = 0, width = 74, suffix, placeholder }) {
+/* Controlled number input that lets you clear the field while typing. */
+function NumInput({ value, onCommit, step = 1, min = 0, width = 66, suffix, title }) {
   const [draft, setDraft] = useState(String(value ?? ""));
   const focused = useRef(false);
   useEffect(() => { if (!focused.current) setDraft(String(value ?? "")); }, [value]);
   return (
-    <span className="bp-num">
+    <span className="bp-num" title={title}>
       <input
-        type="number" step={step} min={min} value={draft} placeholder={placeholder}
-        style={{ width }}
+        type="number" step={step} min={min} value={draft} style={{ width }}
         onFocus={() => { focused.current = true; }}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={(e) => {
@@ -67,8 +73,9 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   const [sortKey, setSortKey] = useState("profitPerHour");
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
-  const [importErr, setImportErr] = useState("");
+  const [importMsg, setImportMsg] = useState("");
   const [groupFilter, setGroupFilter] = useState("all");
+  const [uberFilter, setUberFilter] = useState("all");
 
   const profile = profiles.find((p) => p.name === activeName) || profiles[0];
 
@@ -109,8 +116,10 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   );
 
   const visible = useMemo(() => {
-    let list = groupFilter === "all" ? rows : rows.filter((r) => r.boss.group === groupFilter);
-    list = list.slice().sort((a, b) => {
+    let list = rows;
+    if (groupFilter !== "all") list = list.filter((r) => r.boss.group === groupFilter);
+    if (uberFilter !== "all") list = list.filter((r) => !!r.boss.uber === (uberFilter === "uber"));
+    return list.slice().sort((a, b) => {
       if (sortKey === "name") return a.boss.name.localeCompare(b.boss.name);
       if (sortKey === "group") {
         const d = GROUP_ORDER.indexOf(a.boss.group) - GROUP_ORDER.indexOf(b.boss.group);
@@ -118,13 +127,19 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
       }
       return b[sortKey] - a[sortKey];
     });
-    return list;
-  }, [rows, sortKey, groupFilter]);
+  }, [rows, sortKey, groupFilter, uberFilter]);
 
   const maxProfit = Math.max(1, ...rows.map((r) => Math.abs(r.profitPerHour)));
   const current = rows.find((r) => r.boss.id === selected) || rows[0];
 
-  /* ---- profile mutation helpers ---- */
+  /* Variance matters as much as EV — a boss can be +EV entirely on a 1%
+     drop and still lose money most nights. Only the open boss is simulated. */
+  const chance = useMemo(
+    () => (current && current.gross > 0 ? profitChance(current, 10, 4000) : null),
+    [current]
+  );
+
+  /* ---- profile mutation ---- */
   const mutate = useCallback((fn) => {
     setProfiles((ps) => ps.map((p) => (p.name === activeName ? fn({ ...p }) : p)));
   }, [activeName]);
@@ -136,10 +151,20 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
     });
   }, [mutate]);
 
-  const setDropField = useCallback((bossId, item, kind, value) => {
+  const setGroupField = useCallback((bossId, groupId, field, value) => {
     mutate((p) => {
       const b = { ...(p.bosses[bossId] || {}) };
-      b.drops = { ...(b.drops || {}), [item]: { [kind]: value } };
+      b.groups = { ...(b.groups || {}), [groupId]: { ...((b.groups || {})[groupId] || {}), [field]: value } };
+      p.bosses = { ...p.bosses, [bossId]: b };
+      return p;
+    });
+  }, [mutate]);
+
+  const setDropRate = useCallback((bossId, key, kind, value) => {
+    const field = kind === "pool" ? "share" : kind === "weighted" ? "weight" : "chance";
+    mutate((p) => {
+      const b = { ...(p.bosses[bossId] || {}) };
+      b.drops = { ...(b.drops || {}), [key]: { [field]: value } };
       p.bosses = { ...p.bosses, [bossId]: b };
       return p;
     });
@@ -172,9 +197,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
     });
   }, [mutate]);
 
-  const resetAll = useCallback(() => {
-    mutate((p) => ({ ...p, bosses: {}, priceOverrides: {} }));
-  }, [mutate]);
+  const resetAll = useCallback(() => mutate((p) => ({ ...p, bosses: {}, priceOverrides: {} })), [mutate]);
 
   /* ---- profile management ---- */
   const addProfile = (seed) => {
@@ -200,17 +223,14 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   };
   const exportProfile = async () => {
     const text = JSON.stringify(profile, null, 2);
-    try {
-      await navigator.clipboard.writeText(text);
-      setImportText(text); setImportErr("Copied to clipboard."); setImportOpen(true);
-    } catch {
-      setImportText(text); setImportErr("Copy this JSON."); setImportOpen(true);
-    }
+    setImportText(text); setImportOpen(true);
+    try { await navigator.clipboard.writeText(text); setImportMsg("Copied to clipboard."); }
+    catch { setImportMsg("Copy this JSON."); }
   };
   const doImport = () => {
     let parsed;
     try { parsed = JSON.parse(importText); }
-    catch { setImportErr("That isn't valid JSON."); return; }
+    catch { setImportMsg("That isn't valid JSON."); return; }
     const list = Array.isArray(parsed) ? parsed : [parsed];
     const cleaned = list.map((p, i) => {
       const c = sanitizeProfile(p, `Imported ${i + 1}`);
@@ -219,7 +239,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
     });
     setProfiles((ps) => [...ps, ...cleaned]);
     setActiveName(cleaned[0].name);
-    setImportOpen(false); setImportText(""); setImportErr("");
+    setImportOpen(false); setImportText(""); setImportMsg("");
   };
 
   const money = (chaos) => fmtPrice(chaos, currency, divineRate);
@@ -230,10 +250,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
     return `${v < 0 ? "−" : ""}${f(Math.abs(v))}${unit}`;
   };
 
-  const groupsPresent = useMemo(
-    () => GROUP_ORDER.filter((g) => BOSSES.some((b) => b.group === g)),
-    []
-  );
+  const groupsPresent = useMemo(() => GROUP_ORDER.filter((g) => BOSSES.some((b) => b.group === g)), []);
 
   return (
     <section className="bp-wrap">
@@ -266,7 +283,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
           <button onClick={() => addProfile(profile)}>Duplicate</button>
           <button onClick={renameProfile}>Rename</button>
           <button onClick={exportProfile}>Export</button>
-          <button onClick={() => { setImportOpen(true); setImportText(""); setImportErr(""); }}>Import</button>
+          <button onClick={() => { setImportOpen(true); setImportText(""); setImportMsg(""); }}>Import</button>
           <button onClick={deleteProfile}>{profiles.length <= 1 ? "Reset" : "Delete"}</button>
         </div>
         <div className="st-ctl">
@@ -277,10 +294,18 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
             ))}
           </div>
         </div>
+        <div className="st-ctl">
+          <span>Variant</span>
+          <div className="st-seg">
+            <button className={uberFilter === "all" ? "on" : ""} onClick={() => setUberFilter("all")}>All</button>
+            <button className={uberFilter === "normal" ? "on" : ""} onClick={() => setUberFilter("normal")}>Normal</button>
+            <button className={uberFilter === "uber" ? "on" : ""} onClick={() => setUberFilter("uber")}>Uber</button>
+          </div>
+        </div>
         <label className="st-ctl">
-          <span>Group</span>
+          <span>Content</span>
           <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}>
-            <option value="all">All bosses</option>
+            <option value="all">All</option>
             {groupsPresent.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
         </label>
@@ -291,7 +316,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
             <option value="net">Profit / kill</option>
             <option value="gross">Drop value / kill</option>
             <option value="entryCost">Entry cost</option>
-            <option value="group">Group</option>
+            <option value="group">Content</option>
             <option value="name">Name</option>
           </select>
         </label>
@@ -304,9 +329,9 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
             <strong>Profile JSON</strong>
             <button className="st-close" onClick={() => setImportOpen(false)}>Close</button>
           </div>
-          <textarea value={importText} onChange={(e) => { setImportText(e.target.value); setImportErr(""); }}
-            spellCheck="false" placeholder='{"name":"My TTK","bosses":{"maven":{"ttk":120}}}' />
-          {importErr && <div className="bp-import-err">{importErr}</div>}
+          <textarea value={importText} onChange={(e) => { setImportText(e.target.value); setImportMsg(""); }}
+            spellCheck="false" placeholder='{"name":"My TTK","bosses":{"maven":{"ttk":180}}}' />
+          {importMsg && <div className="bp-import-err">{importMsg}</div>}
           <button className="bp-import-go" onClick={doImport}>Import as new profile</button>
         </div>
       )}
@@ -314,12 +339,11 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
       <div className="bp-body">
         {/* ---------- ranked list ---------- */}
         <div className="bp-list">
-          <div className="bp-list-head">
-            <span>Boss</span><span>Profit / hr</span>
-          </div>
+          <div className="bp-list-head"><span>Boss</span><span>Profit / hr</span></div>
           {visible.map((r) => {
             const tone = GROUP_TONES[r.boss.group] || "#c9a24b";
             const w = Math.min(100, (Math.abs(r.profitPerHour) / maxProfit) * 100);
+            const badge = RATE_BADGE[r.boss.rates];
             return (
               <button key={r.boss.id}
                 className={`bp-item ${selected === r.boss.id ? "on" : ""}`}
@@ -328,11 +352,11 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                 <span className="bp-item-main">
                   <span className="bp-item-name">
                     <i className="bp-dot" />{r.boss.name}
-                    {r.boss.rates === "estimate" && <em className="bp-flag" title="Drop split is an even-split estimate">est</em>}
+                    {badge && <em className="bp-flag" title={badge.title}>{badge.text}</em>}
                     {r.missingPrices > 0 && <em className="bp-flag warn" title={`${r.missingPrices} drop(s) have no price`}>?</em>}
                   </span>
                   <span className="bp-item-meta">
-                    {r.boss.group} · {fmtTime(r.runSeconds)}/run · {r.runsPerHour.toFixed(1)}/hr
+                    {r.boss.group} · {fmtTime(r.runSeconds)}/run · {r.runsPerHour.toFixed(1)} kph
                   </span>
                   <span className="bp-meter"><i className={r.profitPerHour >= 0 ? "up" : "down"} style={{ width: `${w}%` }} /></span>
                 </span>
@@ -340,7 +364,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
               </button>
             );
           })}
-          {!visible.length && <div className="st-cat-note">No bosses in that group.</div>}
+          {!visible.length && <div className="st-cat-note">Nothing matches those filters.</div>}
         </div>
 
         {/* ---------- detail ---------- */}
@@ -351,9 +375,10 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                 <h3>{current.boss.name}</h3>
                 <div className="bp-detail-sub">
                   {current.boss.group}
-                  {current.boss.rates === "estimate"
-                    ? " · drop split is an even-split estimate"
-                    : " · drop rates from poewiki"}
+                  {current.boss.uber ? " · uber" : ""}
+                  {current.boss.rates === "ledger" ? " · ledger drop tables"
+                    : current.boss.rates === "wiki" ? " · rates from poewiki"
+                    : " · rates are a placeholder"}
                 </div>
               </div>
               <button className="st-close" onClick={() => resetBoss(current.boss.id)}>Reset this boss</button>
@@ -362,79 +387,88 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
             {current.boss.note && <p className="bp-note">{current.boss.note}</p>}
 
             <div className="bp-stats">
-              <Stat label="Drop value / kill" value={money(current.gross)} />
-              <Stat label="Entry cost" value={current.entryCost ? `−${money(current.entryCost)}` : "free"} tone={current.entryCost ? "neg" : null} />
-              <Stat label="Profit / kill" value={signed(current.net)} tone={current.net >= 0 ? "pos" : "neg"} big />
+              <Stat label="Entry" value={current.entryCost ? money(current.entryCost) : "free"} />
+              <Stat label="EV / kill" value={signed(current.net)} tone={current.net >= 0 ? "pos" : "neg"} />
               <Stat label="Profit / hour" value={signed(current.profitPerHour)} tone={current.profitPerHour >= 0 ? "pos" : "neg"} big />
+              <Stat label="Profit in 10 runs"
+                value={chance == null ? "—" : `${Math.round(chance * 100)}%`}
+                tone={chance == null ? null : chance >= 0.5 ? "pos" : "warn"}
+                title="Simulated: how often 10 consecutive runs finish in the black. EV alone hides the variance." />
             </div>
 
             <div className="bp-timing">
               <label>Kill time <NumInput value={current.ttk} suffix="s" onCommit={(v) => setBossField(current.boss.id, "ttk", v)} /></label>
               <label>Setup / travel <NumInput value={current.overhead} suffix="s" onCommit={(v) => setBossField(current.boss.id, "overhead", v)} /></label>
-              <label title="How many guaranteed uniques the fight drops from its pool">
-                Pool drops <NumInput value={current.poolRolls} step={0.1} width={62} onCommit={(v) => setBossField(current.boss.id, "poolRolls", v)} />
-              </label>
-              <span className="bp-timing-out">{fmtTime(current.runSeconds)} per run · {current.runsPerHour.toFixed(1)} runs/hr</span>
+              {current.groups.some((g) => g.scaled) && (
+                <label title="Area item quantity — multiplies the quantity-scaled additional drops">
+                  Quantity <NumInput value={current.quantity} suffix="%" width={60} onCommit={(v) => setBossField(current.boss.id, "quantity", v)} />
+                </label>
+              )}
+              <span className="bp-timing-out">{fmtTime(current.runSeconds)} per run · {current.runsPerHour.toFixed(1)} kph</span>
             </div>
 
             {current.entryLines.length > 0 && (
-              <>
-                <h4 className="bp-h">Cost to open</h4>
-                <div className="bp-table">
-                  <div className="bp-tr bp-th"><span>Item</span><span>Qty</span><span>Unit</span><span>Cost</span></div>
-                  {current.entryLines.map((l) => (
-                    <div key={l.item} className={`bp-tr ${!l.found ? "unknown" : ""}`}>
-                      <span className="bp-cell-name">
-                        {l.item}
-                        {l.verify && <em className="bp-flag" title="Fragment name/quantity worth double-checking against your map device">verify</em>}
-                        {!l.found && <em className="bp-flag warn" title="No poe.ninja price under this name">no price</em>}
-                      </span>
-                      <span><NumInput value={l.qty} width={54} onCommit={(v) => setEntryQty(current.boss.id, l.item, v)} /></span>
-                      <span className="bp-cell-price">
-                        <PriceCell item={l.item} chaos={l.unit} overridden={l.overridden}
-                          onSet={setPriceOverride} money={money} />
-                      </span>
-                      <span className="bp-cell-val">{money(l.total)}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
+              <div className="bp-entry">
+                <span className="bp-entry-lbl">Entry</span>
+                {current.entryLines.map((l) => (
+                  <span key={l.item} className={`bp-entry-item ${!l.found ? "unknown" : ""}`}>
+                    {l.item}
+                    <PriceCell item={l.item} chaos={l.unit} overridden={l.overridden} onSet={setPriceOverride} money={money} />
+                    {(l.qty !== 1 || l.qty > 1) && (
+                      <NumInput value={l.qty} width={44} title="Quantity" onCommit={(v) => setEntryQty(current.boss.id, l.item, v)} />
+                    )}
+                    {!l.found && <em className="bp-flag warn" title="No poe.ninja price under this name">no price</em>}
+                  </span>
+                ))}
+                <span className="bp-entry-total">= {money(current.entryCost)}</span>
+              </div>
             )}
 
-            <h4 className="bp-h">Drops</h4>
-            <div className="bp-table">
-              <div className="bp-tr bp-th"><span>Item</span><span>Per kill</span><span>Unit</span><span>Expected</span></div>
-              {current.dropLines.map((l) => (
-                <div key={l.item} className={`bp-tr ${!l.found && l.qty > 0 ? "unknown" : ""}`}>
-                  <span className="bp-cell-name">
-                    {l.label}
-                    {l.kind === "pool" && <em className="bp-flag quiet" title="Share of the guaranteed unique pool">pool</em>}
-                    {!l.found && l.qty > 0 && <em className="bp-flag warn" title="No poe.ninja price under this name — set one manually">no price</em>}
-                  </span>
-                  <span className="bp-cell-rate">
-                    <NumInput value={round4(l.raw)} step={0.01} width={66}
-                      onCommit={(v) => setDropField(current.boss.id, l.item, l.kind === "pool" ? "share" : l.kind === "chance" ? "chance" : "qty", v)} />
-                    <em title={l.kind === "pool" ? "share of pool" : l.kind === "chance" ? "chance per kill" : "quantity per kill"}>
-                      {l.kind === "qty" ? "×" : pctText(l.raw)}
-                    </em>
-                  </span>
-                  <span className="bp-cell-price">
-                    <PriceCell item={l.item} chaos={l.unit} overridden={l.overridden} entry={l.priceEntry}
-                      onSet={setPriceOverride} money={money} />
-                  </span>
-                  <span className="bp-cell-val">{money(l.value)}</span>
+            <div className="bp-groups">
+              {current.groups.map((g) => (
+                <div className="bp-group" key={g.id}>
+                  <div className="bp-group-head">
+                    <span className="bp-group-title">
+                      {g.label}
+                      {g.kind === "pool" && <em>(1 of {g.lines.length})</em>}
+                      {g.kind === "weighted" && <em>({pctText(g.base)} base)</em>}
+                      {g.kind === "independent" && <em>{g.scaled ? "(independent · quantity)" : "(independent)"}</em>}
+                    </span>
+                    <span className="bp-group-sub">{money(g.subtotal)}</span>
+                  </div>
+                  <div className="bp-table">
+                    <div className="bp-tr bp-th">
+                      <span>Item</span><span>{g.kind === "weighted" ? "Weight" : "Rate"}</span><span>Value</span><span>EV</span>
+                    </div>
+                    {g.lines.map((l) => (
+                      <div key={l.key} className={`bp-tr ${!l.found && l.qty > 0 ? "unknown" : ""}`}>
+                        <span className="bp-cell-name" title={l.item !== l.label ? `Priced as: ${l.item}` : undefined}>
+                          {l.label}
+                          {!l.found && l.qty > 0 && <em className="bp-flag warn" title="No poe.ninja price under this name — set one manually">no price</em>}
+                        </span>
+                        <span className="bp-cell-rate">
+                          <NumInput
+                            value={g.kind === "weighted" ? l.rate : round4(l.rate * 100)}
+                            step={g.kind === "weighted" ? 1 : 0.5} width={g.kind === "weighted" ? 40 : 46}
+                            suffix={g.kind === "weighted" ? undefined : "%"}
+                            onCommit={(v) => setDropRate(current.boss.id, l.key, g.kind, g.kind === "weighted" ? v : v / 100)} />
+                          {g.kind === "weighted" && <em>{pctText(l.pct)}</em>}
+                        </span>
+                        <span className="bp-cell-price">
+                          <PriceCell item={l.item} chaos={l.unit} overridden={l.overridden} entry={l.priceEntry}
+                            onSet={setPriceOverride} money={money} />
+                        </span>
+                        <span className="bp-cell-val">{money(l.value)}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
-              <div className="bp-tr bp-total">
-                <span>Total expected value</span><span /><span />
-                <span className="bp-cell-val">{money(current.gross)}</span>
-              </div>
             </div>
 
             <p className="bp-foot">
-              Expected value is an average over many kills, not what you get from one. Drop rates are
-              crowdsourced and go stale when GGG rebalances — every number on this page is editable and
-              your edits are saved to this browser under the selected profile.
+              Expected value is an average over many kills, not what one kill pays. Every rate, time and
+              price here is editable and saved to this browser under the selected profile.
             </p>
           </div>
         )}
@@ -443,24 +477,22 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   );
 }
 
-function Stat({ label, value, tone, big }) {
+function Stat({ label, value, tone, big, title }) {
   return (
-    <div className={`bp-stat ${big ? "big" : ""}`}>
+    <div className={`bp-stat ${big ? "big" : ""}`} title={title}>
       <div className="bp-stat-lbl">{label}</div>
       <div className={`bp-stat-val ${tone || ""}`}>{value}</div>
     </div>
   );
 }
 
-/* Click a price to override it; click the ↺ to go back to the market price. */
+/* Click a price to override it; the ↺ puts the market price back. */
 function PriceCell({ item, chaos, overridden, entry, onSet, money }) {
   const [editing, setEditing] = useState(false);
-  const spread = entry && entry.n > 1 ? `${entry.n} variants · ${Math.round(entry.lo)}–${Math.round(entry.hi)}c` : null;
+  const spread = entry && entry.n > 1 ? `${entry.n} listings · ${Math.round(entry.lo)}–${Math.round(entry.hi)}c` : null;
   if (editing) {
-    return (
-      <NumInput value={Math.round(chaos * 100) / 100} step={0.1} width={80} suffix="c"
-        onCommit={(v) => { onSet(item, v); setEditing(false); }} />
-    );
+    return <NumInput value={Math.round(chaos * 100) / 100} step={0.1} width={78} suffix="c"
+      onCommit={(v) => { onSet(item, v); setEditing(false); }} />;
   }
   return (
     <span className="bp-price">
@@ -468,9 +500,7 @@ function PriceCell({ item, chaos, overridden, entry, onSet, money }) {
         onClick={() => setEditing(true)}>
         {chaos > 0 ? money(chaos) : "—"}
       </button>
-      {overridden && (
-        <button className="bp-price-reset" title="Use the market price again" onClick={() => onSet(item, null)}>↺</button>
-      )}
+      {overridden && <button className="bp-price-reset" title="Use the market price again" onClick={() => onSet(item, null)}>↺</button>}
     </span>
   );
 }

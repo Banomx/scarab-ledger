@@ -1,10 +1,31 @@
 /* Pure calculation layer for the boss profitability tab.
-   No React in here so the maths stays testable on its own. */
+   No React in here so the maths stays testable on its own.
+
+   A boss's drops are split into groups, because they don't all roll the
+   same way:
+
+     kind "pool"        one guaranteed drop picked from the group; each
+                        line's `share` is its slice. Expected quantity =
+                        share * rolls. (Both the "unique pool" and the
+                        "guaranteed" fragment/astrolabe tables are this.)
+     kind "weighted"    the group as a whole has a `base` chance to drop;
+                        if it does, one line is picked by `weight`.
+                        Expected quantity = base * weight / totalWeight.
+     kind "independent" each line rolls on its own `chance`. If the group
+                        is quantityScaled, chances are multiplied by
+                        (1 + quantity/100) — area item quantity.
+
+   Every rate, roll count and quantity is overridable per profile. */
 
 import { BOSSES, SYNTHETIC } from "./bossData.js";
 
-export const PROFILE_KEY = "sl.boss.profiles.v1";
-export const ACTIVE_KEY = "sl.boss.activeProfile.v1";
+export const PROFILE_KEY = "sl.boss.profiles.v2";
+export const ACTIVE_KEY = "sl.boss.activeProfile.v2";
+
+/* A drop line's identity for override purposes. Distinct from `item`
+   because a boss can list the same item twice as different variants
+   (Catarina's three Cinderswallow Urns), and those need separate rows. */
+export const dropKey = (d) => d.key || d.item;
 
 /* ---------- price resolution ---------- */
 
@@ -38,23 +59,22 @@ export function makeResolver(priceMap, { priceOverrides = {}, priceBasis = "c" }
 
 /* ---------- per-boss maths ---------- */
 
-/* Expected quantity per kill for one drop line. */
-export function expectedQty(drop, poolRolls) {
-  if (drop.qty != null) return drop.qty;
-  if (drop.chance != null) return drop.chance;
-  if (drop.share != null) return drop.share * poolRolls;
-  return 0;
-}
-
-/* settings: { ttk, overhead, poolRolls, drops: { [item]: {share|chance|qty} }, entry: { [item]: qty } } */
+/* settings: {
+     ttk, overhead, quantity,
+     groups: { [groupId]: { rolls, base } },
+     drops:  { [dropKey]: { share | chance | weight } },
+     entry:  { [item]: qty },
+   } */
 export function computeBoss(boss, resolve, settings = {}) {
   const ttk = num(settings.ttk, boss.ttk);
-  const overhead = num(settings.overhead, boss.overhead);
-  const poolRolls = num(settings.poolRolls, boss.poolRolls ?? 1);
+  const overhead = num(settings.overhead, boss.overhead ?? 0);
+  const quantity = num(settings.quantity, boss.quantity ?? 0);
   const dropOv = settings.drops || {};
   const entryOv = settings.entry || {};
+  const groupOv = settings.groups || {};
+  const qMul = 1 + quantity / 100;
 
-  const entryLines = boss.entry.map((e) => {
+  const entryLines = (boss.entry || []).map((e) => {
     const qty = num(entryOv[e.item], e.qty ?? 1);
     const p = resolve(e.item);
     return { ...e, qty, unit: p.chaos, total: p.chaos * qty, found: p.found, overridden: p.overridden };
@@ -62,36 +82,127 @@ export function computeBoss(boss, resolve, settings = {}) {
   const entryCost = entryLines.reduce((s, l) => s + l.total, 0);
   const entryUnknown = entryLines.some((l) => !l.found && l.qty > 0);
 
-  const dropLines = boss.drops.map((d) => {
-    const merged = { ...d, ...(dropOv[d.item] || {}) };
-    const qty = expectedQty(merged, poolRolls);
-    const p = resolve(d.item);
-    const label = d.item.startsWith("@") ? (SYNTHETIC[d.item]?.label || d.item) : d.item;
+  const groups = (boss.groups || []).map((g) => {
+    const gset = groupOv[g.id] || {};
+    const rolls = num(gset.rolls, g.rolls ?? 1);
+    const base = num(gset.base, g.base ?? 0);
+    const rateOf = (d) => {
+      const ov = dropOv[dropKey(d)] || {};
+      if (g.kind === "weighted") return num(ov.weight, d.weight ?? 0);
+      if (g.kind === "pool") return num(ov.share, d.share ?? 0);
+      return num(ov.chance, d.chance ?? 0);
+    };
+    const totalWeight = g.kind === "weighted" ? g.drops.reduce((s, d) => s + rateOf(d), 0) : 0;
+    const scaled = g.kind === "independent" && g.quantityScaled;
+
+    const lines = g.drops.map((d) => {
+      const rate = rateOf(d);
+      let qty, pct;
+      if (g.kind === "weighted") {
+        pct = totalWeight ? rate / totalWeight : 0;
+        qty = base * pct;
+      } else if (g.kind === "pool") {
+        pct = rate;
+        qty = rate * rolls;
+      } else {
+        pct = rate;
+        qty = rate * (scaled ? qMul : 1);
+      }
+      const p = resolve(d.item);
+      const label = d.label || (d.item.startsWith("@") ? SYNTHETIC[d.item]?.label : null) || d.item;
+      return {
+        key: dropKey(d), item: d.item, label, rate, pct, qty,
+        unit: p.chaos, value: p.chaos * qty,
+        found: p.found, overridden: p.overridden, priceEntry: p.entry,
+        kind: g.kind, groupId: g.id,
+      };
+    });
+    lines.sort((a, b) => b.value - a.value);
     return {
-      item: d.item, label, qty, unit: p.chaos, value: p.chaos * qty,
-      found: p.found, overridden: p.overridden, priceEntry: p.entry,
-      kind: merged.share != null ? "pool" : merged.chance != null ? "chance" : "qty",
-      raw: merged.share ?? merged.chance ?? merged.qty ?? 0,
+      ...g, rolls, base, totalWeight, scaled,
+      lines, subtotal: lines.reduce((s, l) => s + l.value, 0),
     };
   });
-  dropLines.sort((a, b) => b.value - a.value);
 
-  const gross = dropLines.reduce((s, l) => s + l.value, 0);
+  const dropLines = groups.flatMap((g) => g.lines);
+  const gross = groups.reduce((s, g) => s + g.subtotal, 0);
   const missingPrices = dropLines.filter((l) => !l.found && l.qty > 0).length;
   const net = gross - entryCost;
   const runSeconds = Math.max(1, ttk + overhead);
   const runsPerHour = 3600 / runSeconds;
 
   return {
-    boss, ttk, overhead, poolRolls, runSeconds, runsPerHour,
+    boss, ttk, overhead, quantity, runSeconds, runsPerHour,
     entryLines, entryCost, entryUnknown,
-    dropLines, gross, net,
+    groups, dropLines, gross, net,
     profitPerHour: net * runsPerHour,
     grossPerHour: gross * runsPerHour,
     missingPrices,
-    // share of pool that resolved to a price — a rough confidence signal
-    coverage: dropLines.length ? 1 - missingPrices / dropLines.length : 1,
   };
+}
+
+/* ---------- chance of coming out ahead ---------- */
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* Expected value alone hides the shape of the distribution: a boss can be
+   +EV entirely on the back of a 1% drop and still lose you money four
+   nights out of five. This simulates `runs` kills `trials` times and
+   reports how often the total lands in the black. Seeded, so the number
+   doesn't flicker as you type. */
+export function profitChance(computed, runs = 10, trials = 4000, seed = 0x5ca4ab) {
+  const rnd = mulberry32(seed);
+  const cost = computed.entryCost;
+  // Pre-flatten to plain arrays; this is the hot loop.
+  const pools = [], weighted = [], indep = [];
+  for (const g of computed.groups) {
+    const priced = g.lines.map((l) => ({ p: l.rate, v: l.unit }));
+    if (g.kind === "pool") pools.push({ rolls: g.rolls, lines: priced });
+    else if (g.kind === "weighted") weighted.push({ base: g.base, total: g.totalWeight, lines: priced });
+    else indep.push({ mul: g.scaled ? 1 + computed.quantity / 100 : 1, lines: priced });
+  }
+  if (!pools.length && !weighted.length && !indep.length) return null;
+
+  const drawFrom = (lines, total) => {
+    let x = rnd() * total;
+    for (const l of lines) { x -= l.p; if (x <= 0) return l.v; }
+    return 0;
+  };
+
+  let wins = 0;
+  for (let t = 0; t < trials; t++) {
+    let total = 0;
+    for (let r = 0; r < runs; r++) {
+      total -= cost;
+      for (const g of pools) {
+        const sum = g.lines.reduce((s, l) => s + l.p, 0);
+        if (sum <= 0) continue;
+        let n = Math.floor(g.rolls);
+        if (rnd() < g.rolls - n) n++;
+        for (let i = 0; i < n; i++) total += drawFrom(g.lines, sum);
+      }
+      for (const g of weighted) {
+        if (g.total > 0 && rnd() < g.base) total += drawFrom(g.lines, g.total);
+      }
+      for (const g of indep) {
+        for (const l of g.lines) {
+          let p = l.p * g.mul;
+          while (p >= 1) { total += l.v; p -= 1; }   // >100% means guaranteed plus a remainder
+          if (p > 0 && rnd() < p) total += l.v;
+        }
+      }
+    }
+    if (total > 0) wins++;
+  }
+  return wins / trials;
 }
 
 export function computeAll(resolve, profile) {
@@ -106,14 +217,14 @@ function num(v, fallback) {
 /* ---------- profiles ---------- */
 
 export function defaultProfile(name = "Default") {
-  return { name, bosses: {}, priceOverrides: {}, createdAt: new Date().toISOString() };
+  return { name, bosses: {}, priceOverrides: {}, createdAt: null };
 }
 
 export function loadProfiles() {
   try {
     const raw = localStorage.getItem(PROFILE_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
-    if (Array.isArray(parsed) && parsed.length) return parsed.map(sanitizeProfile);
+    if (Array.isArray(parsed) && parsed.length) return parsed.map((p) => sanitizeProfile(p));
   } catch { /* corrupt storage — start fresh */ }
   return [defaultProfile()];
 }
@@ -143,21 +254,35 @@ export function sanitizeProfile(p, fallbackName = "Imported") {
       for (const [id, s] of Object.entries(p.bosses)) {
         if (!s || typeof s !== "object") continue;
         const clean = {};
-        for (const k of ["ttk", "overhead", "poolRolls"]) {
-          if (isFinite(Number(s[k]))) clean[k] = Number(s[k]);
+        for (const k of ["ttk", "overhead", "quantity"]) {
+          if (isFinite(Number(s[k])) && s[k] !== null && s[k] !== "") clean[k] = Number(s[k]);
+        }
+        if (s.groups && typeof s.groups === "object") {
+          clean.groups = {};
+          for (const [gid, g] of Object.entries(s.groups)) {
+            if (!g || typeof g !== "object") continue;
+            const cg = {};
+            for (const k of ["rolls", "base"]) if (isFinite(Number(g[k])) && g[k] !== null && g[k] !== "") cg[k] = Number(g[k]);
+            if (Object.keys(cg).length) clean.groups[gid] = cg;
+          }
+          if (!Object.keys(clean.groups).length) delete clean.groups;
         }
         if (s.drops && typeof s.drops === "object") {
           clean.drops = {};
-          for (const [item, d] of Object.entries(s.drops)) {
+          for (const [k, d] of Object.entries(s.drops)) {
             if (!d || typeof d !== "object") continue;
             const cd = {};
-            for (const k of ["share", "chance", "qty"]) if (isFinite(Number(d[k]))) cd[k] = Number(d[k]);
-            if (Object.keys(cd).length) clean.drops[item] = cd;
+            for (const f of ["share", "chance", "weight"]) {
+              if (isFinite(Number(d[f])) && d[f] !== null && d[f] !== "") cd[f] = Number(d[f]);
+            }
+            if (Object.keys(cd).length) clean.drops[k] = cd;
           }
+          if (!Object.keys(clean.drops).length) delete clean.drops;
         }
         if (s.entry && typeof s.entry === "object") {
           clean.entry = {};
           for (const [item, q] of Object.entries(s.entry)) if (isFinite(Number(q))) clean.entry[item] = Number(q);
+          if (!Object.keys(clean.entry).length) delete clean.entry;
         }
         if (Object.keys(clean).length) out.bosses[id] = clean;
       }

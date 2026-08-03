@@ -93,28 +93,39 @@ location /ninja/ {
 
 ## Boss profit tab
 
-Expected value per kill from each boss's drop pool, minus what it costs to open
-the fight, divided by how long a run takes you — i.e. profit per hour.
+Expected value per kill from each boss's drop groups, minus what it costs to
+open the fight, over how long a run takes — i.e. profit per hour.
 
-- **`src/bossData.js`** is the dataset: one block per boss with its entry cost,
-  drop table and default times. Adding a boss means copying a block; no other
-  file changes. Each drop line is one of `share` (share of the guaranteed unique
-  pool), `chance` (independent chance per kill) or `qty` (flat expected count).
-- Bosses tagged **est** have a known drop pool but no published split, so it's
-  spread evenly — treat those as a starting point. The rest use the percentages
-  published on poewiki, which are crowdsourced and go stale whenever GGG
-  rebalances drops.
-- Uber-fragment names and quantities are tagged **verify** where they were worth
-  double-checking against an actual map device.
-- Everything on the page is editable — times, drop rates, quantities and prices.
-  Edits live in **TTK profiles** saved to `localStorage`, so you can keep one
-  profile per character and export/import them as JSON.
+Drops don't all roll the same way, so each boss splits them into groups:
+
+| kind | meaning | maths |
+|---|---|---|
+| `pool` | one guaranteed drop picked from the group (the unique pool, and the guaranteed fragment / astrolabe tables) | `share x rolls` |
+| `weighted` | the group as a whole has a `base` chance; if it hits, one line is picked by `weight` (Uber Maven's awakened gems: 2% base, three gems at equal weight) | `base x weight / totalWeight` |
+| `independent` | each line rolls on its own | `chance`, x `(1 + quantity/100)` when the group is `quantityScaled` |
+
+Area item quantity matters on the Eldritch fights — regular Exarch and Eater
+default to 70%, Black Star and Infinite Hunger to 50%, which is what the
+reference tool assumes. It's an editable field on those bosses.
+
+Alongside EV there's **profit in 10 runs**: a seeded Monte Carlo of ten
+consecutive runs, reporting how often they finish in the black. EV alone hides
+variance — a boss can be solidly +EV on the back of a 1% drop and still lose you
+money most sessions.
+
+- **`src/bossData.js`** is the dataset: one block per boss. Add a boss by copying
+  a block; no other file changes. Lines carry an optional `label` (when the
+  display name differs from the name used for pricing, e.g. unidentified or
+  variant items) and an optional `key` (needed only when a boss lists the same
+  item twice — Catarina's three Cinderswallow Urn variants).
+- `rates` records provenance: `ledger` for the supplied drop tables, `wiki` for
+  poewiki-sourced bosses the ledger set doesn't cover, `estimate` for the two
+  where nobody publishes a split. The last two are badged in the UI.
+- Everything is editable — times, rates, weights, quantity, entry counts and
+  prices. Edits live in **TTK profiles** in `localStorage`, exportable as JSON.
 - Prices come from `public/data/<league>/prices.json`, written by the same
   workflow that snapshots scarabs. Items with no poe.ninja listing are flagged
   `no price` rather than silently counted as zero.
-- `@awakened-common` / `@awakened-exceptional` are synthetic entries: the mean
-  price of the matching gem set, so "Maven drops a random awakened gem" prices
-  correctly.
 
 Two test scripts:
 
@@ -123,17 +134,22 @@ node scripts/test-boss.mjs          # dataset integrity + EV maths
 node scripts/test-fetch-shapes.mjs  # snapshot script vs. poe.ninja's endpoint shapes
 ```
 
-The second one matters because poe.ninja keeps moving PoE 1 economy data between
-endpoint families. It stubs `fetch`, makes every legacy `/api/data/*` path 404,
-and runs the real script end to end — so the next migration fails a test instead
-of silently shipping an empty `prices.json`. `DATA_OUT` redirects the script's
-output directory, which is how the test avoids touching `public/data/`.
+`test-boss.mjs` checks every pool's shares sum to ~1, that drop keys are unique
+per boss, and that EV reproduces the reference tool's numbers for the same rates
+and prices (including quantity scaling and the weighted gem group).
+
+`test-fetch-shapes.mjs` matters because poe.ninja keeps moving PoE 1 economy data
+between endpoint families. It stubs `fetch`, makes every legacy `/api/data/*`
+path 404, and runs the real script end to end — so the next migration fails a
+test instead of silently shipping an empty `prices.json`. `DATA_OUT` redirects
+the script's output directory, which is how the test avoids touching
+`public/data/`.
 
 ## Where things live
 
 - `src/App.jsx` — shell, scarab catalogue, demo fallback, live fetching, styles
 - `src/bossData.js` / `src/bossProfit.js` / `src/BossProfit.jsx` — boss profit
-  dataset, pure calculation layer, and UI
+  dataset, pure calculation layer (no React, so the maths is testable), and UI
 - `vite.config.js` — the `/ninja` proxy for dev and preview
 - Scarab grouping is derived from names automatically; new scarabs poe.ninja
   adds get sorted into the right mechanic without code changes.
