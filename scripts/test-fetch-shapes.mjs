@@ -9,6 +9,10 @@
       currency* that is not necessarily chaos. Guessing the conversion
       direction scales every bulk item by the chaos:primary ratio — which is
       exactly how Reverent Fragment ended up at 7.5c instead of 79c.
+   3. The exchange only lists what is bulk-traded. Currency like Orb of
+      Intention exists on the site's Currency tab but not in the exchange, so
+      sourcing currency from the exchange alone silently loses it. The stash
+      currency overview is the full list, already in chaos, and wins.
 
    So this stub deliberately uses a NON-chaos primary (Exalted Orb, with chaos
    at 0.1 exalted), makes every legacy /api/data/* path 404, and runs the real
@@ -46,9 +50,12 @@ const exchange = (lines) => J({
 /* Names for these come from the line id slug, not core.items — that path
    needs covering too, since it is how every fragment and scarab is named. */
 const EXCHANGE_DATA = {
-  Currency: [["chaos-orb", CHAOS_IN_PRIMARY], ["divine-orb", 130], ["awakeners-orb", 21]],
-  Fragment: [["reverent-fragment", 7.9], ["lonely-fragment", 5.0], ["traumatic-fragment", 1.86],
-             ["cosmic-fragment", 7.43], ["the-maven-s-writ", 0.852]],
+  // Same names as the stash currency overview but different numbers: the
+  // direct-chaos source must win, and exchange-only names must still land.
+  Currency: [["chaos-orb", CHAOS_IN_PRIMARY], ["divine-orb", 999], ["awakeners-orb", 999],
+             ["orb-of-remembrance", 6.3]],
+  Fragment: [["reverent-fragment", 999], ["lonely-fragment", 999], ["traumatic-fragment", 1.86],
+             ["cosmic-fragment", 7.43], ["the-maven-s-writ", 999]],
   Astrolabe: [["templar-astrolabe", 7.7], ["grasping-astrolabe", 8.63], ["fruiting-astrolabe", 14.7]],
   Scarab: [["divination-scarab-of-pilfering", 18.0], ["horned-scarab-of-pandemonium", 95.0]],
   Omen: [["omen-of-amelioration", 4.2]],
@@ -86,16 +93,21 @@ globalThis.fetch = async (url) => {
     return STASH_ITEMS[type] ? J({ lines: STASH_ITEMS[type] }) : J({ lines: [] });
   }
   if (u.pathname === "/poe1/api/economy/stash/current/currency/overview") {
-    // Real names live here (with apostrophes); the prices are deliberately
-    // nonsense so the test fails if we ever quote against them again.
+    // The site's Currency and Fragment tabs: full list, already in chaos.
+    // Note Orb of Intention and the curio appear ONLY here, never in the
+    // exchange — that is the case that used to go unpriced.
     if (type === "Fragment") return J({ lines: [
-      { currencyTypeName: "Reverent Fragment", chaosEquivalent: 999 },
-      { currencyTypeName: "The Maven's Writ", chaosEquivalent: 999 },
+      { currencyTypeName: "Reverent Fragment", chaosEquivalent: 79 },
+      { currencyTypeName: "The Maven's Writ", chaosEquivalent: 8.52 },
+      { currencyTypeName: "Lonely Fragment", chaosEquivalent: 50 },
+      { currencyTypeName: "Echo of Trauma", chaosEquivalent: 126 },
     ] });
     return J({ lines: [
-      { currencyTypeName: "Divine Orb", chaosEquivalent: 1300 },
-      { currencyTypeName: "Awakener's Orb", chaosEquivalent: 999 },
       { currencyTypeName: "Chaos Orb", chaosEquivalent: 1 },
+      { currencyTypeName: "Divine Orb", chaosEquivalent: 1300 },
+      { currencyTypeName: "Awakener's Orb", chaosEquivalent: 210 },
+      { currencyTypeName: "Orb of Intention", chaosEquivalent: 264 },
+      { currencyTypeName: "Curio of Potential", chaosEquivalent: 8 },
     ] });
   }
   return NOPE();
@@ -126,15 +138,28 @@ const P = priced.prices;
 
 // The headline bug: a fragment quoted at 7.9 in a primary worth 10 chaos is
 // 79c, not 7.9c and not 0.79c.
+// Direct-chaos sources win over the converted exchange for the same name.
 ok(near(P["Reverent Fragment"]?.c, 79), `Reverent Fragment ${P["Reverent Fragment"]?.c} != 79`);
 ok(near(P["Lonely Fragment"]?.c, 50), `Lonely Fragment ${P["Lonely Fragment"]?.c} != 50`);
+ok(near(P["The Maven's Writ"]?.c, 8.52), `The Maven's Writ ${P["The Maven's Writ"]?.c} != 8.52`);
+ok(near(P["Awakener's Orb"]?.c, 210), `Awakener's Orb ${P["Awakener's Orb"]?.c} != 210`);
+ok(near(P["Divine Orb"]?.c, 1300), `Divine Orb ${P["Divine Orb"]?.c} != 1300`);
+
+// Currency that exists only on the Currency tab, never bulk-traded — the
+// exact case that was coming back unpriced.
+ok(near(P["Orb of Intention"]?.c, 264), `Orb of Intention ${P["Orb of Intention"]?.c} != 264`);
+ok(near(P["Curio of Potential"]?.c, 8), `Curio of Potential ${P["Curio of Potential"]?.c} != 8`);
+ok(near(P["Echo of Trauma"]?.c, 126), `Echo of Trauma ${P["Echo of Trauma"]?.c} != 126`);
+
+// Exchange-only names still land, via the calibration.
 ok(near(P["Traumatic Fragment"]?.c, 18.6), `Traumatic Fragment ${P["Traumatic Fragment"]?.c} != 18.6`);
 ok(near(P["Cosmic Fragment"]?.c, 74.3), `Cosmic Fragment ${P["Cosmic Fragment"]?.c} != 74.3`);
-// apostrophes survive the slug -> name round trip
-ok(near(P["The Maven's Writ"]?.c, 8.52), `The Maven's Writ ${P["The Maven's Writ"]?.c} != 8.52 (apostrophe lost in the slug?)`);
-// names come from the dictionary, prices must NOT — 999 would mean we quoted
-// against the stash currency endpoint again
-ok(P["Reverent Fragment"]?.c !== 999 && P["Awakener's Orb"]?.c !== 999, "prices must not come from the stash currency endpoint");
+ok(near(P["Orb of Remembrance"]?.c, 63), `Orb of Remembrance ${P["Orb of Remembrance"]?.c} != 63`);
+
+// Nothing should carry the 999 sentinel — that would mean the exchange
+// overwrote a direct-chaos price.
+const sentinels = Object.entries(P).filter(([, v]) => v.c === 999).map(([k]) => k);
+ok(sentinels.length === 0, `exchange overwrote direct-chaos prices for: ${sentinels.join(", ")}`);
 
 // Astrolabes must be in the price map at all — they were absent entirely.
 ok(near(P["Templar Astrolabe"]?.c, 77), `Templar Astrolabe ${P["Templar Astrolabe"]?.c} != 77`);
@@ -162,7 +187,8 @@ const astro = JSON.parse(await readFile(path.join(OUT_DIR, "Allflame", "astrolab
 ok(near(astro.items.find((i) => /Templar/.test(i.name))?.chaosValue, 77), "astrolabe tab conversion");
 
 // and the documented endpoints are the ones actually used
-ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=Fragment"), "fragments must come from the exchange endpoint");
+ok(hits.some((h) => h === "/poe1/api/economy/stash/current/currency/overview?type=Fragment"), "fragments must be read from the stash currency overview");
+ok(hits.some((h) => h === "/poe1/api/economy/stash/current/currency/overview?type=Currency"), "currency must be read from the stash currency overview");
 ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=Astrolabe"), "astrolabes must be fetched");
 ok(hits.some((h) => h === "/poe1/api/economy/stash/current/item/overview?type=UniqueWeapon"), "uniques must come from the stash endpoint");
 

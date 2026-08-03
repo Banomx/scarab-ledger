@@ -259,20 +259,41 @@ function adaptExchange(j, nameRe = /scarab/i, divisor = null) {
    Either way the arithmetic is exact rather than heuristic, and the run
    logs Chaos Orb's computed price as a self-check. */
 
-const EXCHANGE_TYPES = [
-  "Currency", "Fragment", "Scarab", "Astrolabe", "Omen", "Tattoo",
-  "AllflameEmber", "Runegraft", "DjinnCoin", "Essence", "Fossil", "Resonator",
-  "Oil", "DeliriumOrb", "Incubator", "Vial", "Coffin", "Artifact",
-];
+/* Sources, in priority order. A name found by an earlier source is not
+   overwritten by a later one.
+
+   1. stash/current/currency/overview — what the site's Currency and Fragment
+      tabs show. Returns `chaosEquivalent`, i.e. chaos already, with no
+      conversion to get wrong, and carries the FULL list including things that
+      are never bulk-traded (Orb of Intention, curios, reliquary keys).
+   2. stash/current/item/overview — uniques, gems, divination cards, maps.
+      Also already chaos.
+   3. exchange/current/overview — bulk-traded goods, and the only home for
+      scarabs, astrolabes, omens, tattoos and embers. Quotes `primaryValue`
+      in a primary reference currency, so it needs the chaos calibration.
+
+   Getting this order wrong is what left Orb of Intention unpriced: the
+   exchange only lists what people trade in bulk, so anything else vanished. */
+const STASH_CURRENCY_TYPES = ["Currency", "Fragment"];
 const STASH_ITEM_TYPES = [
   "UniqueWeapon", "UniqueArmour", "UniqueAccessory", "UniqueFlask", "UniqueJewel",
   "UniqueMap", "UniqueRelic", "SkillGem", "DivinationCard", "Map", "Memory",
 ];
-/* Last resort if a type has no home in either family above. */
-const LEGACY_ITEM_TYPES = ["UniqueRelic", "Memory", "Tincture", "Coffin"];
+const EXCHANGE_TYPES = [
+  "Currency", "Fragment", "Scarab", "Astrolabe", "Omen", "Tattoo",
+  "AllflameEmber", "Runegraft", "DjinnCoin", "Essence", "Fossil", "Resonator",
+  "Oil", "DeliriumOrb", "Incubator", "Vial", "Coffin", "Artifact", "Catalyst",
+];
+/* Anything the two documented families don't answer for. */
+const LEGACY_TYPES = [
+  "Essence", "Fossil", "Resonator", "Oil", "DeliriumOrb", "Incubator", "Vial",
+  "Coffin", "Artifact", "Tincture", "Memory", "UniqueRelic", "DivinationCard",
+];
 
 const exchUrl = (p, t) => `${NINJA}/poe1/api/economy/exchange/current/overview?league=${encodeURIComponent(p)}&type=${t}`;
-const stashUrl = (p, t) => `${NINJA}/poe1/api/economy/stash/current/item/overview?league=${encodeURIComponent(p)}&type=${t}`;
+const stashItemUrl = (p, t) => `${NINJA}/poe1/api/economy/stash/current/item/overview?league=${encodeURIComponent(p)}&type=${t}`;
+const stashCurrUrl = (p, t) => `${NINJA}/poe1/api/economy/stash/current/currency/overview?league=${encodeURIComponent(p)}&type=${t}`;
+const legacyUrl = (p, t) => `${NINJA}/api/data/itemoverview?league=${encodeURIComponent(p)}&type=${t}`;
 
 function isBaseVariant(type, l) {
   if (type === "SkillGem") {
@@ -339,104 +360,139 @@ async function getExchangeContext(lgParams) {
 }
 
 async function getPriceMap(lgParams, ctx) {
-  for (const p of (ctx ? [ctx.leagueParam] : lgParams)) {
-    const currency = ctx?.currency ?? await tryJson(exchUrl(p, "Currency"));
-    if (!ctx) await sleep(DELAY_MS);
-    if (!exchangeRows(currency).length) continue;
-    const divisor = ctx ? ctx.divisor : chaosDivisor(currency);
-    const div = divisor || 1;
+  const p = ctx ? ctx.leagueParam : lgParams[0];
+  if (!p) return null;
+  const div = (ctx?.divisor) || 1;
 
-    const acc = {};
-    const add = (name, chaos, preferred) => {
-      if (!name || !(chaos > 0)) return;
-      const e = (acc[name] ||= { all: [], base: [] });
-      e.all.push(chaos);
-      if (preferred) e.base.push(chaos);
-    };
+  const acc = {};
+  const counts = {};
+  const missed = [];
+  // rank 0 beats rank 1 beats rank 2: a name already priced by a
+  // direct-chaos source is never re-priced from a converted one.
+  const add = (rank, name, chaos, preferred) => {
+    if (!name || !(chaos > 0)) return;
+    const e = acc[name];
+    if (e && e.rank < rank) return;
+    if (!e || e.rank > rank) { acc[name] = { rank, all: [chaos], base: preferred ? [chaos] : [] }; return; }
+    e.all.push(chaos);
+    if (preferred) e.base.push(chaos);
+  };
+  const tally = (t, n) => { if (n) counts[t] = (counts[t] || 0) + n; else missed.push(t); };
 
-    const counts = {};
-    const missed = [];
-
-    for (const t of EXCHANGE_TYPES) {
-      const j = t === "Currency" ? currency : await tryJson(exchUrl(p, t));
-      if (t !== "Currency") await sleep(DELAY_MS);
-      const rows = exchangeRows(j, ctx?.dict);
-      // exchange prices are bulk rates for a single fungible item — no variants
-      for (const r of rows) add(r.name, r.primaryValue / div, true);
-      if (rows.length) counts[t] = rows.length; else missed.push(t);
+  // 1. stash currency — the Currency and Fragment tabs, already in chaos
+  for (const t of STASH_CURRENCY_TYPES) {
+    const j = await tryJson(stashCurrUrl(p, t));
+    await sleep(DELAY_MS);
+    let n = 0;
+    for (const l of (j?.lines || [])) {
+      const name = l.currencyTypeName || l.name;
+      const chaos = l.chaosEquivalent ?? l.chaosValue;
+      if (name && chaos > 0) { add(0, name, chaos, true); n++; }
     }
-
-    for (const t of STASH_ITEM_TYPES) {
-      const j = await tryJson(stashUrl(p, t));
-      await sleep(DELAY_MS);
-      const lines = (j && Array.isArray(j.lines)) ? j.lines : [];
-      let n = 0;
-      for (const l of lines) {
-        const chaos = l.chaosValue ?? l.chaosEquivalent;
-        if (!l.name || !(chaos > 0)) continue;
-        add(l.name, chaos, isBaseVariant(t, l));
-        // Maps get labelled inconsistently — poe.ninja groups the tier 17s
-        // under "Nightmare Map" and the base type isn't always the display
-        // name. Index both so a lookup hits whichever string is used.
-        if (t === "Map" && l.baseType && l.baseType !== l.name) add(l.baseType, chaos, true);
-        n++;
-      }
-      if (n) counts[t] = n; else missed.push(t);
-      // Print what the tier 17 maps are actually called, so their entry costs
-      // can be named correctly instead of guessed at.
-      if (t === "Map" && n) {
-        const t17 = lines
-          .filter((l) => /citadel|fortress|sanctuary|ziggurat|abomination|nightmare/i.test(`${l.name} ${l.baseType || ""}`))
-          .map((l) => `${l.name}${l.baseType && l.baseType !== l.name ? ` [${l.baseType}]` : ""}${l.variant ? ` (${l.variant})` : ""} ${Math.round(l.chaosValue)}c`);
-        console.log(`    tier 17 map listings: ${t17.length ? t17.join(", ") : "none matched"}`);
-      }
-    }
-
-    for (const t of LEGACY_ITEM_TYPES) {
-      if (counts[t]) continue;
-      const j = await tryJson(`${NINJA}/api/data/itemoverview?league=${encodeURIComponent(p)}&type=${t}`);
-      await sleep(DELAY_MS);
-      let n = 0;
-      for (const l of (j?.lines || [])) {
-        if (l.name && l.chaosValue > 0) { add(l.name, l.chaosValue, isBaseVariant(t, l)); n++; }
-      }
-      if (n) counts[t] = n;
-    }
-
-    if (!Object.keys(acc).length) continue;
-
-    // Lower-middle median: with an even number of listings (a unique with two
-    // variants) the shared median() helper returns the dearer one, biasing
-    // every EV upward. Cheaper side wins; the UI has a "Best roll" toggle.
-    const midLow = (arr) => {
-      const a = arr.filter((v) => isFinite(v) && v > 0).sort((x, y) => x - y);
-      return a.length ? a[Math.ceil(a.length / 2) - 1] : 0;
-    };
-    const prices = {};
-    for (const [name, e] of Object.entries(acc)) {
-      const pick = e.base.length ? e.base : e.all;
-      prices[name] = {
-        c: Math.round(midLow(pick) * 100) / 100,
-        lo: Math.round(Math.min(...e.all) * 100) / 100,
-        hi: Math.round(Math.max(...e.all) * 100) / 100,
-        n: e.all.length,
-      };
-    }
-    // Chaos is the unit; if it was the primary it has no line of its own.
-    if (!prices["Chaos Orb"]) prices["Chaos Orb"] = { c: 1, lo: 1, hi: 1, n: 1 };
-
-    // Self-check: chaos must price at 1. Anything else means the exchange
-    // calibration is off and every bulk item is scaled by the same factor.
-    const chaosCheck = prices["Chaos Orb"].c;
-    if (Math.abs(chaosCheck - 1) > 0.02) {
-      console.log(`    WARNING: Chaos Orb priced at ${chaosCheck}c — exchange calibration looks wrong`);
-    }
-    if (missed.length) console.log(`    no data for types: ${missed.join(", ")}`);
-    console.log(`    categories: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(", ")}`);
-
-    return { prices, leagueParam: p, divisor: div, categories: Object.keys(counts).length };
+    tally(`stash:${t}`, n);
   }
-  return null;
+
+  // 2. stash items — uniques, gems, cards, maps; also already in chaos
+  for (const t of STASH_ITEM_TYPES) {
+    const j = await tryJson(stashItemUrl(p, t));
+    await sleep(DELAY_MS);
+    const lines = (j && Array.isArray(j.lines)) ? j.lines : [];
+    let n = 0;
+    for (const l of lines) {
+      const chaos = l.chaosValue ?? l.chaosEquivalent;
+      if (!l.name || !(chaos > 0)) continue;
+      add(1, l.name, chaos, isBaseVariant(t, l));
+      // Maps are labelled inconsistently — the tier 17s group under
+      // "Nightmare Map" and baseType isn't always the display name.
+      if (t === "Map" && l.baseType && l.baseType !== l.name) add(1, l.baseType, chaos, true);
+      n++;
+    }
+    tally(t, n);
+    if (t === "Map" && n) {
+      const t17 = lines
+        .filter((l) => /citadel|fortress|sanctuary|ziggurat|abomination|nightmare/i.test(`${l.name} ${l.baseType || ""}`))
+        .map((l) => `${l.name}${l.baseType && l.baseType !== l.name ? ` [${l.baseType}]` : ""}${l.variant ? ` (${l.variant})` : ""} ${Math.round(l.chaosValue)}c`);
+      console.log(`    tier 17 map listings: ${t17.length ? t17.join(", ") : "none matched"}`);
+    }
+  }
+
+  // 3. exchange — scarabs, astrolabes, omens, embers, and bulk gap-fill
+  for (const t of EXCHANGE_TYPES) {
+    const j = (t === "Currency" && ctx?.currency) ? ctx.currency : await tryJson(exchUrl(p, t));
+    if (!(t === "Currency" && ctx?.currency)) await sleep(DELAY_MS);
+    const rows = exchangeRows(j, ctx?.dict);
+    for (const r of rows) add(2, r.name, r.primaryValue / div, true);
+    tally(`exch:${t}`, rows.length);
+  }
+
+  // 4. legacy, for anything the documented families never answered
+  for (const t of LEGACY_TYPES) {
+    if (counts[t] || counts[`exch:${t}`]) continue;
+    const j = await tryJson(legacyUrl(p, t));
+    await sleep(DELAY_MS);
+    let n = 0;
+    for (const l of (j?.lines || [])) {
+      if (l.name && l.chaosValue > 0) { add(3, l.name, l.chaosValue, isBaseVariant(t, l)); n++; }
+    }
+    if (n) counts[`legacy:${t}`] = n;
+  }
+
+  if (!Object.keys(acc).length) return null;
+
+  // Lower-middle median: with an even number of listings (a unique with two
+  // variants) the shared median() helper returns the dearer one, biasing every
+  // EV upward. Cheaper side wins; the UI has a "Best roll" toggle.
+  const midLow = (arr) => {
+    const a = arr.filter((v) => isFinite(v) && v > 0).sort((x, y) => x - y);
+    return a.length ? a[Math.ceil(a.length / 2) - 1] : 0;
+  };
+  const prices = {};
+  for (const [name, e] of Object.entries(acc)) {
+    const pick = e.base.length ? e.base : e.all;
+    prices[name] = {
+      c: Math.round(midLow(pick) * 100) / 100,
+      lo: Math.round(Math.min(...e.all) * 100) / 100,
+      hi: Math.round(Math.max(...e.all) * 100) / 100,
+      n: e.all.length,
+    };
+  }
+  if (!prices["Chaos Orb"]) prices["Chaos Orb"] = { c: 1, lo: 1, hi: 1, n: 1 };
+
+  const chaosCheck = prices["Chaos Orb"].c;
+  if (Math.abs(chaosCheck - 1) > 0.02) {
+    console.log(`    WARNING: Chaos Orb priced at ${chaosCheck}c — exchange calibration looks wrong`);
+  }
+  if (missed.length) console.log(`    no data for: ${missed.join(", ")}`);
+  console.log(`    sources: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+
+  return { prices, leagueParam: p, divisor: div, categories: Object.keys(counts).length };
+}
+
+/* Every item the boss tab references, checked against what we actually got.
+   Anything listed here shows "no price" in the UI, so the run should say so
+   plainly rather than leaving it to be noticed on the site. */
+async function reportUnpricedBossItems(prices) {
+  let mod;
+  try {
+    mod = { data: await import("../src/bossData.js"), calc: await import("../src/bossProfit.js") };
+  } catch (e) {
+    console.log(`    (boss item check skipped: ${e.message})`);
+    return;
+  }
+  const resolve = mod.calc.makeResolver(prices);
+  const missing = new Set();
+  for (const b of mod.data.BOSSES) {
+    const c = mod.calc.computeBoss(b, resolve);
+    for (const l of c.entryLines) if (!l.found) missing.add(`${l.item} (entry: ${b.name})`);
+    for (const l of c.dropLines) if (!l.found && l.qty > 0) missing.add(l.item);
+  }
+  if (missing.size) {
+    const list = [...missing].sort();
+    const shown = list.slice(0, 30);
+    console.log(`    boss items with NO PRICE (${missing.size}): ${shown.join(", ")}${list.length > shown.length ? `, ... and ${list.length - shown.length} more` : ""}`);
+  } else {
+    console.log("    boss items: every referenced name resolved to a price");
+  }
 }
 
 /* ---------- divine rate ---------- */
@@ -662,7 +718,8 @@ async function main() {
         const pm = await getPriceMap(lg.params, ctx);
         if (pm) {
           await writeFile(path.join(dir, "prices.json"), JSON.stringify({ generatedAt, divineRate, prices: pm.prices }));
-          console.log(`  prices: ${Object.keys(pm.prices).length} names across ${pm.categories} categories (league=${pm.leagueParam})`);
+          console.log(`  prices: ${Object.keys(pm.prices).length} names across ${pm.categories} sources (league=${pm.leagueParam})`);
+          await reportUnpricedBossItems(pm.prices);
         } else {
           console.log(`  prices: NO DATA for ${lg.name} — every endpoint family came back empty`);
         }

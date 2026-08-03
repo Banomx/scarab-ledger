@@ -164,7 +164,7 @@ node scripts/test-fetch-shapes.mjs  # snapshot script vs. poe.ninja's endpoint s
 per boss, and that EV reproduces the reference tool's numbers for the same rates
 and prices (including quantity scaling and the weighted gem group).
 
-`test-fetch-shapes.mjs` guards the two things that have actually broken here:
+`test-fetch-shapes.mjs` guards the three things that have actually broken here:
 
 1. **Which endpoint serves what.** Per [poe.ninja's docs](https://poe.ninja/docs/api),
    bulk goods — currency, *fragments*, scarabs, astrolabes, omens, embers — come
@@ -176,6 +176,20 @@ and prices (including quantity scaling and the weighted gem group).
    sign of `core.rates`. So the script calibrates on Chaos Orb itself —
    `chaos = primaryValue / primaryValue(Chaos Orb)` — which is exact whatever the
    primary is, and logs Chaos Orb's computed price as a self-check (it must be 1).
+3. **Coverage.** The exchange only lists what is *bulk-traded*. Plenty of
+   currency — Orb of Intention, the curios, the reliquary keys — is on the site's
+   Currency tab but never in the exchange, so sourcing currency from the exchange
+   alone loses it silently. Sources are therefore ranked, and a name found by an
+   earlier one is never re-priced by a later one:
+
+   | rank | endpoint | covers | units |
+   |---|---|---|---|
+   | 1 | `stash/current/currency/overview` | the Currency and Fragment tabs, in full | chaos |
+   | 2 | `stash/current/item/overview` | uniques, gems, divination cards, maps | chaos |
+   | 3 | `exchange/current/overview` | scarabs, astrolabes, omens, embers, bulk gap-fill | needs calibration |
+
+   Every run also prints the boss items that ended up with no price at all, so a
+   name mismatch shows up in the workflow log instead of on the site.
 
 The test stubs `fetch` with a deliberately **non-chaos primary**, makes every
 legacy `/api/data/*` path 404, and runs the real script end to end. `DATA_OUT`
