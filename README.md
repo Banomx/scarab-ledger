@@ -278,19 +278,24 @@ is tinted by the biome it comes from and badged if it only drops from that
 biome's own node or sits behind a fractured wall. Underneath: resonator prices
 and what each node type is worth once price is multiplied by count.
 
-**Biomes** — what a delve level of each biome is worth, ranked. Most of a
-biome's value is its one exclusive fossil node (Crystal Spire → Hollow Fossil,
-Humid Fissure → Fractured, Molten Cavity → Faceted…), which is the whole reason
-biome choice matters rather than taking whatever the mine hands you. Each card
-also shows how much of the mine that biome occupies at your depth, from
-poewiki's spawn weights, so "worth steering to" and "what you'll actually see"
-are two different sort orders and the tab shows both.
+**Biomes** — which biome to steer into, ranked. A biome is quoted at **the
+value of the node you steer into it for**: its Crystal Spire, its Humid Fissure,
+its boss. Never per delve or per hour — that needs how often a node turns up,
+which is published nowhere, and an earlier version that guessed it was wrong by
+3x. Each card also shows how much of the mine that biome occupies at your depth,
+from poewiki's spawn weights, so "worth steering to" and "what you'll actually
+meet" are two sort orders and the tab shows both.
 
-Opening a biome gives it the same panel the Scarabs tab gives a mechanic: its
-value per delve charted across the league, its fossils listed beside it (tap one
-to overlay it), and the breakdown of where the number comes from. Every point on
-that curve re-runs the whole biome formula against that day's prices, so it
-answers "is this biome getting better to run" rather than "did fossils go up".
+Opening a biome gives it the same panel the Scarabs tab gives a mechanic: that
+node's value charted across the league, the biome's fossils listed beside it (tap
+one to overlay), and what every other node there pays. Every point on the curve
+re-runs the whole formula against that day's prices, so it answers "is this node
+getting better" rather than "did fossils go up".
+
+The toolbar quotes one thing the biome list doesn't: what an **ordinary fossil
+node** is worth at your depth, averaged over the biomes that spawn there and
+weighted by how common each is. That is the closest this tab gets to
+assumption-free — the shares are the wiki's own spawn weights.
 
 **Bosses** — Ahuatotli, Kurgal and Aul. You get a handful of these a league,
 not thirty in a row, so the mean is the wrong number to plan around: a boss can
@@ -305,12 +310,17 @@ The wiki publishes biome fossil pools, the depth thresholds for spawn weights,
 the biome-specific nodes, boss minimum depths and boss drop rates. Those are in
 `src/delveData.js` and the tab treats them as fact.
 
-It does *not* publish how many fossils a node drops, how many fossil nodes a
-delve level contains, or how often a city biome carries its boss node. Those
-three are the difference between "a Crystal Spire is worth 3.9 div" and "a delve
-level of Abyssal Depths is worth 1.9k chaos", and they are **knobs**, not
-numbers — set them under **Assumptions**, they persist, and the fossil prices
-and boss EVs don't depend on any of them. Nothing in the dataset invents a rate:
+It does *not* publish how many fossils a node drops, or how often a city biome
+carries its boss node. Those are **knobs**, not numbers — set them under
+**Assumptions**, they persist, and the fossil prices and boss EVs don't depend
+on either.
+
+There used to be a third knob: how many fossil nodes a delve level contains.
+That one was both unknowable and load-bearing — it multiplied every biome
+figure, and the default was about 3x too generous, which the market itself
+refuted (Hollow Fossil would not hold above a divine if delvers pulled one a
+run). Rather than relabel a number whose biggest input was a guess, the unit
+changed: biomes are quoted per node, and the knob is gone with it. Nothing in the dataset invents a rate:
 a drop the wiki names but doesn't rate (Aul's Desecrated Virtue) carries a rate
 of zero and is badged `unrated` rather than being handed a plausible-looking
 guess that would quietly inflate the EV.

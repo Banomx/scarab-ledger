@@ -27,8 +27,12 @@
    What is NOT published anywhere, and is therefore a knob in the UI
    rather than a number in this file:
      - how many fossils a node actually drops
-     - how many fossil nodes a delve level contains
      - how often a city biome carries its boss node
+
+   There used to be a third: how many fossil nodes a delve level contains.
+   That one was unknowable AND load-bearing — it multiplied every biome
+   figure — so the tab stopped quoting biomes per delve and now quotes them
+   per node, and the knob is gone with the unit.
    Every one of those lives in DEFAULTS below, is editable, and is
    badged in the UI as an assumption. Nothing here silently invents a
    drop rate.
@@ -208,18 +212,10 @@ export const DEFAULTS = {
   exclusiveExtra: 2,      // common-pool fossils alongside them
   genericQty: 3,          // common-pool fossils from an unnamed fossil node
   cacheQty: 5,            // common-pool fossils from a smuggler's cache
-  /* Nodes per delve level. Nothing published, and these are the numbers the
-     whole per-delve column rides on, so they are deliberately conservative.
-     The first draft had exclusivePerDelve at 0.35 — a Crystal Spire every
-     three delves, i.e. about one Hollow Fossil per delve — which the economy
-     itself refutes: Hollow would not hold above a divine if delvers were
-     pulling one per run. The UI now prints the implied "1 every N delves"
-     next to each of these so a bad setting announces itself. Calibrate from
-     your own runs; that is the only source there is. */
-  genericPerDelve: 0.6,
-  exclusivePerDelve: 0.1,
-  cachePerDelve: 0.2,
-  /* how often a city biome actually carries its boss node */
+  /* How often a city biome actually carries its boss node. Only the Bosses
+     view uses this — it converts "this city is 3.5% of the mine" into "you
+     will meet Ahuatotli about twice per 100 delves". The biome ranking is
+     quoted per node and does not touch it. */
   bossPerCity: 0.5,
   /* wall-locked fossils only count if you blast for them */
   openWalls: true,
@@ -231,12 +227,8 @@ export const TUNABLES = [
   { key: "exclusiveExtra", label: "Common fossils alongside", group: "Per node", step: 0.5 },
   { key: "genericQty", label: "Fossils per generic fossil node", group: "Per node", step: 0.5 },
   { key: "cacheQty", label: "Fossils per smuggler's cache", group: "Per node", step: 0.5 },
-  { key: "genericPerDelve", label: "Generic fossil nodes per delve", group: "Per delve", step: 0.1, rate: true },
-  { key: "exclusivePerDelve", label: "Biome fossil nodes per delve", group: "Per delve", step: 0.05, rate: true,
-    help: "Crystal Spire and friends. The single biggest lever on the per-delve number, and a pure guess — set it from what you actually see." },
-  { key: "cachePerDelve", label: "Smuggler's caches per delve", group: "Per delve", step: 0.05, rate: true },
   { key: "bossPerCity", label: "Boss node per city biome", group: "Bosses", step: 0.05,
-    help: "A city biome may carry its boss. Nothing published — this is the guess the encounter rate rides on." },
+    help: "A city biome may carry its boss. Nothing published — this is the guess the encounter rate rides on. Affects the Bosses view only." },
 ];
 
 /* ---------------- resonators ---------------- */

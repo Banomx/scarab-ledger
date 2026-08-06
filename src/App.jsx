@@ -1718,4 +1718,8 @@ const css = `
 .dl-sub-head em {
   font-style: normal; font-size: 11px; text-transform: none; letter-spacing: 0.02em; color: #6f6656;
 }
+
+.dl-mode-note { font-size: 12px; color: #8d8371; line-height: 1.55; max-width: 74ch; }
+.dl-mode-note strong { color: #c4b795; font-weight: 600; }
+.dl-biome-val em { display: block; text-align: right; margin-left: 0; }
 `;

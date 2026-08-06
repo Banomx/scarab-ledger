@@ -19,12 +19,13 @@ import { unitForSeries } from "./money.js";
      Fossils   what's a fossil worth and what moved. Same shape as the
                astrolabe/catalyst tabs — toolbar, one chart, one grid —
                because it is the same question about different items.
-     Biomes    which biome do I want at this depth? Value comes from the
-               fossil pool plus the biome's exclusive fossil node, which
-               is usually most of it. Opening one gives it the mechanic
-               panel treatment: the biome's value per delve charted over
-               the league, its fossils listed beside it, and the
-               breakdown of where the number comes from.
+     Biomes    which biome do I want at this depth? A biome is quoted at
+               the value of the node you steer into it for — its Crystal
+               Spire, its Humid Fissure, its boss — never per delve or per
+               hour, because that needs a node frequency nobody publishes.
+               Opening one gives it the mechanic panel treatment: that node
+               charted over the league, the biome's fossils beside it, and
+               what every other node there pays.
      Bosses    a delve boss is a handful of kills a league, not a farm.
                So the tab leads with the spread of a SINGLE kill, and
                keeps the mean next to it rather than instead of it.
@@ -35,10 +36,6 @@ import { unitForSeries } from "./money.js";
    ================================================================ */
 
 const num = (v, d) => (v == null || !isFinite(Number(v)) ? d : Number(v));
-/* A rate like 0.1 nodes per delve is hard to sanity-check; "1 every 10
-   delves" is not. Printed next to every per-delve knob so a setting that
-   implies more loot than the economy could bear is obvious on sight. */
-const everyN = (v) => (v > 0 ? `≈1 every ${(1 / v) >= 10 ? Math.round(1 / v) : (1 / v).toFixed(1)} delves` : "never");
 const pctText = (v) => (v >= 0.1 ? `${(v * 100).toFixed(0)}%` : v >= 0.001 ? `${(v * 100).toFixed(1)}%` : v > 0 ? "<0.1%" : "—");
 
 const CHG_KEYS = { "4h": "change4", "8h": "change8", "12h": "change12", "24h": "change24", "48h": "change48" };
@@ -198,7 +195,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
 
   const ranked = useMemo(() => {
     const rows = [...biomes.rows];
-    rows.sort((a, b) => (rankBy === "expected" ? b.expected - a.expected : b.perDelve - a.perDelve));
+    rows.sort((a, b) => (rankBy === "expected" ? b.expected - a.expected : b.headline - a.headline));
     return rows;
   }, [biomes, rankBy]);
 
@@ -273,9 +270,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
           ))}
         </div>
         <div className="dl-headline"
-          title="Fossils only, from one delve level, averaged over which biomes spawn at this depth. Not what a delve is worth — what the fossils in one are worth.">
-          <strong>{money(biomes.mineAverage)}</strong>
-          <em>in fossils per delve level at depth {settings.depth}</em>
+          title="What an ordinary 'Contains Fossils' node pays at this depth, averaged over the biomes that spawn here and weighted by how common each is. A biome's own node — Crystal Spire and friends — is worth much more; see the Biomes view.">
+          <strong>{money(biomes.avgFossilNode)}</strong>
+          <em>an ordinary fossil node at depth {settings.depth}</em>
         </div>
         <button className="dl-assume-btn" onClick={() => setShowAssumptions((v) => !v)}>
           {showAssumptions ? "Hide" : "Assumptions"}
@@ -293,14 +290,13 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             each one prints what it implies in plain terms, so check that against your own runs before
             trusting a per-delve figure.
           </p>
-          {["Per node", "Per delve", "Bosses"].map((group) => (
+          {[...new Set(TUNABLES.map((t) => t.group))].map((group) => (
             <div key={group} className="dl-assume-group">
               <h4>{group}</h4>
               {TUNABLES.filter((t) => t.group === group).map((t) => (
                 <label key={t.key} className="dl-assume-row" title={t.help}>
                   <span>
                     {t.label}
-                    {t.rate && <em className="dl-implied">{everyN(num(settings[t.key], DEFAULTS[t.key]))}</em>}
                   </span>
                   <NumInput value={num(settings[t.key], DEFAULTS[t.key])} step={t.step}
                     onCommit={(n) => patch({ [t.key]: n })} />
@@ -323,16 +319,16 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
         </div>
       )}
 
-      {/* "per delve" is the unit every number on this tab is quoted in, and it
-          is easy to read as "what a delve is worth". It isn't — it is fossils
-          only, from one run between checkpoints, off assumed node counts. Said
-          once, in front of you, rather than buried in a tooltip. */}
+      {/* The tab used to quote biomes "per delve", which multiplied every
+          figure by a node frequency nobody publishes and I had guessed 3x
+          too high. The unit is one NODE now: price x count, both checkable.
+          Said out loud, because a unit you have to infer is the bug. */}
       <p className="dl-define">
-        <strong>Per delve level</strong> = one run between checkpoints, counting <strong>fossils only</strong>.
-        Rares, currency, azurite and sulphite are not in these numbers. How many fossil nodes a delve
-        contains is not published anywhere — it is an{" "}
-        <button className="dl-inline-link" onClick={() => setShowAssumptions(true)}>assumption you set</button>,
-        and it is what these figures move on.
+        A biome is quoted at <strong>the value of the node you steer into it for</strong> — its Crystal
+        Spire, its Humid Fissure, its boss — in <strong>fossils only</strong>. Per node, never per delve or
+        per hour: those need how often a node turns up, which is published nowhere. How many fossils a node
+        drops is still an{" "}
+        <button className="dl-inline-link" onClick={() => setShowAssumptions(true)}>assumption you set</button>.
       </p>
 
       {!havePrices && (
@@ -488,6 +484,11 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
               <button className={rankBy === "expected" ? "on" : ""} onClick={() => setRankBy("expected")}
                 title="That value times how much of the mine the biome occupies at this depth">Weighted by how common</button>
             </div>
+            <span className="dl-mode-note">
+              {rankBy === "expected"
+                ? <>Each biome's worth <strong>thinned by how rarely it spawns</strong> at depth {settings.depth}. Answers "which biome am I likely to actually get value out of", not "which is best".</>
+                : <>What a biome is worth is <strong>the node you steer into it for</strong> — its Crystal Spire, its Humid Fissure, its boss. Rarity is not in these numbers: Primeval Ruins tops the list on Aul alone and still shows up in about 1 biome in 40.</>}
+            </span>
             {biomes.anyInterpolated && (
               <span className="dl-hint">
                 Depth {settings.depth} sits inside at least one biome's weight ramp — the wiki gives both ends
@@ -504,7 +505,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                 <div className="st-panel-title">
                   <FossilIcon size={26} tone={openRow.biome.tone} exclusive />
                   <h2>{openRow.biome.name}</h2>
-                  <span className="st-panel-total">{money(openRow.perDelve)} per delve</span>
+                  <span className="st-panel-total" title={`One ${openRow.headlineLabel}. Not a per-delve or per-hour figure — this tab does not claim to know how often you find one.`}>
+                    {money(openRow.headline)} · {openRow.headlineLabel}
+                  </span>
                   <span className="st-panel-total">{pctText(openRow.share)} of the mine</span>
                   {openRow.biome.city && <em className="st-tag st-tag-panel">city biome</em>}
                 </div>
@@ -518,8 +521,8 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                     cur={biomeChart.cur}
                     height={biomeChart.rows.length > 1 ? 260 : 64}
                     axisLabel={axisLabel}
-                    label={focusFossil ? <>Value per delve <em>and</em> {focusFossil}</> : "Value per delve across the league"}
-                    seriesName="Per delve"
+                    label={focusFossil ? <><>{openRow.headlineLabel}</> <em>and</em> {focusFossil}</> : `${openRow.headlineLabel} across the league`}
+                    seriesName={openRow.headlineLabel}
                     overlayName={focusFossil}
                     overlayTone={openRow.biome.tone}
                     dragSel={dragSel} setDragSel={setDragSel}
@@ -543,14 +546,23 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         {money(bossValues[openRow.biome.boss] || 0)} a kill
                       </p>
                     )}
-                    <h5>Per delve level</h5>
+                    <h5>What each node here pays</h5>
                     <table className="dl-parts">
                       <tbody>
-                        {openRow.exclusive && <tr><td>{settings.exclusivePerDelve}× {openRow.exclusive.node} <em className="dl-implied">{everyN(settings.exclusivePerDelve)}</em></td><td>{money(openRow.parts.exclusive)}</td></tr>}
-                        {!!openRow.poolNames.length && <tr><td>{settings.genericPerDelve}× generic fossil node <em className="dl-implied">{everyN(settings.genericPerDelve)}</em></td><td>{money(openRow.parts.generic)}</td></tr>}
-                        {!!openRow.poolNames.length && <tr><td>{settings.cachePerDelve}× smuggler's cache <em className="dl-implied">{everyN(settings.cachePerDelve)}</em></td><td>{money(openRow.parts.cache)}</td></tr>}
-                        {openRow.biome.city && <tr><td>{settings.bossPerCity}× boss node</td><td>{money(openRow.parts.boss)}</td></tr>}
-                        <tr className="dl-parts-total"><td>Total</td><td>{money(openRow.perDelve)}</td></tr>
+                        {openRow.exclusive && (
+                          <tr className="dl-parts-total">
+                            <td>{openRow.exclusive.node} <em className="dl-implied">{settings.exclusiveQty}× {openRow.exclusive.fossil.replace(/ Fossil$/, "")} + {openRow.exclusiveExtra ?? settings.exclusiveExtra} pool</em></td>
+                            <td>{money(openRow.exclusive.nodeValue)}</td>
+                          </tr>
+                        )}
+                        {openRow.bossNode && (
+                          <tr className="dl-parts-total">
+                            <td>{openRow.bossNode.name} <em className="dl-implied">one kill</em></td>
+                            <td>{money(openRow.bossNode.value)}</td>
+                          </tr>
+                        )}
+                        {!!openRow.poolNames.length && <tr><td>Generic fossil node <em className="dl-implied">{settings.genericQty}× pool</em></td><td>{money(openRow.genericNode)}</td></tr>}
+                        {!!openRow.poolNames.length && <tr><td>Smuggler's cache <em className="dl-implied">{settings.cacheQty}× pool</em></td><td>{money(openRow.cacheNode)}</td></tr>}
                       </tbody>
                     </table>
                     {!!openRow.biome.themed.length && (
@@ -611,7 +623,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             {ranked.map((r) => {
               const b = r.biome;
               const dead = r.weight <= 0;
-              const headline = rankBy === "expected" ? r.expected : r.perDelve;
+              const headline = rankBy === "expected" ? r.expected : r.headline;
               return (
                 <article key={b.id} className={`dl-biome${dead ? " dead" : ""}${openBiome === b.id ? " open" : ""}`} style={{ "--tone": b.tone }}>
                   <button className="dl-biome-head"
@@ -623,7 +635,13 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                       {b.city && <em className="dl-flag">city</em>}
                       {dead && <em className="dl-flag warn">not at this depth</em>}
                     </span>
-                    <span className="dl-biome-val">{money(headline)}<em>/delve</em></span>
+                    <span className="dl-biome-val"
+                      title={rankBy === "expected"
+                        ? `What this biome is worth — its ${r.headlineLabel} — thinned by the ${pctText(r.share)} of the mine it occupies at depth ${settings.depth}.`
+                        : `What this biome is worth: one ${r.headlineLabel}, the node you steer into it for. Says nothing about how often you find one.`}>
+                      {money(headline)}
+                      <em>{rankBy === "expected" ? "/biome, weighted" : "/biome"}</em>
+                    </span>
                   </button>
 
                   <div className="dl-share" title={`Spawn weight ${Math.round(r.weight)} — ${pctText(r.share)} of the mine at depth ${settings.depth}`}>

@@ -157,18 +157,39 @@ const PRICES = {
 };
 const priceOf = makePriceOf([PRICES]);
 
-test("pool average, node value and per-delve value are the declared formula", () => {
+test("pool average and node values are the declared formula", () => {
   const abyssal = BIOMES.find((b) => b.id === "abyssal");
-  const s = { ...DEFAULTS, exclusiveQty: 3, exclusiveExtra: 2, genericQty: 3, cacheQty: 5,
-    exclusivePerDelve: 0.35, genericPerDelve: 1.2, cachePerDelve: 0.4 };
+  const s = { ...DEFAULTS, exclusiveQty: 3, exclusiveExtra: 2, genericQty: 3, cacheQty: 5 };
   const r = computeBiome(abyssal, priceOf, s);
   near(r.poolAvg, 10, 1e-9, "pool average");
   //  3 x 300 + 2 x 10
   near(r.exclusive.nodeValue, 920, 1e-9, "Crystal Spire");
   near(r.genericNode, 30, 1e-9, "generic node");
   near(r.cacheNode, 50, 1e-9, "cache");
-  //  0.35*920 + 1.2*30 + 0.4*50
-  near(r.perDelve, 0.35 * 920 + 1.2 * 30 + 0.4 * 50, 1e-9, "per delve");
+  // the headline is the biome's own node, nothing multiplied by a frequency
+  near(r.headline, 920, 1e-9, "headline");
+  assert.equal(r.headlineLabel, "Crystal Spire");
+});
+
+test("nothing in the biome maths depends on a node frequency any more", () => {
+  // The unit is one node. If a stray per-delve knob crept back in, feeding
+  // it would move the numbers — and that is exactly the bug this replaced.
+  const abyssal = BIOMES.find((b) => b.id === "abyssal");
+  const plain = computeBiome(abyssal, priceOf, DEFAULTS);
+  const salted = computeBiome(abyssal, priceOf, {
+    ...DEFAULTS, exclusivePerDelve: 99, genericPerDelve: 99, cachePerDelve: 99,
+  });
+  near(salted.headline, plain.headline, 1e-9, "headline");
+  near(salted.genericNode, plain.genericNode, 1e-9, "generic node");
+  assert.ok(!("perDelve" in plain), "perDelve should be gone from the result");
+});
+
+test("a city biome's node is its boss, priced at one kill", () => {
+  const vaal = BIOMES.find((b) => b.id === "vaal");
+  const r = computeBiome(vaal, priceOf, DEFAULTS, 500);
+  near(r.headline, 500, 1e-9, "headline is the boss");
+  assert.equal(r.headlineLabel, "The Grand Architect's Temple");
+  near(r.bossNode.value, 500, 1e-9, "boss node value");
 });
 
 test("turning off fractured walls drops the wall-locked fossils from the pool", () => {
@@ -180,11 +201,11 @@ test("turning off fractured walls drops the wall-locked fossils from the pool", 
   assert.ok(!without.poolNames.includes("Gilded Fossil"), "Gilded should be gone");
 });
 
-test("the exclusive node is most of a biome's value, which is the point of the tab", () => {
+test("the exclusive node is worth far more than an ordinary one, which is the point of the tab", () => {
   const abyssal = BIOMES.find((b) => b.id === "abyssal");
   const r = computeBiome(abyssal, priceOf, DEFAULTS);
-  assert.ok(r.parts.exclusive > r.parts.generic + r.parts.cache,
-    "with a 300c exclusive fossil the node should dominate the pool nodes");
+  assert.ok(r.exclusive.nodeValue > r.genericNode + r.cacheNode,
+    "with a 300c exclusive fossil the biome node should dominate the pool nodes");
 });
 
 test("an unpriced fossil is excluded from the average, not counted as zero", () => {
@@ -195,14 +216,24 @@ test("an unpriced fossil is excluded from the average, not counted as zero", () 
   near(r.poolCoverage, 0.5, 1e-9, "coverage");
 });
 
-test("mine average is the share-weighted sum of the biome values", () => {
+test("the ordinary-fossil-node average covers only biomes with a pool", () => {
   const all = computeBiomes(priceOf, { ...DEFAULTS, depth: 600 });
-  const manual = all.rows.reduce((s, r) => s + r.share * r.perDelve, 0);
-  near(all.mineAverage, manual, 1e-9, "mine average");
-  assert.ok(all.mineAverage > 0, "should be positive with priced fossils");
+  const withPool = all.rows.filter((r) => r.poolNames.length && r.share > 0);
+  const poolShare = withPool.reduce((t, r) => t + r.share, 0);
+  const manual = withPool.reduce((t, r) => t + r.share * r.genericNode, 0) / poolShare;
+  near(all.avgFossilNode, manual, 1e-9, "average fossil node");
+  // the cities contribute no fossil pool, so they must not drag it down
+  assert.ok(all.avgFossilNode > 0, "should be positive with priced fossils");
+  const cityShare = all.rows.filter((r) => r.biome.city).reduce((t, r) => t + r.share, 0);
+  assert.ok(cityShare > 0, "cities do occupy part of the mine at depth 600");
 });
 
-test("a biome's value curve re-prices the whole formula on each day", () => {
+test("each row's weighted figure is its own node times its share", () => {
+  const all = computeBiomes(priceOf, { ...DEFAULTS, depth: 600 });
+  for (const r of all.rows) near(r.expected, r.share * r.headline, 1e-9, r.biome.name);
+});
+
+test("a biome's node curve re-prices the whole formula on each day", () => {
   const abyssal = BIOMES.find((b) => b.id === "abyssal");
   const hist = {
     "Hollow Fossil": [{ day: 0, value: 150 }, { day: 1, value: 300 }],
@@ -213,14 +244,14 @@ test("a biome's value curve re-prices the whole formula on each day", () => {
   };
   const s = biomeValueSeries(abyssal, hist, DEFAULTS);
   assert.equal(s.length, 2);
-  // every price doubled, so the value per delve doubles too
+  // every price doubled, so the node value doubles too
   near(s[1].value, s[0].value * 2, 1e-6, "doubling every price");
   // and day 1 must equal what computeBiome says about day 1's prices
   const direct = computeBiome(abyssal, makePriceOf([{
     "Hollow Fossil": { c: 300 }, "Aberrant Fossil": { c: 10 },
     "Bound Fossil": { c: 10 }, "Gilded Fossil": { c: 10 }, "Lucent Fossil": { c: 10 },
   }]), DEFAULTS);
-  near(s[1].value, direct.perDelve, 1e-6, "curve endpoint vs the live number");
+  near(s[1].value, direct.headline, 1e-6, "curve endpoint vs the live number");
 });
 
 test("a city biome gets no curve rather than a flat lie", () => {
@@ -310,6 +341,9 @@ test("sanitize clamps depth and drops junk", () => {
   assert.equal(sanitizeSettings({ depth: "abc" }).depth, DEFAULTS.depth);
   assert.equal(sanitizeSettings({ openWalls: "yes" }).openWalls, DEFAULTS.openWalls);
   assert.equal(sanitizeSettings({ exclusiveQty: -3 }).exclusiveQty, 0);
+  // the per-delve knobs are gone with the unit; stored ones must not survive
+  assert.ok(!("exclusivePerDelve" in sanitizeSettings({ exclusivePerDelve: 0.35 })),
+    "a stale per-delve setting should be dropped, not carried forward");
   assert.deepEqual(sanitizeSettings({ bosses: { nope: {} } }).bosses, {});
 });
 

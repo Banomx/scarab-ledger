@@ -3,9 +3,9 @@
 
    Three things are computed here:
 
-     biome value   what a delve level of that biome is worth, from its
-                   fossil pool, its exclusive fossil node, and — for city
-                   biomes, which have no pool — its boss.
+     biome value   what one NODE of that biome is worth: its exclusive
+                   fossil node, or for a city biome its boss node. Quoted
+                   per node on purpose — see the biomes section below.
      biome share   how much of the mine that biome occupies at a given
                    depth, from poewiki's spawn weights.
      boss value    expected chaos per kill, and the SHAPE of that: a
@@ -102,18 +102,26 @@ export function fossilRows(priceOf) {
 
 /* ---------------- biomes ----------------
 
-   A biome is worth what its nodes hand you:
+   The unit here is ONE NODE, deliberately.
 
-     exclusive node = exclusiveQty x its own fossil + exclusiveExtra x pool
-     generic node   = genericQty x pool
-     cache          = cacheQty x pool
+   The first version quoted biomes "per delve level", which meant
+   node value x how often you find one — and how often you find one is
+   published nowhere, so the headline rode on a number I made up. It was
+   wrong by 3x, and no amount of labelling fixes a figure whose biggest
+   input is a guess. A node value is price x count: the count is still an
+   assumption, but a small, checkable one ("a Crystal Spire drops about
+   three Hollow Fossils"), not a frequency nobody can observe.
 
-   "x pool" means the average price across the biome's common fossils —
-   a node rolls one of them, and nothing published says which is likelier,
-   so an unweighted mean is the only claim the data supports.
+   Each biome's headline is its OWN node — the thing you steer toward:
 
-   City biomes have no pool. Their value is their boss, discounted by how
-   often a city actually carries the boss node (`bossPerCity`). */
+     normal biome   its exclusive fossil node (Crystal Spire, Humid
+                    Fissure...): exclusiveQty of its own fossil, plus
+                    exclusiveExtra draws from the common pool
+     city biome     its boss node, worth one kill of that boss
+
+   The generic fossil node and smuggler's cache are quoted alongside,
+   priced off the biome's pool average, because they are what you get
+   when the biome hands you an ordinary node instead. */
 
 export function computeBiome(biome, priceOf, settings = {}, bossValue = null) {
   const s = { ...DEFAULTS, ...settings };
@@ -130,28 +138,37 @@ export function computeBiome(biome, priceOf, settings = {}, bossValue = null) {
   let exclusive = null;
   if (biome.exclusive) {
     const p = priceOf(biome.exclusive.fossil);
-    const nodeValue = s.exclusiveQty * p.chaos + s.exclusiveExtra * poolAvg;
-    exclusive = { ...biome.exclusive, chaos: p.chaos, found: p.found, nodeValue };
+    exclusive = {
+      ...biome.exclusive, chaos: p.chaos, found: p.found,
+      nodeValue: s.exclusiveQty * p.chaos + s.exclusiveExtra * poolAvg,
+    };
   }
 
   const genericNode = s.genericQty * poolAvg;
   const cacheNode = s.cacheQty * poolAvg;
 
-  const fromExclusive = exclusive ? s.exclusivePerDelve * exclusive.nodeValue : 0;
-  const fromGeneric = s.genericPerDelve * genericNode;
-  const fromCache = s.cachePerDelve * cacheNode;
-  const fromBoss = biome.city && bossValue != null ? s.bossPerCity * bossValue : 0;
+  // A city biome's node is its boss. No frequency assumption in here — that
+  // question ("how often does a city carry one") belongs to the boss view,
+  // which is where bossPerCity still lives.
+  const bossNode = biome.city && biome.boss && bossValue != null
+    ? { name: DELVE_BOSS_BY_ID[biome.boss]?.node || "Boss node", value: bossValue }
+    : null;
+
+  const headline = exclusive ? exclusive.nodeValue : bossNode ? bossNode.value : genericNode;
+  const headlineLabel = exclusive ? exclusive.node : bossNode ? bossNode.name : "fossil node";
 
   return {
     biome, poolNames, poolPrices, poolAvg, poolCoverage,
-    exclusive, genericNode, cacheNode,
-    parts: { exclusive: fromExclusive, generic: fromGeneric, cache: fromCache, boss: fromBoss },
-    perDelve: fromExclusive + fromGeneric + fromCache + fromBoss,
+    exclusive, genericNode, cacheNode, bossNode,
+    headline, headlineLabel,
   };
 }
 
-/* Every biome, ranked, plus what the mine as a whole is worth per delve
-   at this depth once availability is folded in. */
+/* Every biome, ranked, plus what an ordinary fossil node is worth at this
+   depth once you account for which biomes you are actually standing in.
+   That last figure is as close to assumption-free as this tab gets: the
+   shares are the wiki's own spawn weights and the only input of mine is
+   how many fossils a node drops. */
 export function computeBiomes(priceOf, settings = {}, bossValues = {}) {
   const s = { ...DEFAULTS, ...settings };
   const { rows } = biomeShares(s.depth);
@@ -159,20 +176,26 @@ export function computeBiomes(priceOf, settings = {}, bossValues = {}) {
   const out = BIOMES.map((b) => {
     const c = computeBiome(b, priceOf, s, b.boss ? bossValues[b.boss] ?? null : null);
     const sh = shareBy[b.id];
-    return { ...c, weight: sh.weight, share: sh.share, exact: sh.exact, expected: sh.share * c.perDelve };
+    return { ...c, weight: sh.weight, share: sh.share, exact: sh.exact, expected: sh.share * c.headline };
   });
-  const mineAverage = out.reduce((sum, r) => sum + r.expected, 0);
+  // Averaged over the biomes that actually have a fossil pool, reweighted so
+  // the city biomes' share doesn't silently drag it toward zero.
+  const withPool = out.filter((r) => r.poolNames.length && r.share > 0);
+  const poolShare = withPool.reduce((t, r) => t + r.share, 0);
+  const avgFossilNode = poolShare > 0
+    ? withPool.reduce((t, r) => t + r.share * r.genericNode, 0) / poolShare
+    : 0;
   const anyInterpolated = out.some((r) => !r.exact && r.weight > 0);
-  return { rows: out, mineAverage, anyInterpolated, depth: s.depth };
+  return { rows: out, avgFossilNode, anyInterpolated, depth: s.depth };
 }
 
-/* A biome's value per delve, day by day, from the fossil price history.
+/* A biome's node value, day by day, from the fossil price history.
 
    Same question the mechanic panel's "set total across the league" answers,
-   asked of a biome instead of a scarab set: is this biome getting better to
-   run, or is it just that everything went up? Every point re-runs
-   computeBiome() against that day's prices, so the curve moves for exactly
-   the reasons the current number does.
+   asked of a biome instead of a scarab set: is this biome's node getting
+   better, or did everything just go up? Every point re-runs computeBiome()
+   against that day's prices, so the curve moves for exactly the reasons the
+   current number does.
 
    City biomes have no fossil pool, so they get no curve — their value is
    their boss, and a boss drop table has no price history of its own. An
@@ -191,7 +214,7 @@ export function biomeValueSeries(biome, histories, settings = {}, bossValue = nu
         ?? h.reduce((best, p) => (Math.abs(p.day - d) < Math.abs(best.day - d) ? p : best), h[0]);
       return { chaos: pt.value, found: pt.value > 0 };
     };
-    return { day: d, value: computeBiome(biome, priceOf, settings, bossValue).perDelve };
+    return { day: d, value: computeBiome(biome, priceOf, settings, bossValue).headline };
   });
 }
 
@@ -213,7 +236,7 @@ export function computeDelveBosses(resolve, settings = {}) {
       ...computed, delve: b, biome, weight: sh, share,
       encountersPer100: per100,
       available: s.depth >= b.minDepth,
-      perDelveContribution: share * s.bossPerCity * computed.gross,
+      perCityContribution: share * s.bossPerCity * computed.gross,
     };
   });
 }
