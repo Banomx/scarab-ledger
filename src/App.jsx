@@ -1692,4 +1692,21 @@ const css = `
   text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap;
 }
 .dl-apply:hover { color: #f0dfa8; border-color: #8d7442; }
+
+.dl-implied {
+  font-style: normal; font-size: 11px; color: #6f6656; margin-left: 8px; white-space: nowrap;
+}
+.dl-assume-row > span { display: flex; align-items: baseline; }
+
+.dl-define {
+  border: 1px solid #3a332a; border-left: 3px solid #6b5730; border-radius: 6px;
+  background: #1d1811; padding: 9px 13px; margin: 0 0 14px;
+  font-size: 12.5px; color: #a99c7f; line-height: 1.65; max-width: 100ch;
+}
+.dl-define strong { color: #d9cfb4; font-weight: 600; }
+.dl-inline-link {
+  background: none; border: none; padding: 0; font: inherit; color: #d8b355;
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.dl-inline-link:hover { color: #f0dfa8; }
 `;

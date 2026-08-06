@@ -1,7 +1,7 @@
 From 736473425dcc6e07cdc6b6d2b9e2331f38353d6b Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 13:32:45 +0000
-Subject: [PATCH 1/5] Delve tab: fossil prices, biome ranking, boss value per
+Subject: [PATCH 1/6] Delve tab: fossil prices, biome ranking, boss value per
  kill
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -1986,7 +1986,7 @@ index 0000000..6a40f72
 From dd01fb0337402ceca7356254e3b04310e250d963 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 14:05:44 +0000
-Subject: [PATCH 2/5] CI: don't cancel an in-flight Pages deployment
+Subject: [PATCH 2/6] CI: don't cancel an in-flight Pages deployment
 
 A second run entering the 'pages' concurrency group was cancelling the
 first mid-deploy, which surfaces as 'Error: Deployment cancelled' from
@@ -2029,7 +2029,7 @@ index e8fe148..a5ce980 100644
 From e09dd89bf4b87e660e79e87356fb4224a661b37d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 14:40:32 +0000
-Subject: [PATCH 3/5] CI: give the Pages deployment 30 minutes before aborting
+Subject: [PATCH 3/6] CI: give the Pages deployment 30 minutes before aborting
 
 actions/deploy-pages defaults to a 10-minute wait and CANCELS the
 deployment when it expires. GitHub's Pages backend intermittently sits
@@ -2065,7 +2065,7 @@ index a5ce980..95493e1 100644
 From 10661076a0ac56471eb7ad984f302d9e0fa5cce0 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 14:49:57 +0000
-Subject: [PATCH 4/5] Delve: share the real price chart, lead with fossils
+Subject: [PATCH 4/6] Delve: share the real price chart, lead with fossils
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -3453,7 +3453,7 @@ index 1de993e..1600393 100644
 From 4e771f4e6de7ba3a653a9766351c4dfc80f32e7d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 15:30:36 +0000
-Subject: [PATCH 5/5] Delve: turn Aul's unrated drop into a ceiling, not a
+Subject: [PATCH 5/6] Delve: turn Aul's unrated drop into a ceiling, not a
  blank
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -3553,6 +3553,216 @@ index 6a40f72..546dcf5 100644
        ]),
      ],
    },
+-- 
+2.43.0
+
+
+From d950a85c6102a4d74ebe2926c8fbf921785384ec Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 6 Aug 2026 15:35:36 +0000
+Subject: [PATCH 6/6] Delve: say what "per delve" means, and stop overstating
+ it
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Two problems with the headline number, both mine.
+
+The default node frequencies were too generous. exclusivePerDelve was
+0.35 — a Crystal Spire every three delves, about one Hollow Fossil per
+delve — and the economy refutes that on its own: Hollow would not hold
+above a divine if delvers pulled one a run. Dropped to 0.1, with the
+generic node and cache rates cut to match. Every per-delve knob now
+prints what it implies in plain terms ("about 1 every 10 delves") next
+to the field and in the breakdown, so a bad setting announces itself
+instead of quietly tripling a biome's value.
+
+And the unit was never defined on the page. "389c per delve" reads as
+"a delve is worth 389c"; it isn't, it is the FOSSILS in one run between
+checkpoints, off assumed node counts, with no rares, currency, azurite
+or sulphite in it. That now sits in a strip under the toolbar with a
+link into the assumptions, rather than in a tooltip.
+
+Also: the biome panel no longer renders a 260px empty box before any
+history exists, which is every biome on a fresh snapshot.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01ERdvL4QxcxEM9GTbJLR9Db
+---
+ src/App.jsx      | 17 +++++++++++++++++
+ src/Delve.jsx    | 43 +++++++++++++++++++++++++++++++++----------
+ src/delveData.js | 22 +++++++++++++++-------
+ 3 files changed, 65 insertions(+), 17 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 771b6a2..aa90acc 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -1692,4 +1692,21 @@ const css = `
+   text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap;
+ }
+ .dl-apply:hover { color: #f0dfa8; border-color: #8d7442; }
++
++.dl-implied {
++  font-style: normal; font-size: 11px; color: #6f6656; margin-left: 8px; white-space: nowrap;
++}
++.dl-assume-row > span { display: flex; align-items: baseline; }
++
++.dl-define {
++  border: 1px solid #3a332a; border-left: 3px solid #6b5730; border-radius: 6px;
++  background: #1d1811; padding: 9px 13px; margin: 0 0 14px;
++  font-size: 12.5px; color: #a99c7f; line-height: 1.65; max-width: 100ch;
++}
++.dl-define strong { color: #d9cfb4; font-weight: 600; }
++.dl-inline-link {
++  background: none; border: none; padding: 0; font: inherit; color: #d8b355;
++  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
++}
++.dl-inline-link:hover { color: #f0dfa8; }
+ `;
+diff --git a/src/Delve.jsx b/src/Delve.jsx
+index 45e1f95..52656ac 100644
+--- a/src/Delve.jsx
++++ b/src/Delve.jsx
+@@ -35,6 +35,10 @@ import { unitForSeries } from "./money.js";
+    ================================================================ */
+ 
+ const num = (v, d) => (v == null || !isFinite(Number(v)) ? d : Number(v));
++/* A rate like 0.1 nodes per delve is hard to sanity-check; "1 every 10
++   delves" is not. Printed next to every per-delve knob so a setting that
++   implies more loot than the economy could bear is obvious on sight. */
++const everyN = (v) => (v > 0 ? `≈1 every ${(1 / v) >= 10 ? Math.round(1 / v) : (1 / v).toFixed(1)} delves` : "never");
+ const pctText = (v) => (v >= 0.1 ? `${(v * 100).toFixed(0)}%` : v >= 0.001 ? `${(v * 100).toFixed(1)}%` : v > 0 ? "<0.1%" : "—");
+ 
+ const CHG_KEYS = { "4h": "change4", "8h": "change8", "12h": "change12", "24h": "change24", "48h": "change48" };
+@@ -256,9 +260,10 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+             <button key={d} className={settings.depth === d ? "on" : ""} onClick={() => patch({ depth: d })}>{d}</button>
+           ))}
+         </div>
+-        <div className="dl-headline">
++        <div className="dl-headline"
++          title="Fossils only, from one delve level, averaged over which biomes spawn at this depth. Not what a delve is worth — what the fossils in one are worth.">
+           <strong>{money(biomes.mineAverage)}</strong>
+-          <em>average per delve at depth {settings.depth}</em>
++          <em>in fossils per delve level at depth {settings.depth}</em>
+         </div>
+         <button className="dl-assume-btn" onClick={() => setShowAssumptions((v) => !v)}>
+           {showAssumptions ? "Hide" : "Assumptions"}
+@@ -272,14 +277,19 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+             The wiki publishes biome pools, spawn weights and boss drop rates. It does not publish how many
+             fossils a node drops, how many nodes a delve level has, or how often a city biome carries its boss —
+             so those are yours to set. Everything below feeds the per-delve numbers; the fossil prices and the
+-            boss drop rates do not depend on any of it.
++            boss drop rates do not depend on any of it. The node frequencies are the biggest lever by far —
++            each one prints what it implies in plain terms, so check that against your own runs before
++            trusting a per-delve figure.
+           </p>
+           {["Per node", "Per delve", "Bosses"].map((group) => (
+             <div key={group} className="dl-assume-group">
+               <h4>{group}</h4>
+               {TUNABLES.filter((t) => t.group === group).map((t) => (
+                 <label key={t.key} className="dl-assume-row" title={t.help}>
+-                  <span>{t.label}</span>
++                  <span>
++                    {t.label}
++                    {t.rate && <em className="dl-implied">{everyN(num(settings[t.key], DEFAULTS[t.key]))}</em>}
++                  </span>
+                   <NumInput value={num(settings[t.key], DEFAULTS[t.key])} step={t.step}
+                     onCommit={(n) => patch({ [t.key]: n })} />
+                 </label>
+@@ -301,6 +311,18 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+         </div>
+       )}
+ 
++      {/* "per delve" is the unit every number on this tab is quoted in, and it
++          is easy to read as "what a delve is worth". It isn't — it is fossils
++          only, from one run between checkpoints, off assumed node counts. Said
++          once, in front of you, rather than buried in a tooltip. */}
++      <p className="dl-define">
++        <strong>Per delve level</strong> = one run between checkpoints, counting <strong>fossils only</strong>.
++        Rares, currency, azurite and sulphite are not in these numbers. How many fossil nodes a delve
++        contains is not published anywhere — it is an{" "}
++        <button className="dl-inline-link" onClick={() => setShowAssumptions(true)}>assumption you set</button>,
++        and it is what these figures move on.
++      </p>
++
+       {!havePrices && (
+         <div className="st-banner">
+           No price snapshot for {league} yet. Fossil and boss values need <code>fossils.json</code> or{" "}
+@@ -403,8 +425,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+ 
+           <h4 className="dl-h">What a node is worth</h4>
+           <p className="dl-note">
+-            Priced against the biome you are standing in, using the assumptions above. A biome node is
+-            worth its own fossil; everything else is worth that biome's pool average.
++            One node, not one delve — priced against the biome you are standing in. A biome node is worth
++            its own fossil; everything else is worth that biome's pool average. Multiply by how often you
++            actually find one to get a per-delve figure, which is what the Biomes view does.
+           </p>
+           <div className="dl-table-wrap">
+             <table className="dl-table">
+@@ -472,7 +495,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+                   <PriceChart
+                     rows={biomeChart.rows}
+                     cur={biomeChart.cur}
+-                    height={260}
++                    height={biomeChart.rows.length > 1 ? 260 : 64}
+                     axisLabel={axisLabel}
+                     label={focusFossil ? <>Value per delve <em>and</em> {focusFossil}</> : "Value per delve across the league"}
+                     seriesName="Per delve"
+@@ -502,9 +525,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+                     <h5>Per delve level</h5>
+                     <table className="dl-parts">
+                       <tbody>
+-                        {openRow.exclusive && <tr><td>{settings.exclusivePerDelve}× {openRow.exclusive.node}</td><td>{money(openRow.parts.exclusive)}</td></tr>}
+-                        {!!openRow.poolNames.length && <tr><td>{settings.genericPerDelve}× generic fossil node</td><td>{money(openRow.parts.generic)}</td></tr>}
+-                        {!!openRow.poolNames.length && <tr><td>{settings.cachePerDelve}× smuggler's cache</td><td>{money(openRow.parts.cache)}</td></tr>}
++                        {openRow.exclusive && <tr><td>{settings.exclusivePerDelve}× {openRow.exclusive.node} <em className="dl-implied">{everyN(settings.exclusivePerDelve)}</em></td><td>{money(openRow.parts.exclusive)}</td></tr>}
++                        {!!openRow.poolNames.length && <tr><td>{settings.genericPerDelve}× generic fossil node <em className="dl-implied">{everyN(settings.genericPerDelve)}</em></td><td>{money(openRow.parts.generic)}</td></tr>}
++                        {!!openRow.poolNames.length && <tr><td>{settings.cachePerDelve}× smuggler's cache <em className="dl-implied">{everyN(settings.cachePerDelve)}</em></td><td>{money(openRow.parts.cache)}</td></tr>}
+                         {openRow.biome.city && <tr><td>{settings.bossPerCity}× boss node</td><td>{money(openRow.parts.boss)}</td></tr>}
+                         <tr className="dl-parts-total"><td>Total</td><td>{money(openRow.perDelve)}</td></tr>
+                       </tbody>
+diff --git a/src/delveData.js b/src/delveData.js
+index 546dcf5..6eb286d 100644
+--- a/src/delveData.js
++++ b/src/delveData.js
+@@ -208,10 +208,17 @@ export const DEFAULTS = {
+   exclusiveExtra: 2,      // common-pool fossils alongside them
+   genericQty: 3,          // common-pool fossils from an unnamed fossil node
+   cacheQty: 5,            // common-pool fossils from a smuggler's cache
+-  /* nodes per delve level */
+-  genericPerDelve: 1.2,
+-  exclusivePerDelve: 0.35,
+-  cachePerDelve: 0.4,
++  /* Nodes per delve level. Nothing published, and these are the numbers the
++     whole per-delve column rides on, so they are deliberately conservative.
++     The first draft had exclusivePerDelve at 0.35 — a Crystal Spire every
++     three delves, i.e. about one Hollow Fossil per delve — which the economy
++     itself refutes: Hollow would not hold above a divine if delvers were
++     pulling one per run. The UI now prints the implied "1 every N delves"
++     next to each of these so a bad setting announces itself. Calibrate from
++     your own runs; that is the only source there is. */
++  genericPerDelve: 0.6,
++  exclusivePerDelve: 0.1,
++  cachePerDelve: 0.2,
+   /* how often a city biome actually carries its boss node */
+   bossPerCity: 0.5,
+   /* wall-locked fossils only count if you blast for them */
+@@ -224,9 +231,10 @@ export const TUNABLES = [
+   { key: "exclusiveExtra", label: "Common fossils alongside", group: "Per node", step: 0.5 },
+   { key: "genericQty", label: "Fossils per generic fossil node", group: "Per node", step: 0.5 },
+   { key: "cacheQty", label: "Fossils per smuggler's cache", group: "Per node", step: 0.5 },
+-  { key: "genericPerDelve", label: "Generic fossil nodes per delve", group: "Per delve", step: 0.1 },
+-  { key: "exclusivePerDelve", label: "Biome fossil nodes per delve", group: "Per delve", step: 0.05 },
+-  { key: "cachePerDelve", label: "Smuggler's caches per delve", group: "Per delve", step: 0.05 },
++  { key: "genericPerDelve", label: "Generic fossil nodes per delve", group: "Per delve", step: 0.1, rate: true },
++  { key: "exclusivePerDelve", label: "Biome fossil nodes per delve", group: "Per delve", step: 0.05, rate: true,
++    help: "Crystal Spire and friends. The single biggest lever on the per-delve number, and a pure guess — set it from what you actually see." },
++  { key: "cachePerDelve", label: "Smuggler's caches per delve", group: "Per delve", step: 0.05, rate: true },
+   { key: "bossPerCity", label: "Boss node per city biome", group: "Bosses", step: 0.05,
+     help: "A city biome may carry its boss. Nothing published — this is the guess the encounter rate rides on." },
+ ];
 -- 
 2.43.0
 
