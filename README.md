@@ -267,6 +267,67 @@ Two naming wrinkles it also pins:
   punctuation-insensitive match, trying the name with and without a trailing
   "Map" — so a near-miss doesn't silently read as `no price`.
 
+## Delve tab
+
+Three questions, three views.
+
+**Biomes** — what a delve level of each biome is worth, ranked. Most of a
+biome's value is its one exclusive fossil node (Crystal Spire → Hollow Fossil,
+Humid Fissure → Fractured, Molten Cavity → Faceted…), which is the whole reason
+biome choice matters rather than taking whatever the mine hands you. Each card
+also shows how much of the mine that biome occupies at your depth, from
+poewiki's spawn weights, so "worth steering to" and "what you'll actually see"
+are two different sort orders and the tab shows both.
+
+**Fossils & resonators** — the price list the biome numbers are built from,
+with 24h movement, which biome each fossil comes from, and what each node type
+is worth once you multiply price by count.
+
+**Bosses** — Ahuatotli, Kurgal and Aul. You get a handful of these a league,
+not thirty in a row, so the mean is the wrong number to plan around: a boss can
+be worth 300c on average and drop nothing at all on one kill in five. Each card
+leads with the **median** kill and shows the p10–p90 spread, with the mean
+marked on the same bar. Drop rates are poewiki's sampled
+"version 3.25.0, n=100" tables, and every rate is editable.
+
+### What's data and what's an assumption
+
+The wiki publishes biome fossil pools, the depth thresholds for spawn weights,
+the biome-specific nodes, boss minimum depths and boss drop rates. Those are in
+`src/delveData.js` and the tab treats them as fact.
+
+It does *not* publish how many fossils a node drops, how many fossil nodes a
+delve level contains, or how often a city biome carries its boss node. Those
+three are the difference between "a Crystal Spire is worth 3.9 div" and "a delve
+level of Abyssal Depths is worth 1.9k chaos", and they are **knobs**, not
+numbers — set them under **Assumptions**, they persist, and the fossil prices
+and boss EVs don't depend on any of them. Nothing in the dataset invents a rate:
+a drop the wiki names but doesn't rate (Aul's Desecrated Virtue) carries a rate
+of zero and is badged `unrated` rather than being handed a plausible-looking
+guess that would quietly inflate the EV.
+
+Two more places the tab admits what it doesn't know:
+
+- Between the two ends of a biome's weight ramp the wiki says the curve "scales
+  non-linearly" without giving the curve. Those depths are smoothstepped and the
+  share is labelled *approx*; at or past either threshold it's exact.
+- A pool average is taken over the fossils that actually have a price. If some
+  of the pool is unpriced the card says what fraction, because an average over
+  the priced half reads high when the cheap ones are the missing ones.
+
+### Data
+
+`scripts/fetch-data.mjs` writes `fossils.json` and `resonators.json` per league,
+the same way it writes astrolabes and catalysts, so both lists get self-history
+and % badges. Fossil and resonator prices are also in `prices.json` already (the
+boss tab's broad price map), and the tab falls back to that for a league whose
+snapshot predates this feature — it just loses the trend arrows.
+
+`node scripts/test-delve.mjs` covers the dataset's integrity (no fossil without
+a biome, no ramp that runs backwards, the drop rates still matching the wiki
+figures) and the arithmetic (biome value, depth weighting, boss EV, and that
+the kill simulation's mean tracks the analytic EV).
+
 ## Divine-adjusted prices ("did it go up, or did chaos deflate?")
 
 Chaos drifts against divine all league, so a scarab that reads +20% in chaos can
@@ -313,6 +374,10 @@ nominal-vs-real split, the upside-down backfill, and the day-axis alignment.
 - `src/App.jsx` — shell, scarab catalogue, demo fallback, live fetching, styles
 - `src/bossData.js` / `src/bossProfit.js` / `src/BossProfit.jsx` — boss profit
   dataset, pure calculation layer (no React, so the maths is testable), and UI
+- `src/delveData.js` / `src/delve.js` / `src/Delve.jsx` — delve biomes, fossils
+  and bosses, same three-way split. The delve bosses are declared in
+  `bossData.js`'s group shape and priced by its `computeBoss`, so there is one
+  drop engine in the codebase, not two.
 - `vite.config.js` — the `/ninja` proxy for dev and preview
 - Scarab grouping is derived from names automatically; new scarabs poe.ninja
   adds get sorted into the right mechanic without code changes.

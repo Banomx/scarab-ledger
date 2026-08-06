@@ -60,6 +60,10 @@ const EXCHANGE_DATA = {
   Astrolabe: [["templar-astrolabe", 7.7], ["grasping-astrolabe", 8.63], ["fruiting-astrolabe", 14.7]],
   Scarab: [["divination-scarab-of-pilfering", 18.0], ["horned-scarab-of-pandemonium", 95.0]],
   Omen: [["omen-of-amelioration", 4.2]],
+  // The Delve tab writes its own fossils.json/resonators.json AND leans on
+  // these names being in the broad price map, so both paths are exercised.
+  Fossil: [["hollow-fossil", 13.0], ["aberrant-fossil", 0.09], ["frigid-fossil", 0.11]],
+  Resonator: [["prime-chaotic-resonator", 9.6], ["primitive-alchemical-resonator", 0.02]],
 };
 
 const STASH_ITEMS = {
@@ -190,6 +194,11 @@ ok(sentinels.length === 0, `stash currency overwrote exchange prices for: ${sent
 ok(near(P["Templar Astrolabe"]?.c, 77), `Templar Astrolabe ${P["Templar Astrolabe"]?.c} != 77`);
 ok(near(P["Fruiting Astrolabe"]?.c, 147), `Fruiting Astrolabe ${P["Fruiting Astrolabe"]?.c} != 147`);
 
+// Fossils and resonators feed the Delve tab; a name that stops resolving
+// takes a biome average down with it silently.
+ok(near(P["Hollow Fossil"]?.c, 130), `Hollow Fossil ${P["Hollow Fossil"]?.c} != 130`);
+ok(near(P["Prime Chaotic Resonator"]?.c, 96), `Prime Chaotic Resonator ${P["Prime Chaotic Resonator"]?.c} != 96`);
+
 // chaos is the unit, so it must price at exactly 1
 ok(near(P["Chaos Orb"]?.c, 1), `Chaos Orb ${P["Chaos Orb"]?.c} != 1`);
 ok(near(P["Divine Orb"]?.c, 1300), `Divine Orb ${P["Divine Orb"]?.c} != 1300`);
@@ -231,6 +240,8 @@ ok(near(astro.items.find((i) => /Templar/.test(i.name))?.chaosValue, 77), "astro
 ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=Fragment"), "fragments come from the exchange");
 ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=DivinationCard"), "divination cards come from the exchange");
 ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=Astrolabe"), "astrolabes come from the exchange");
+ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=Fossil"), "fossils come from the exchange");
+ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=Resonator"), "resonators come from the exchange");
 ok(hits.some((h) => h === "/poe1/api/economy/stash/current/currency/overview?type=Currency"), "stash currency is still consulted for gap-fill");
 ok(hits.some((h) => h === "/poe1/api/economy/stash/current/item/overview?type=Invitation"), "invitations must be fetched");
 // A type that answers from its documented family should not also be retried

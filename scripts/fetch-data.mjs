@@ -87,6 +87,13 @@ async function getLeagues() {
 const EXTRA_CATEGORIES = [
   { key: "astrolabes", type: "Astrolabe", re: /astrolabe/i },
   { key: "catalysts", type: "Currency", re: /catalyst/i }, // catalysts live inside Currency
+  // The Delve tab could read fossil prices out of prices.json, which already
+  // covers the Fossil and Resonator types for the boss tab. It gets its own
+  // category anyway because prices.json is a bare name -> price map: no
+  // sparkline, no self-history, so no "is this fossil going up?" — which is
+  // the whole question a delver is asking.
+  { key: "fossils", type: "Fossil", re: /fossil/i },
+  { key: "resonators", type: "Resonator", re: /resonator/i },
 ];
 
 async function getExchangeCategory(lgParams, type, nameRe, divisor = null) {
@@ -557,7 +564,11 @@ function suggestNames(missing, allNames, k = 3) {
 async function reportUnpricedBossItems(prices, leagueName = "", detailed = true) {
   let mod;
   try {
-    mod = { data: await import("../src/bossData.js"), calc: await import("../src/bossProfit.js") };
+    mod = {
+      data: await import("../src/bossData.js"),
+      calc: await import("../src/bossProfit.js"),
+      delve: await import("../src/delveData.js"),
+    };
   } catch (e) {
     console.log(`    (boss item check skipped: ${e.message})`);
     return;
@@ -565,7 +576,15 @@ async function reportUnpricedBossItems(prices, leagueName = "", detailed = true)
   const resolve = mod.calc.makeResolver(prices, { divineRate: prices["Divine Orb"]?.c || 0 });
   const missing = new Map();   // item name -> where it appears
   const declared = new Set();  // priced from bossData's fallback, not the API
-  for (const b of mod.data.BOSSES) {
+  // Every fossil the Delve tab prices. A fossil that stops resolving takes a
+  // biome average down with it silently, so it is worth a line in the log —
+  // but only one line: fossil names are stable, so a miss is a thin economy,
+  // not a spelling that drifted, and the per-item "closest priced name" hints
+  // the boss items get would be 20 lines of noise.
+  const fossilMisses = mod.delve.FOSSILS
+    .filter((f) => !(prices[f.name]?.c > 0))
+    .map((f) => f.name);
+  for (const b of [...mod.data.BOSSES, ...mod.delve.DELVE_BOSSES]) {
     const c = mod.calc.computeBoss(b, resolve);
     for (const l of c.entryLines) {
       if (l.fallback) declared.add(`${l.item}${l.fallbackAge != null ? ` (${l.fallbackAge}d old)` : ""}`);
@@ -580,6 +599,11 @@ async function reportUnpricedBossItems(prices, leagueName = "", detailed = true)
     console.log(`    ${leagueName ? leagueName + ": " : ""}priced from a declared fallback, not the API (${declared.size}): ${[...declared].sort().join(", ")}`);
   }
   const tag = leagueName ? `${leagueName}: ` : "";
+  if (fossilMisses.length) {
+    console.log(`    ${tag}${fossilMisses.length}/${mod.delve.FOSSILS.length} delve fossils unpriced: ${fossilMisses.join(", ")}`);
+  } else {
+    console.log(`    ${tag}delve fossils — all ${mod.delve.FOSSILS.length} priced`);
+  }
   if (!missing.size) {
     console.log(`    ${tag}boss items — every referenced name resolved to a price`);
     return;
@@ -818,6 +842,8 @@ const LEAGUE_FILES = [
   "scarabs.json", "history.json", "selfhistory.json", "prices.json",
   "astrolabes.json", "astrolabes-history.json", "astrolabes-selfhistory.json",
   "catalysts.json", "catalysts-history.json", "catalysts-selfhistory.json",
+  "fossils.json", "fossils-history.json", "fossils-selfhistory.json",
+  "resonators.json", "resonators-history.json", "resonators-selfhistory.json",
 ];
 
 async function tryText(url) {

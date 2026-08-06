@@ -4,6 +4,7 @@ import {
   ReferenceDot, ReferenceArea, ResponsiveContainer,
 } from "recharts";
 import BossProfit from "./BossProfit.jsx";
+import Delve from "./Delve.jsx";
 import { SMART_DIV_AT, fmtChaos, fmtDiv, fmtPrice, unitFor, unitForSeries } from "./money.js";
 
 /* ================================================================
@@ -269,6 +270,10 @@ function ScarabIcon({ size = 22, tone = "#c9a24b" }) {
 
 
 /* ---------------- extra price-check categories (Astrolabes, Catalysts) ---- */
+
+/* Tabs that render their own control strip instead of the shared one, and
+   so also opt out of the shared connection banners. */
+const OWN_BAR = { bosses: true, delve: true };
 
 const CATEGORY_TABS = {
   astrolabes: { label: "Astrolabes", type: "Astrolabe", re: /astrolabe/i, shape: "ring" },
@@ -789,6 +794,7 @@ export default function ScarabTracker() {
             // quotes the big numbers in divine, so leave that choice alone.
             setCurrency((c) => (c === "chaos" ? "divine" : c));
           }}>Boss profit</button>
+        <button className={tab === "delve" ? "on" : ""} onClick={() => { setTab("delve"); setDragSel(null); }}>Delve</button>
       </nav>
 
       {mode === "demo" && (
@@ -798,8 +804,8 @@ export default function ScarabTracker() {
           data automatically once poe.ninja responds (reload to retry).
         </div>
       )}
-      {mode === "connecting" && tab !== "bosses" && <div className="st-banner st-quiet">Connecting to poe.ninja…</div>}
-      {mode === "live" && tab !== "bosses" && (
+      {mode === "connecting" && !OWN_BAR[tab] && <div className="st-banner st-quiet">Connecting to poe.ninja…</div>}
+      {mode === "live" && !OWN_BAR[tab] && (
         <div className="st-banner st-quiet">
           {dataSource === "static"
             ? `Snapshot data · ${league} · updated ${staticInfo?.generatedAt ? new Date(staticInfo.generatedAt).toLocaleString() : "recently"}`
@@ -817,8 +823,8 @@ export default function ScarabTracker() {
 
       {/* ---------- per-tab toolbar ----------
           Only the controls that actually change the view in front of you.
-          The boss tab brings its own bar (BossProfit), so it's excluded. */}
-      {tab !== "bosses" && (() => {
+          The boss and delve tabs bring their own bars, so they're excluded. */}
+      {!OWN_BAR[tab] && (() => {
         const isCat = !!CATEGORY_TABS[tab];
         const showSort = tab === "prices" || isCat;
         const showChange = true;                      // every non-boss tab shows % badges
@@ -1145,6 +1151,19 @@ export default function ScarabTracker() {
           </section>
         );
       })()}
+
+      {/* ---------- delve ---------- */}
+      {tab === "delve" && (
+        <Delve
+          league={league}
+          staticBase={staticSlugsRef.current[league] ? `${STATIC_BASE}/${staticSlugsRef.current[league]}` : STATIC_BASE}
+          currency={currency}
+          divineRate={divineRate}
+          fmtPrice={fmtPrice}
+          fmtChaos={fmtChaos}
+          unitFor={unitFor}
+        />
+      )}
 
       {/* ---------- boss profitability ---------- */}
       {tab === "bosses" && (
@@ -1692,4 +1711,145 @@ const css = `
 .bp-time:focus-visible { outline: 2px solid #d8b355; outline-offset: 0; }
 .bp-time.custom { border-color: #8d7442; color: #f0dfa8; background: #241d13; }
 .bp-timing label { gap: 7px; }
+
+/* ---------------- delve ---------------- */
+.dl-wrap { display: block; }
+.dl-bar {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+  border: 1px solid #3a332a; border-radius: 8px; background: #1d1811;
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.dl-field { display: flex; flex-direction: column; gap: 5px; }
+.dl-field > span {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em; color: #6f6656;
+}
+.dl-num input {
+  background: #17130e; color: #e5d9b8; border: 1px solid #4a4234; border-radius: 4px;
+  padding: 5px 6px; font-family: inherit; font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.dl-num input:focus-visible { outline: 2px solid #d8b355; outline-offset: 0; }
+.dl-num em { font-style: normal; font-size: 11.5px; color: #8d8371; margin-left: 4px; }
+.dl-presets { display: flex; gap: 5px; }
+.dl-presets button, .dl-assume-btn, .dl-reset, .dl-views button {
+  background: #211c15; color: #a99c7f; border: 1px solid #5a4d33; border-radius: 5px;
+  padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: 12.5px;
+}
+.dl-presets button.on { background: #4a3c20; color: #f0e2b6; border-color: #8d7442; }
+.dl-presets button:hover, .dl-assume-btn:hover, .dl-reset:hover { color: #ead9a8; border-color: #8d7442; }
+.dl-headline { margin-left: auto; text-align: right; line-height: 1.35; }
+.dl-headline strong { display: block; font-size: 19px; color: #f0dfa8; font-variant-numeric: tabular-nums; }
+.dl-headline em { font-style: normal; font-size: 11.5px; color: #8d8371; }
+.dl-assume {
+  border: 1px solid #6b5730; border-radius: 8px; background: #1d1811;
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.dl-assume-lead { margin: 0 0 12px; font-size: 12.5px; color: #a99c7f; line-height: 1.6; max-width: 78ch; }
+.dl-assume-group { margin-bottom: 12px; }
+.dl-assume-group h4 {
+  margin: 0 0 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #6f6656;
+}
+.dl-assume-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  max-width: 460px; padding: 4px 0; font-size: 13px; color: #cfc3a2;
+}
+.dl-assume-note { margin: 6px 0 0; font-size: 12px; color: #8d8371; line-height: 1.55; max-width: 70ch; }
+.dl-views { display: flex; gap: 6px; margin-bottom: 14px; }
+.dl-views button.on { background: #4a3c20; color: #f0e2b6; border-color: #8d7442; }
+.dl-subbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+.dl-hint { font-size: 12px; color: #8d8371; line-height: 1.55; max-width: 72ch; }
+.dl-lead { font-size: 13px; color: #a99c7f; line-height: 1.6; max-width: 78ch; margin: 0 0 14px; }
+.dl-h { margin: 22px 0 8px; font-size: 13px; color: #ead9a8; font-weight: 600; }
+.dl-note { font-size: 12px; color: #8d8371; line-height: 1.6; max-width: 78ch; margin: 8px 0 0; }
+.dl-note.warn { color: #d9a86a; }
+.dl-flag {
+  font-size: 9.5px; font-style: normal; text-transform: uppercase; letter-spacing: 0.08em;
+  border: 1px solid #5a4d33; border-radius: 3px; padding: 1px 4px; color: #8d8371;
+  margin-left: 6px; white-space: nowrap;
+}
+.dl-flag.warn { border-color: #7a5c33; color: #d9a86a; }
+
+/* biome cards */
+.dl-biomes { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; align-items: start; }
+.dl-biome {
+  border: 1px solid #3a332a; border-radius: 8px; background: #1d1811;
+  border-left: 3px solid var(--tone); padding: 0 0 10px; overflow: hidden;
+}
+.dl-biome.dead { opacity: 0.5; }
+.dl-biome.open { border-color: #6b5730; }
+.dl-biome-head {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; cursor: pointer;
+  background: none; border: none; padding: 11px 13px 8px; color: #e5d9b8; font-family: inherit; font-size: 14.5px;
+}
+.dl-biome-head:hover { background: #241e15; }
+.dl-biome-head:focus-visible { outline: 2px solid #d8b355; outline-offset: -2px; }
+.dl-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--tone); flex-shrink: 0; }
+.dl-biome-name { flex: 1; min-width: 0; display: flex; align-items: center; }
+.dl-biome-val { font-variant-numeric: tabular-nums; color: #f0dfa8; white-space: nowrap; font-size: 15px; }
+.dl-biome-val em { font-style: normal; font-size: 10.5px; color: #8d8371; margin-left: 4px; }
+.dl-share { padding: 0 13px 8px; }
+.dl-share i {
+  display: block; height: 4px; border-radius: 999px;
+  background: linear-gradient(90deg, var(--tone), #f0dfa8); min-width: 2px; margin-bottom: 4px;
+}
+.dl-share span { font-size: 11px; color: #7d7462; }
+.dl-excl { padding: 0 13px 6px; font-size: 12.5px; color: #a99c7f; line-height: 1.55; }
+.dl-excl strong { color: #d9cfb4; font-weight: 600; }
+.dl-excl b { color: #e5d49c; font-weight: 600; }
+.dl-biome-body { padding: 4px 13px 0; border-top: 1px solid #2c261d; margin-top: 6px; }
+.dl-biome-body h5 {
+  margin: 12px 0 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #6f6656;
+}
+.dl-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; }
+.dl-chips li {
+  border: 1px solid #3a332a; border-radius: 4px; padding: 3px 7px;
+  font-size: 11.5px; color: #a99c7f; background: #211c15;
+}
+.dl-chips li.unpriced { opacity: 0.5; }
+.dl-chips li b { color: #e5d49c; font-weight: 600; margin-left: 5px; font-variant-numeric: tabular-nums; }
+.dl-parts { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.dl-parts td { padding: 3px 0; color: #a99c7f; }
+.dl-parts td:last-child { text-align: right; color: #d9cfb4; font-variant-numeric: tabular-nums; }
+.dl-parts-total td { border-top: 1px solid #2c261d; padding-top: 6px; color: #ead9a8; font-weight: 600; }
+
+/* tables */
+.dl-table-wrap { border: 1px solid #3a332a; border-radius: 8px; background: #1d1811; overflow: hidden; }
+.dl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dl-table th {
+  text-align: left; padding: 9px 13px; font-size: 10px; font-weight: 400;
+  text-transform: uppercase; letter-spacing: 0.12em; color: #6f6656; border-bottom: 1px solid #2c261d;
+}
+.dl-table th.r, .dl-table td.r { text-align: right; }
+.dl-table td { padding: 7px 13px; color: #cfc3a2; border-bottom: 1px solid #221d16; }
+.dl-table tr:last-child td { border-bottom: none; }
+.dl-table td.num { font-variant-numeric: tabular-nums; color: #e5d49c; white-space: nowrap; }
+.dl-table tr.unpriced td { opacity: 0.55; }
+.dl-table tr.dl-sep td {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #6f6656;
+  background: #211c15; padding: 6px 13px;
+}
+.dl-where { color: #8d8371; font-size: 12px; }
+
+/* bosses */
+.dl-bosses { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 12px; }
+.dl-boss { border: 1px solid #3a332a; border-radius: 8px; background: #1d1811; padding: 0 13px 12px; }
+.dl-boss.open { border-color: #6b5730; grid-column: 1 / -1; }
+.dl-boss-head {
+  display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; cursor: pointer;
+  background: none; border: none; padding: 12px 0 4px; color: #e5d9b8; font-family: inherit; font-size: 15px;
+}
+.dl-boss-head:focus-visible { outline: 2px solid #d8b355; outline-offset: -2px; }
+.dl-boss-name { flex: 1; min-width: 0; }
+.dl-boss-val { font-variant-numeric: tabular-nums; color: #f0dfa8; white-space: nowrap; }
+.dl-boss-val em { font-style: normal; font-size: 10.5px; color: #8d8371; margin-left: 5px; }
+.dl-boss-meta { font-size: 11.5px; color: #7d7462; margin-bottom: 10px; line-height: 1.5; }
+.dl-spread { position: relative; height: 10px; background: #26211a; border-radius: 999px; margin-bottom: 6px; }
+.dl-spread i.band { position: absolute; top: 0; height: 100%; border-radius: 999px; background: #4a3c20; min-width: 2px; }
+.dl-spread i.med { position: absolute; top: -2px; width: 2px; height: 14px; background: #f0dfa8; border-radius: 1px; }
+.dl-spread i.mean { position: absolute; top: -2px; width: 2px; height: 14px; background: #6fb4c9; border-radius: 1px; }
+.dl-spread-key { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: #7d7462; font-variant-numeric: tabular-nums; }
+.dl-spread-key .med { color: #f0dfa8; }
+.dl-spread-key .mean { color: #6fb4c9; }
+.dl-boss-body { margin-top: 12px; border-top: 1px solid #2c261d; padding-top: 4px; }
+.dl-boss-body .dl-table { font-size: 12.5px; }
+.dl-boss-body .dl-table td, .dl-boss-body .dl-table th { padding-left: 0; padding-right: 0; }
 `;
