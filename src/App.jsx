@@ -1729,4 +1729,7 @@ const css = `
 }
 .dl-src.ok { border-color: #4f7a45; color: #a5d48f; }
 .dl-src.warn { border-color: #7a5c33; color: #d9a86a; }
+
+.st-seg button.dim { opacity: 0.45; }
+.st-seg button.dim.on { opacity: 0.75; }
 `;

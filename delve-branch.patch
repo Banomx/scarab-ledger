@@ -1,7 +1,7 @@
 From 736473425dcc6e07cdc6b6d2b9e2331f38353d6b Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 13:32:45 +0000
-Subject: [PATCH 01/10] Delve tab: fossil prices, biome ranking, boss value per
+Subject: [PATCH 01/11] Delve tab: fossil prices, biome ranking, boss value per
  kill
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -1986,7 +1986,7 @@ index 0000000..6a40f72
 From dd01fb0337402ceca7356254e3b04310e250d963 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 14:05:44 +0000
-Subject: [PATCH 02/10] CI: don't cancel an in-flight Pages deployment
+Subject: [PATCH 02/11] CI: don't cancel an in-flight Pages deployment
 
 A second run entering the 'pages' concurrency group was cancelling the
 first mid-deploy, which surfaces as 'Error: Deployment cancelled' from
@@ -2029,7 +2029,7 @@ index e8fe148..a5ce980 100644
 From e09dd89bf4b87e660e79e87356fb4224a661b37d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 14:40:32 +0000
-Subject: [PATCH 03/10] CI: give the Pages deployment 30 minutes before
+Subject: [PATCH 03/11] CI: give the Pages deployment 30 minutes before
  aborting
 
 actions/deploy-pages defaults to a 10-minute wait and CANCELS the
@@ -2066,7 +2066,7 @@ index a5ce980..95493e1 100644
 From 10661076a0ac56471eb7ad984f302d9e0fa5cce0 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 14:49:57 +0000
-Subject: [PATCH 04/10] Delve: share the real price chart, lead with fossils
+Subject: [PATCH 04/11] Delve: share the real price chart, lead with fossils
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -3454,7 +3454,7 @@ index 1de993e..1600393 100644
 From 4e771f4e6de7ba3a653a9766351c4dfc80f32e7d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 15:30:36 +0000
-Subject: [PATCH 05/10] Delve: turn Aul's unrated drop into a ceiling, not a
+Subject: [PATCH 05/11] Delve: turn Aul's unrated drop into a ceiling, not a
  blank
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -3561,7 +3561,7 @@ index 6a40f72..546dcf5 100644
 From d950a85c6102a4d74ebe2926c8fbf921785384ec Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 15:35:36 +0000
-Subject: [PATCH 06/10] Delve: say what "per delve" means, and stop overstating
+Subject: [PATCH 06/11] Delve: say what "per delve" means, and stop overstating
  it
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -3771,7 +3771,7 @@ index 546dcf5..6eb286d 100644
 From cf4a57a0296fb47dbe646a63aa5cf98e673d6530 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 15:44:41 +0000
-Subject: [PATCH 07/10] Delve: resonators share the fossil graph, keep their
+Subject: [PATCH 07/11] Delve: resonators share the fossil graph, keep their
  own list
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -3921,7 +3921,7 @@ index 52656ac..68b79b6 100644
 From 7e0ac7fccd8993a55ee34912f57311d5f31e06a7 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 18:20:35 +0000
-Subject: [PATCH 08/10] Delve: quote biomes per node, not per delve
+Subject: [PATCH 08/11] Delve: quote biomes per node, not per delve
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -4563,7 +4563,7 @@ index 6eb286d..e22254f 100644
 From e4f3a0c1619e42609df9a7365e95839ffd839841 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 18:27:56 +0000
-Subject: [PATCH 09/10] Delve: badge where each assumption came from, lower the
+Subject: [PATCH 09/11] Delve: badge where each assumption came from, lower the
  unsourced ones
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -4794,7 +4794,7 @@ index e22254f..000e645 100644
 From ac7bd4716348adc8a2c17a4a280279435b90a5d6 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 19:31:21 +0000
-Subject: [PATCH 10/10] Delve: divine-adjusted toggle on the fossil and
+Subject: [PATCH 10/11] Delve: divine-adjusted toggle on the fossil and
  resonator list
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -5020,6 +5020,228 @@ index df42451..855e22d 100644
                        </span>
 -                      <span className="st-row-price"><PctBadge v={chgOf(p.name)} /> {money(p.chaos)}</span>
 +                      <span className="st-row-price"><PctBadge v={chgOf(p.name)} real={useReal && realBadges} /> {money(p.chaos)}</span>
+                     </button>
+                   ))}
+                   {!openRow.poolNames.length && !openRow.exclusive && (
+-- 
+2.43.0
+
+
+From c4e5698517651d629a6c6cbfa5f35138565bd3df Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 6 Aug 2026 22:13:01 +0000
+Subject: [PATCH 11/11] Delve: divine-adjusted readiness is per window, not one
+ flag
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Ticking Divine-adjusted on the fossil list did nothing, and the reason
+was mine. I gated the badges on a single "does any change*R exist"
+flag, but change*R arrives one window at a time: a 24h figure needs a
+snapshot from 24h ago that stored the divine rate. Fossils are a new
+category, so their self-history starts at zero — the live data is seven
+hours old and carries change4R and nothing longer. change24 is there
+regardless, because that one comes from poe.ninja's sparkline rather
+than our history, so the row looked populated while the toggle sat
+inert on the default 24h window.
+
+Readiness is now computed per window. Ticking the box moves you to the
+longest window that actually has adjusted data, windows without it dim
+with an explanation on hover, and the banner names which are ready and
+why the rest aren't — with the real cause (history is Nh old), not the
+"these snapshots predate the rate" line, which was the wrong diagnosis
+for this case.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01ERdvL4QxcxEM9GTbJLR9Db
+---
+ README.md     |  9 ++++++
+ src/App.jsx   |  3 ++
+ src/Delve.jsx | 84 ++++++++++++++++++++++++++++++++++++++-------------
+ 3 files changed, 75 insertions(+), 21 deletions(-)
+
+diff --git a/README.md b/README.md
+index 9f5150a..fedf180 100644
+--- a/README.md
++++ b/README.md
+@@ -358,6 +358,15 @@ and % badges. Fossil and resonator prices are also in `prices.json` already (the
+ boss tab's broad price map), and the tab falls back to that for a league whose
+ snapshot predates this feature — it just loses the trend arrows.
+ 
++**Divine-adjusted arrives one window at a time.** A `change24R` needs a
++snapshot from 24h ago that stored the divine rate, and the fossil categories
++are new, so their self-history starts at zero and grows. Meanwhile `change24`
++shows up immediately because that one comes from poe.ninja's own sparkline, not
++from our history. So readiness is tracked **per window**: ticking the box moves
++you to the longest window that has real data, the ones that don't are dimmed,
++and the banner lists which are adjusted so far. Treating it as one global flag
++made the toggle look broken on the default 24h window.
++
+ `node scripts/test-delve.mjs` covers the dataset's integrity (no fossil without
+ a biome, no ramp that runs backwards, the drop rates still matching the wiki
+ figures) and the arithmetic (biome value, depth weighting, boss EV, and that
+diff --git a/src/App.jsx b/src/App.jsx
+index bbbdb7c..0a8c9bd 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -1729,4 +1729,7 @@ const css = `
+ }
+ .dl-src.ok { border-color: #4f7a45; color: #a5d48f; }
+ .dl-src.warn { border-color: #7a5c33; color: #d9a86a; }
++
++.st-seg button.dim { opacity: 0.45; }
++.st-seg button.dim.on { opacity: 0.75; }
+ `;
+diff --git a/src/Delve.jsx b/src/Delve.jsx
+index 855e22d..900575c 100644
+--- a/src/Delve.jsx
++++ b/src/Delve.jsx
+@@ -159,21 +159,51 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+ 
+   /* Divine-adjusted needs two things, and they go missing independently:
+      the rate CURVE (for the dashed line and the drag readout) and the
+-     per-item change*R fields (for the badges). A snapshot taken before the
+-     rate feature existed has prices but no rate, so it has neither; one
+-     taken since has both. Checked separately so the banner can say which
+-     case you are in instead of the toggle silently doing nothing. */
++     per-item change*R fields (for the badges).
++
++     And the second one arrives ONE WINDOW AT A TIME, which is the part that
++     bit. A change*R for a 24h window needs a snapshot from 24h ago that
++     stored the divine rate. Fossils are a new category, so their self-history
++     starts at zero and grows: at seven hours old the data carries change4R
++     and nothing longer, while change24 still shows up because that one comes
++     from poe.ninja's own sparkline rather than our history.
++
++     Treating "has R data" as one global flag therefore made the toggle look
++     broken on the default 24h window — it had R data, just not for that
++     window. Readiness is per window now, and the UI says which. */
+   const rateHistory = useMemo(() => {
+     const fromFossils = fossilData && fossilData !== "missing" ? fossilData.rateHistory : null;
+     const fromReso = resoData && resoData !== "missing" ? resoData.rateHistory : null;
+     return (Array.isArray(fromFossils) && fromFossils.length ? fromFossils : fromReso) || [];
+   }, [fossilData, resoData]);
+   const rateReady = rateHistory.length > 1;
+-  const realBadges = useMemo(
+-    () => [...fossilItems, ...resoItems].some((it) => isFinite(it.change24R) || isFinite(it.change48R)),
+-    [fossilData, resoData]
+-  );
++
++  const realWindows = useMemo(() => {
++    const items = [...fossilItems, ...resoItems];
++    const out = new Set();
++    for (const [w, key] of Object.entries(CHG_KEYS)) {
++      if (items.some((it) => isFinite(it[`${key}R`]))) out.add(w);
++    }
++    return out;
++  }, [fossilData, resoData]);
++  const realBadges = realWindows.size > 0;
+   const useReal = realMode && rateReady;
++  const realHere = useReal && realWindows.has(chgWindow);
++
++  /* How far back the stored rate actually goes — the ceiling on which
++     windows can ever be divine-adjusted, and the number that explains why
++     the long ones are missing. */
++  const historyHours = rateHistory.length > 1
++    ? (rateHistory[rateHistory.length - 1].day - rateHistory[0].day) * 24
++    : 0;
++
++  /* Ticking the box on a window with no R data would do visibly nothing,
++     which is exactly the bug. Move to the longest window that does have it. */
++  useEffect(() => {
++    if (!useReal || !realBadges || realWindows.has(chgWindow)) return;
++    const best = [...realWindows].sort((a, b) => parseInt(b, 10) - parseInt(a, 10))[0];
++    if (best) setChgWindow(best);
++  }, [useReal, realBadges, realWindows, chgWindow]);
+ 
+   const trendBy = useMemo(() => {
+     const m = {};
+@@ -236,7 +266,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+   const chgOf = (name) => {
+     const it = trendBy[name];
+     if (!it) return undefined;
+-    return (useReal && realBadges) ? it[`${chgKey}R`] : it[chgKey];
++    return realHere ? it[`${chgKey}R`] : it[chgKey];
+   };
+ 
+   const reset = () => setSettings(sanitizeSettings({ ...DEFAULTS, depth: settings.depth }));
+@@ -387,12 +417,17 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+           {generatedAt ? ` · updated ${new Date(generatedAt).toLocaleString()}` : ""}
+           {" · "}1 Divine ≈ {Math.round(rate)} Chaos
+           {fossilData === "missing" && priceMap && priceMap !== "missing" ? " · fossil trends appear after the next refresh" : ""}
+-          {useReal && rateDrift && (
++          {useReal && (
+             <span className="st-banner-real">
+-              {" "}· divine {rateDrift.pct >= 0 ? "+" : "−"}{Math.abs(rateDrift.pct).toFixed(1)}% in {chgWindow}
+-              {realBadges
+-                ? ", so every % here is divine-adjusted"
+-                : " — these snapshots predate the stored rate, so the % badges stay in chaos"}
++              {rateDrift && <>{" "}· divine {rateDrift.pct >= 0 ? "+" : "−"}{Math.abs(rateDrift.pct).toFixed(1)}% in {chgWindow}</>}
++              {!realBadges
++                ? " — no divine-adjusted figures yet. The fossil categories are new, so their history starts at zero; the first one appears about 4h after the second snapshot."
++                : realWindows.has(chgWindow)
++                  ? ", so every % here is divine-adjusted"
++                  : ` — but not for ${chgWindow}: that needs a stored rate from ${chgWindow} ago and the history is only ${Math.round(historyHours)}h old.`}
++              {realBadges && realWindows.size < 5 && (
++                <> · adjusted windows so far: {[...realWindows].sort((a, b) => parseInt(a, 10) - parseInt(b, 10)).join(", ")} — the rest fill in as snapshots accumulate.</>
++              )}
+             </span>
+           )}
+         </div>
+@@ -419,9 +454,16 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+             <div className="st-ctl">
+               <span>Price change</span>
+               <div className="st-seg">
+-                {["4h", "8h", "12h", "24h", "48h"].map((w) => (
+-                  <button key={w} className={chgWindow === w ? "on" : ""} onClick={() => setChgWindow(w)}>{w}</button>
+-                ))}
++                {["4h", "8h", "12h", "24h", "48h"].map((w) => {
++                  const noReal = useReal && realBadges && !realWindows.has(w);
++                  return (
++                    <button key={w} className={`${chgWindow === w ? "on" : ""}${noReal ? " dim" : ""}`}
++                      title={noReal
++                        ? `No divine-adjusted figure for ${w} yet — that needs a stored rate from ${w} ago and the fossil history is ${Math.round(historyHours)}h old.`
++                        : undefined}
++                      onClick={() => setChgWindow(w)}>{w}</button>
++                  );
++                })}
+               </div>
+             </div>
+             <div className="st-ctl st-checks">
+@@ -467,7 +509,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+                     {f.exclusive && <em className="dl-flag">node</em>}
+                     {f.wall && <em className="dl-flag" title="Behind a fractured wall">wall</em>}
+                   </span>
+-                  <span className="st-row-price"><PctBadge v={chgOf(f.name)} real={useReal && realBadges} /> {money(f.chaos)}</span>
++                  <span className="st-row-price"><PctBadge v={chgOf(f.name)} real={realHere} /> {money(f.chaos)}</span>
+                 </button>
+               ))}
+               {!fossilList.length && <div className="st-cat-note">No fossil matches that filter.</div>}
+@@ -491,7 +533,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+                         {it.name.replace(/ Resonator$/, "")}
+                         {tier && <em className="dl-flag" title={`${RESONATOR_SOCKETS[tier]} sockets`}>{RESONATOR_SOCKETS[tier]}s</em>}
+                       </span>
+-                      <span className="st-row-price"><PctBadge v={chgOf(it.name)} real={useReal && realBadges} /> {money(it.chaosValue)}</span>
++                      <span className="st-row-price"><PctBadge v={chgOf(it.name)} real={realHere} /> {money(it.chaosValue)}</span>
+                     </button>
+                   );
+                 })}
+@@ -655,7 +697,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+                         <FossilIcon size={18} tone={openRow.biome.tone} exclusive />
+                         {openRow.exclusive.fossil}<em className="dl-flag">node</em>
+                       </span>
+-                      <span className="st-row-price"><PctBadge v={chgOf(openRow.exclusive.fossil)} real={useReal && realBadges} /> {money(openRow.exclusive.chaos)}</span>
++                      <span className="st-row-price"><PctBadge v={chgOf(openRow.exclusive.fossil)} real={realHere} /> {money(openRow.exclusive.chaos)}</span>
+                     </button>
+                   )}
+                   {openRow.poolPrices.map((p) => (
+@@ -666,7 +708,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+                         <FossilIcon size={18} tone={openRow.biome.tone} />
+                         {p.name}
+                       </span>
+-                      <span className="st-row-price"><PctBadge v={chgOf(p.name)} real={useReal && realBadges} /> {money(p.chaos)}</span>
++                      <span className="st-row-price"><PctBadge v={chgOf(p.name)} real={realHere} /> {money(p.chaos)}</span>
                      </button>
                    ))}
                    {!openRow.poolNames.length && !openRow.exclusive && (

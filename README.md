@@ -358,6 +358,15 @@ and % badges. Fossil and resonator prices are also in `prices.json` already (the
 boss tab's broad price map), and the tab falls back to that for a league whose
 snapshot predates this feature — it just loses the trend arrows.
 
+**Divine-adjusted arrives one window at a time.** A `change24R` needs a
+snapshot from 24h ago that stored the divine rate, and the fossil categories
+are new, so their self-history starts at zero and grows. Meanwhile `change24`
+shows up immediately because that one comes from poe.ninja's own sparkline, not
+from our history. So readiness is tracked **per window**: ticking the box moves
+you to the longest window that has real data, the ones that don't are dimmed,
+and the banner lists which are adjusted so far. Treating it as one global flag
+made the toggle look broken on the default 24h window.
+
 `node scripts/test-delve.mjs` covers the dataset's integrity (no fossil without
 a biome, no ramp that runs backwards, the drop rates still matching the wiki
 figures) and the arithmetic (biome value, depth weighting, boss EV, and that

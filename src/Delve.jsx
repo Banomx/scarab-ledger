@@ -159,21 +159,51 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
 
   /* Divine-adjusted needs two things, and they go missing independently:
      the rate CURVE (for the dashed line and the drag readout) and the
-     per-item change*R fields (for the badges). A snapshot taken before the
-     rate feature existed has prices but no rate, so it has neither; one
-     taken since has both. Checked separately so the banner can say which
-     case you are in instead of the toggle silently doing nothing. */
+     per-item change*R fields (for the badges).
+
+     And the second one arrives ONE WINDOW AT A TIME, which is the part that
+     bit. A change*R for a 24h window needs a snapshot from 24h ago that
+     stored the divine rate. Fossils are a new category, so their self-history
+     starts at zero and grows: at seven hours old the data carries change4R
+     and nothing longer, while change24 still shows up because that one comes
+     from poe.ninja's own sparkline rather than our history.
+
+     Treating "has R data" as one global flag therefore made the toggle look
+     broken on the default 24h window — it had R data, just not for that
+     window. Readiness is per window now, and the UI says which. */
   const rateHistory = useMemo(() => {
     const fromFossils = fossilData && fossilData !== "missing" ? fossilData.rateHistory : null;
     const fromReso = resoData && resoData !== "missing" ? resoData.rateHistory : null;
     return (Array.isArray(fromFossils) && fromFossils.length ? fromFossils : fromReso) || [];
   }, [fossilData, resoData]);
   const rateReady = rateHistory.length > 1;
-  const realBadges = useMemo(
-    () => [...fossilItems, ...resoItems].some((it) => isFinite(it.change24R) || isFinite(it.change48R)),
-    [fossilData, resoData]
-  );
+
+  const realWindows = useMemo(() => {
+    const items = [...fossilItems, ...resoItems];
+    const out = new Set();
+    for (const [w, key] of Object.entries(CHG_KEYS)) {
+      if (items.some((it) => isFinite(it[`${key}R`]))) out.add(w);
+    }
+    return out;
+  }, [fossilData, resoData]);
+  const realBadges = realWindows.size > 0;
   const useReal = realMode && rateReady;
+  const realHere = useReal && realWindows.has(chgWindow);
+
+  /* How far back the stored rate actually goes — the ceiling on which
+     windows can ever be divine-adjusted, and the number that explains why
+     the long ones are missing. */
+  const historyHours = rateHistory.length > 1
+    ? (rateHistory[rateHistory.length - 1].day - rateHistory[0].day) * 24
+    : 0;
+
+  /* Ticking the box on a window with no R data would do visibly nothing,
+     which is exactly the bug. Move to the longest window that does have it. */
+  useEffect(() => {
+    if (!useReal || !realBadges || realWindows.has(chgWindow)) return;
+    const best = [...realWindows].sort((a, b) => parseInt(b, 10) - parseInt(a, 10))[0];
+    if (best) setChgWindow(best);
+  }, [useReal, realBadges, realWindows, chgWindow]);
 
   const trendBy = useMemo(() => {
     const m = {};
@@ -236,7 +266,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const chgOf = (name) => {
     const it = trendBy[name];
     if (!it) return undefined;
-    return (useReal && realBadges) ? it[`${chgKey}R`] : it[chgKey];
+    return realHere ? it[`${chgKey}R`] : it[chgKey];
   };
 
   const reset = () => setSettings(sanitizeSettings({ ...DEFAULTS, depth: settings.depth }));
@@ -387,12 +417,17 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
           {generatedAt ? ` · updated ${new Date(generatedAt).toLocaleString()}` : ""}
           {" · "}1 Divine ≈ {Math.round(rate)} Chaos
           {fossilData === "missing" && priceMap && priceMap !== "missing" ? " · fossil trends appear after the next refresh" : ""}
-          {useReal && rateDrift && (
+          {useReal && (
             <span className="st-banner-real">
-              {" "}· divine {rateDrift.pct >= 0 ? "+" : "−"}{Math.abs(rateDrift.pct).toFixed(1)}% in {chgWindow}
-              {realBadges
-                ? ", so every % here is divine-adjusted"
-                : " — these snapshots predate the stored rate, so the % badges stay in chaos"}
+              {rateDrift && <>{" "}· divine {rateDrift.pct >= 0 ? "+" : "−"}{Math.abs(rateDrift.pct).toFixed(1)}% in {chgWindow}</>}
+              {!realBadges
+                ? " — no divine-adjusted figures yet. The fossil categories are new, so their history starts at zero; the first one appears about 4h after the second snapshot."
+                : realWindows.has(chgWindow)
+                  ? ", so every % here is divine-adjusted"
+                  : ` — but not for ${chgWindow}: that needs a stored rate from ${chgWindow} ago and the history is only ${Math.round(historyHours)}h old.`}
+              {realBadges && realWindows.size < 5 && (
+                <> · adjusted windows so far: {[...realWindows].sort((a, b) => parseInt(a, 10) - parseInt(b, 10)).join(", ")} — the rest fill in as snapshots accumulate.</>
+              )}
             </span>
           )}
         </div>
@@ -419,9 +454,16 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             <div className="st-ctl">
               <span>Price change</span>
               <div className="st-seg">
-                {["4h", "8h", "12h", "24h", "48h"].map((w) => (
-                  <button key={w} className={chgWindow === w ? "on" : ""} onClick={() => setChgWindow(w)}>{w}</button>
-                ))}
+                {["4h", "8h", "12h", "24h", "48h"].map((w) => {
+                  const noReal = useReal && realBadges && !realWindows.has(w);
+                  return (
+                    <button key={w} className={`${chgWindow === w ? "on" : ""}${noReal ? " dim" : ""}`}
+                      title={noReal
+                        ? `No divine-adjusted figure for ${w} yet — that needs a stored rate from ${w} ago and the fossil history is ${Math.round(historyHours)}h old.`
+                        : undefined}
+                      onClick={() => setChgWindow(w)}>{w}</button>
+                  );
+                })}
               </div>
             </div>
             <div className="st-ctl st-checks">
@@ -467,7 +509,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                     {f.exclusive && <em className="dl-flag">node</em>}
                     {f.wall && <em className="dl-flag" title="Behind a fractured wall">wall</em>}
                   </span>
-                  <span className="st-row-price"><PctBadge v={chgOf(f.name)} real={useReal && realBadges} /> {money(f.chaos)}</span>
+                  <span className="st-row-price"><PctBadge v={chgOf(f.name)} real={realHere} /> {money(f.chaos)}</span>
                 </button>
               ))}
               {!fossilList.length && <div className="st-cat-note">No fossil matches that filter.</div>}
@@ -491,7 +533,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         {it.name.replace(/ Resonator$/, "")}
                         {tier && <em className="dl-flag" title={`${RESONATOR_SOCKETS[tier]} sockets`}>{RESONATOR_SOCKETS[tier]}s</em>}
                       </span>
-                      <span className="st-row-price"><PctBadge v={chgOf(it.name)} real={useReal && realBadges} /> {money(it.chaosValue)}</span>
+                      <span className="st-row-price"><PctBadge v={chgOf(it.name)} real={realHere} /> {money(it.chaosValue)}</span>
                     </button>
                   );
                 })}
@@ -655,7 +697,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         <FossilIcon size={18} tone={openRow.biome.tone} exclusive />
                         {openRow.exclusive.fossil}<em className="dl-flag">node</em>
                       </span>
-                      <span className="st-row-price"><PctBadge v={chgOf(openRow.exclusive.fossil)} real={useReal && realBadges} /> {money(openRow.exclusive.chaos)}</span>
+                      <span className="st-row-price"><PctBadge v={chgOf(openRow.exclusive.fossil)} real={realHere} /> {money(openRow.exclusive.chaos)}</span>
                     </button>
                   )}
                   {openRow.poolPrices.map((p) => (
@@ -666,7 +708,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         <FossilIcon size={18} tone={openRow.biome.tone} />
                         {p.name}
                       </span>
-                      <span className="st-row-price"><PctBadge v={chgOf(p.name)} real={useReal && realBadges} /> {money(p.chaos)}</span>
+                      <span className="st-row-price"><PctBadge v={chgOf(p.name)} real={realHere} /> {money(p.chaos)}</span>
                     </button>
                   ))}
                   {!openRow.poolNames.length && !openRow.exclusive && (
