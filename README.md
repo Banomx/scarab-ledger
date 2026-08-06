@@ -271,6 +271,13 @@ Two naming wrinkles it also pins:
 
 Three questions, three views.
 
+**Fossils & resonators** — the price list, with the same furniture as the
+Astrolabes and Catalysts tabs (sort, change window, filter, one chart, one
+grid), because it is the same question asked of different items. Each fossil
+is tinted by the biome it comes from and badged if it only drops from that
+biome's own node or sits behind a fractured wall. Underneath: resonator prices
+and what each node type is worth once price is multiplied by count.
+
 **Biomes** — what a delve level of each biome is worth, ranked. Most of a
 biome's value is its one exclusive fossil node (Crystal Spire → Hollow Fossil,
 Humid Fissure → Fractured, Molten Cavity → Faceted…), which is the whole reason
@@ -279,9 +286,11 @@ also shows how much of the mine that biome occupies at your depth, from
 poewiki's spawn weights, so "worth steering to" and "what you'll actually see"
 are two different sort orders and the tab shows both.
 
-**Fossils & resonators** — the price list the biome numbers are built from,
-with 24h movement, which biome each fossil comes from, and what each node type
-is worth once you multiply price by count.
+Opening a biome gives it the same panel the Scarabs tab gives a mechanic: its
+value per delve charted across the league, its fossils listed beside it (tap one
+to overlay it), and the breakdown of where the number comes from. Every point on
+that curve re-runs the whole biome formula against that day's prices, so it
+answers "is this biome getting better to run" rather than "did fossils go up".
 
 **Bosses** — Ahuatotli, Kurgal and Aul. You get a handful of these a league,
 not thirty in a row, so the mean is the wrong number to plan around: a boss can
@@ -374,6 +383,9 @@ nominal-vs-real split, the upside-down backfill, and the day-axis alignment.
 - `src/App.jsx` — shell, scarab catalogue, demo fallback, live fetching, styles
 - `src/bossData.js` / `src/bossProfit.js` / `src/BossProfit.jsx` — boss profit
   dataset, pure calculation layer (no React, so the maths is testable), and UI
+- `src/PriceChart.jsx` — the price graph, shared by the mechanic panel, the
+  category tabs, the fossil list and the biome curve, plus the day/rate/percent
+  helpers that go with it
 - `src/delveData.js` / `src/delve.js` / `src/Delve.jsx` — delve biomes, fossils
   and bosses, same three-way split. The delve bosses are declared in
   `bossData.js`'s group shape and priced by its `computeBoss`, so there is one

@@ -14,6 +14,7 @@ import {
 import {
   weightAt, weightExact, biomeShares, makePriceOf, fossilRows,
   computeBiome, computeBiomes, computeDelveBosses, killDistribution, sanitizeSettings,
+  biomeValueSeries,
 } from "../src/delve.js";
 import { makeResolver } from "../src/bossProfit.js";
 
@@ -199,6 +200,37 @@ test("mine average is the share-weighted sum of the biome values", () => {
   const manual = all.rows.reduce((s, r) => s + r.share * r.perDelve, 0);
   near(all.mineAverage, manual, 1e-9, "mine average");
   assert.ok(all.mineAverage > 0, "should be positive with priced fossils");
+});
+
+test("a biome's value curve re-prices the whole formula on each day", () => {
+  const abyssal = BIOMES.find((b) => b.id === "abyssal");
+  const hist = {
+    "Hollow Fossil": [{ day: 0, value: 150 }, { day: 1, value: 300 }],
+    "Aberrant Fossil": [{ day: 0, value: 5 }, { day: 1, value: 10 }],
+    "Bound Fossil": [{ day: 0, value: 5 }, { day: 1, value: 10 }],
+    "Gilded Fossil": [{ day: 0, value: 5 }, { day: 1, value: 10 }],
+    "Lucent Fossil": [{ day: 0, value: 5 }, { day: 1, value: 10 }],
+  };
+  const s = biomeValueSeries(abyssal, hist, DEFAULTS);
+  assert.equal(s.length, 2);
+  // every price doubled, so the value per delve doubles too
+  near(s[1].value, s[0].value * 2, 1e-6, "doubling every price");
+  // and day 1 must equal what computeBiome says about day 1's prices
+  const direct = computeBiome(abyssal, makePriceOf([{
+    "Hollow Fossil": { c: 300 }, "Aberrant Fossil": { c: 10 },
+    "Bound Fossil": { c: 10 }, "Gilded Fossil": { c: 10 }, "Lucent Fossil": { c: 10 },
+  }]), DEFAULTS);
+  near(s[1].value, direct.perDelve, 1e-6, "curve endpoint vs the live number");
+});
+
+test("a city biome gets no curve rather than a flat lie", () => {
+  const vaal = BIOMES.find((b) => b.id === "vaal");
+  assert.deepEqual(biomeValueSeries(vaal, { "Hollow Fossil": [{ day: 0, value: 1 }] }, DEFAULTS, 500), []);
+});
+
+test("one data point is not a curve", () => {
+  const abyssal = BIOMES.find((b) => b.id === "abyssal");
+  assert.deepEqual(biomeValueSeries(abyssal, { "Hollow Fossil": [{ day: 0, value: 100 }] }, DEFAULTS), []);
 });
 
 console.log("bosses");

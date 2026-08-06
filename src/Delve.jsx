@@ -4,9 +4,11 @@ import {
 } from "./delveData.js";
 import {
   makePriceOf, fossilRows, computeBiomes, computeDelveBosses, killDistribution,
-  loadSettings, saveSettings, sanitizeSettings,
+  biomeValueSeries, loadSettings, saveSettings, sanitizeSettings,
 } from "./delve.js";
 import { makeResolver } from "./bossProfit.js";
+import PriceChart, { PctBadge } from "./PriceChart.jsx";
+import { unitForSeries } from "./money.js";
 
 /* ================================================================
    DELVE
@@ -14,12 +16,15 @@ import { makeResolver } from "./bossProfit.js";
 
    Three views, in the order you actually ask the questions:
 
-     Biomes    which biome do I want at this depth, and how much of the
-               mine is it? Value comes from the fossil pool plus the
-               biome's exclusive fossil node — the node is usually most
-               of it, which is the whole reason biome choice matters.
-     Fossils   the price list the biome numbers are built from, so you
-               can see what moved.
+     Fossils   what's a fossil worth and what moved. Same shape as the
+               astrolabe/catalyst tabs — toolbar, one chart, one grid —
+               because it is the same question about different items.
+     Biomes    which biome do I want at this depth? Value comes from the
+               fossil pool plus the biome's exclusive fossil node, which
+               is usually most of it. Opening one gives it the mechanic
+               panel treatment: the biome's value per delve charted over
+               the league, its fossils listed beside it, and the
+               breakdown of where the number comes from.
      Bosses    a delve boss is a handful of kills a league, not a farm.
                So the tab leads with the spread of a SINGLE kill, and
                keeps the mean next to it rather than instead of it.
@@ -30,13 +35,36 @@ import { makeResolver } from "./bossProfit.js";
    ================================================================ */
 
 const num = (v, d) => (v == null || !isFinite(Number(v)) ? d : Number(v));
-const pct = (v) => (v >= 0.1 ? `${(v * 100).toFixed(0)}%` : v >= 0.001 ? `${(v * 100).toFixed(1)}%` : v > 0 ? "<0.1%" : "—");
+const pctText = (v) => (v >= 0.1 ? `${(v * 100).toFixed(0)}%` : v >= 0.001 ? `${(v * 100).toFixed(1)}%` : v > 0 ? "<0.1%" : "—");
 
-function PctBadge({ v }) {
-  if (v == null || !isFinite(v)) return null;
-  const cls = v > 0.5 ? "up" : v < -0.5 ? "down" : "flat";
-  const arrow = v > 0.5 ? "▲" : v < -0.5 ? "▼" : "•";
-  return <span className={`st-pct ${cls}`}>{arrow} {Math.abs(v).toFixed(1)}%</span>;
+const CHG_KEYS = { "4h": "change4", "8h": "change8", "12h": "change12", "24h": "change24", "48h": "change48" };
+const BIOME_NAME = Object.fromEntries(BIOMES.map((b) => [b.id, b.name]));
+const BIOME_TONE = Object.fromEntries(BIOMES.map((b) => [b.id, b.tone]));
+const BOSS_NAME = Object.fromEntries(DELVE_BOSSES.map((b) => [b.id, b.name]));
+
+/* A fossil reads as a shard: hexagonal, tinted by the biome it comes from,
+   with a brighter core for the six that only drop from their own node. */
+function FossilIcon({ tone = "#c9a24b", exclusive = false, size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M12 2.6 L19.6 7 L19.6 17 L12 21.4 L4.4 17 L4.4 7 Z"
+        fill={tone} fillOpacity={exclusive ? 0.9 : 0.55} stroke="#1b150c" strokeWidth="1.1" />
+      <path d="M12 7 L15.8 9.2 L15.8 14.8 L12 17 L8.2 14.8 L8.2 9.2 Z"
+        fill={exclusive ? "#f0dfa8" : "#1b150c"} fillOpacity={exclusive ? 0.75 : 0.25} />
+    </svg>
+  );
+}
+
+function ResonatorIcon({ sockets = 1, size = 20 }) {
+  const pts = [[12, 6.4], [16.4, 12], [12, 17.6], [7.6, 12]];
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <rect x="4" y="4" width="16" height="16" rx="3" fill="#3a332a" stroke="#6b5730" strokeWidth="1.1" />
+      {pts.slice(0, sockets).map(([x, y], i) => (
+        <circle key={i} cx={x} cy={y} r="2" fill="#c9a24b" stroke="#1b150c" strokeWidth="0.8" />
+      ))}
+    </svg>
+  );
 }
 
 /* Controlled number input that lets you clear the field while typing.
@@ -66,16 +94,24 @@ function NumInput({ value, onCommit, step = 1, min = 0, width = 62, suffix, titl
 }
 
 const DEPTH_PRESETS = [100, 250, 500, 1000];
+const VIEWS = [["fossils", "Fossils & resonators"], ["biomes", "Biomes"], ["bosses", "Bosses"]];
 
 export default function Delve({ league, staticBase, currency, divineRate, fmtPrice, fmtChaos, unitFor }) {
-  const [view, setView] = useState("biomes");
+  const [view, setView] = useState("fossils");
   const [settings, setSettings] = useState(() => loadSettings());
   const [showAssumptions, setShowAssumptions] = useState(false);
   const [openBiome, setOpenBiome] = useState(null);
   const [openBoss, setOpenBoss] = useState(DELVE_BOSSES[0].id);
   const [rankBy, setRankBy] = useState("value");        // value | expected
+  const [sortDir, setSortDir] = useState("desc");
+  const [chgWindow, setChgWindow] = useState("24h");
+  const [filter, setFilter] = useState("");
+  const [selFossil, setSelFossil] = useState(null);     // charted on the Fossils view
+  const [focusFossil, setFocusFossil] = useState(null); // overlaid on a biome's curve
+  const [dragSel, setDragSel] = useState(null);
   const [fossilData, setFossilData] = useState(null);   // {items, generatedAt} | "missing"
   const [resoData, setResoData] = useState(null);
+  const [hist, setHist] = useState({});                 // name -> [{day, value}]
   const [priceMap, setPriceMap] = useState(null);       // prices.json | "missing"
   const [generatedAt, setGeneratedAt] = useState(null);
 
@@ -84,13 +120,14 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const patch = useCallback((p) => setSettings((s) => sanitizeSettings({ ...s, ...p })), []);
 
   /* ---- data ----
-     Three snapshots, all optional in different ways:
-       fossils.json / resonators.json  price + trend for the two lists.
-       prices.json                     the broad name->price map the boss
-                                       EV needs. Fossils are in it too, so
-                                       it doubles as the fallback for a
-                                       snapshot taken before this feature
-                                       started writing fossils.json. */
+     Four snapshots, all optional in different ways:
+       fossils.json / resonators.json    price + trend for the two lists
+       *-history.json                    the curves
+       prices.json                       the broad name->price map the boss
+                                         EV needs. Fossils are in it too, so
+                                         it doubles as the fallback for a
+                                         snapshot taken before this feature
+                                         started writing fossils.json. */
   useEffect(() => {
     let cancelled = false;
     const grab = async (file, set) => {
@@ -100,9 +137,11 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
       } catch { /* fall through */ }
       if (!cancelled) set("missing");
     };
-    setFossilData(null); setResoData(null); setPriceMap(null);
-    grab("fossils.json", (j) => { setFossilData(j); if (j.generatedAt) setGeneratedAt(j.generatedAt); });
+    setFossilData(null); setResoData(null); setPriceMap(null); setHist({});
+    grab("fossils.json", (j) => { setFossilData(j); if (j !== "missing" && j.generatedAt) setGeneratedAt(j.generatedAt); });
     grab("resonators.json", setResoData);
+    grab("fossils-history.json", (j) => { if (j !== "missing") setHist((h) => ({ ...h, ...j })); });
+    grab("resonators-history.json", (j) => { if (j !== "missing") setHist((h) => ({ ...h, ...j })); });
     grab("prices.json", (j) => {
       if (j === "missing") { setPriceMap("missing"); return; }
       setPriceMap(j.prices || {});
@@ -111,39 +150,39 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     return () => { cancelled = true; };
   }, [staticBase]);
 
-  /* fossils.json carries trend data; prices.json does not. Prefer the
-     first for anything it knows and let the second fill the rest, so a
-     league whose snapshot predates fossils.json still gets numbers. */
   const fossilItems = fossilData && fossilData !== "missing" ? fossilData.items || [] : [];
   const resoItems = resoData && resoData !== "missing" ? resoData.items || [] : [];
+  const rate = (fossilData && fossilData !== "missing" && fossilData.divineRate) || divineRate;
+  const axisLabel = (fossilData && fossilData !== "missing" && fossilData.historyAxis) || "days since first snapshot";
+
   const trendBy = useMemo(() => {
     const m = {};
     for (const it of [...fossilItems, ...resoItems]) m[it.name] = it;
     return m;
   }, [fossilData, resoData]);
 
+  /* fossils.json carries trend data; prices.json does not. Prefer the first
+     for anything it knows and let the second fill the rest, so a league whose
+     snapshot predates fossils.json still gets numbers. */
   const priceOf = useMemo(() => {
     const fromCategory = {};
     for (const it of [...fossilItems, ...resoItems]) if (it.chaosValue > 0) fromCategory[it.name] = { c: it.chaosValue, n: 1 };
     const map = priceMap && priceMap !== "missing" ? priceMap : null;
-    return makePriceOf([fromCategory, map], { overrides: settings.priceOverrides || {}, divineRate });
-  }, [fossilData, resoData, priceMap, settings.priceOverrides, divineRate]);
+    return makePriceOf([fromCategory, map], { overrides: settings.priceOverrides || {}, divineRate: rate });
+  }, [fossilData, resoData, priceMap, settings.priceOverrides, rate]);
 
   const havePrices = (fossilItems.length > 0) || (priceMap && priceMap !== "missing");
 
   /* The boss engine wants prices.json's { name: {c,lo,hi,n} } shape. */
   const resolve = useMemo(
     () => makeResolver(priceMap && priceMap !== "missing" ? priceMap : null, {
-      priceOverrides: settings.priceOverrides || {}, divineRate,
+      priceOverrides: settings.priceOverrides || {}, divineRate: rate,
     }),
-    [priceMap, settings.priceOverrides, divineRate]
+    [priceMap, settings.priceOverrides, rate]
   );
 
   const bosses = useMemo(() => computeDelveBosses(resolve, settings), [resolve, settings]);
-  const bossValues = useMemo(
-    () => Object.fromEntries(bosses.map((b) => [b.delve.id, b.gross])),
-    [bosses]
-  );
+  const bossValues = useMemo(() => Object.fromEntries(bosses.map((b) => [b.delve.id, b.gross])), [bosses]);
   const dists = useMemo(() => {
     const out = {};
     for (const b of bosses) out[b.delve.id] = killDistribution(b, 4000);
@@ -159,9 +198,49 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     return rows;
   }, [biomes, rankBy]);
 
-  const money = (c) => (c > 0 ? fmtPrice(c, currency, divineRate) : "—");
+  const money = (c) => (c > 0 ? fmtPrice(c, currency, rate) : "—");
+  const chgOf = (name) => trendBy[name]?.[CHG_KEYS[chgWindow] || "change24"];
 
   const reset = () => setSettings(sanitizeSettings({ ...DEFAULTS, depth: settings.depth }));
+
+  /* ---- fossils view: list + chart ---- */
+  const fossilList = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    let list = fossils.filter((f) => f.found || !havePrices);
+    if (q) list = list.filter((f) => f.name.toLowerCase().includes(q));
+    return list.sort((a, b) => (sortDir === "desc" ? b.chaos - a.chaos : a.chaos - b.chaos));
+  }, [fossils, filter, sortDir, havePrices]);
+
+  const selName = (selFossil && fossilList.some((f) => f.name === selFossil)) ? selFossil : fossilList[0]?.name;
+  const fossilChart = useMemo(() => {
+    const s = hist[selName] || [];
+    const cur = unitForSeries(s.map((p) => p.value), currency, rate);
+    const div = cur === "divine" ? rate : 1;
+    return {
+      cur,
+      rows: s.map((p) => ({ day: p.day, chaos: p.value, rate: null, value: Math.round((p.value / div) * 100) / 100 })),
+    };
+  }, [hist, selName, currency, rate]);
+
+  /* ---- biome panel ---- */
+  const openRow = openBiome ? biomes.rows.find((r) => r.biome.id === openBiome) : null;
+  const biomeChart = useMemo(() => {
+    if (!openRow) return { rows: [], cur: "chaos" };
+    const base = biomeValueSeries(openRow.biome, hist, settings, bossValues[openRow.biome.boss] ?? null);
+    const cur = unitForSeries(base.map((p) => p.value), currency, rate);
+    const div = cur === "divine" ? rate : 1;
+    const overlay = focusFossil ? (hist[focusFossil] || []) : null;
+    const at = (h, d) => (h.find((p) => p.day === d)
+      ?? h.reduce((best, p) => (Math.abs(p.day - d) < Math.abs(best.day - d) ? p : best), h[0]));
+    return {
+      cur,
+      rows: base.map((p) => ({
+        day: p.day, chaos: p.value, rate: null,
+        value: Math.round((p.value / div) * 100) / 100,
+        overlay: overlay && overlay.length ? Math.round((at(overlay, p.day).value / div) * 100) / 100 : null,
+      })),
+    };
+  }, [openRow, hist, settings, bossValues, currency, rate, focusFossil]);
 
   return (
     <section className="dl-wrap">
@@ -233,182 +312,88 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
         <div className="st-banner st-quiet">
           Prices via poe.ninja · {league}
           {generatedAt ? ` · updated ${new Date(generatedAt).toLocaleString()}` : ""}
-          {" · "}1 Divine ≈ {Math.round(divineRate)} Chaos
+          {" · "}1 Divine ≈ {Math.round(rate)} Chaos
           {fossilData === "missing" && priceMap && priceMap !== "missing" ? " · fossil trends appear after the next refresh" : ""}
         </div>
       )}
 
       <div className="dl-views">
-        <button className={view === "biomes" ? "on" : ""} onClick={() => setView("biomes")}>Biomes</button>
-        <button className={view === "fossils" ? "on" : ""} onClick={() => setView("fossils")}>Fossils &amp; resonators</button>
-        <button className={view === "bosses" ? "on" : ""} onClick={() => setView("bosses")}>Bosses</button>
+        {VIEWS.map(([k, label]) => (
+          <button key={k} className={view === k ? "on" : ""}
+            onClick={() => { setView(k); setDragSel(null); }}>{label}</button>
+        ))}
       </div>
-
-      {/* ================= BIOMES ================= */}
-      {view === "biomes" && (
-        <>
-          <div className="dl-subbar">
-            <div className="st-seg">
-              <button className={rankBy === "value" ? "on" : ""} onClick={() => setRankBy("value")}
-                title="What a delve level of this biome is worth if you steer into it">Worth steering to</button>
-              <button className={rankBy === "expected" ? "on" : ""} onClick={() => setRankBy("expected")}
-                title="That value times how much of the mine the biome occupies at this depth">Weighted by how common</button>
-            </div>
-            {biomes.anyInterpolated && (
-              <span className="dl-hint">
-                Depth {settings.depth} sits inside at least one biome's weight ramp — the wiki gives both ends
-                and says the middle scales non-linearly without giving the curve, so those shares are eased
-                between the two and are approximate.
-              </span>
-            )}
-          </div>
-
-          <div className="dl-biomes">
-            {ranked.map((r) => {
-              const b = r.biome;
-              const open = openBiome === b.id;
-              const dead = r.weight <= 0;
-              const headline = rankBy === "expected" ? r.expected : r.perDelve;
-              return (
-                <article key={b.id} className={`dl-biome${dead ? " dead" : ""}${open ? " open" : ""}`} style={{ "--tone": b.tone }}>
-                  <button className="dl-biome-head" onClick={() => setOpenBiome(open ? null : b.id)} aria-expanded={open}>
-                    <span className="dl-dot" />
-                    <span className="dl-biome-name">
-                      {b.name}
-                      {b.city && <em className="dl-flag">city</em>}
-                      {dead && <em className="dl-flag warn">not at this depth</em>}
-                    </span>
-                    <span className="dl-biome-val">{money(headline)}<em>/delve</em></span>
-                  </button>
-
-                  <div className="dl-share" title={`Spawn weight ${Math.round(r.weight)} — ${pct(r.share)} of the mine at depth ${settings.depth}`}>
-                    {!dead && <i style={{ width: `${Math.min(100, r.share * 100 * 3)}%` }} />}
-                    <span>
-                      {dead
-                        ? `Doesn't spawn at depth ${settings.depth}`
-                        : `${pct(r.share)} of the mine${!r.exact ? " (approx)" : ""}`}
-                    </span>
-                  </div>
-
-                  {r.exclusive && (
-                    <div className="dl-excl">
-                      <strong>{r.exclusive.node}</strong> → {settings.exclusiveQty}× {r.exclusive.fossil}
-                      {r.exclusive.found
-                        ? <> @ {money(r.exclusive.chaos)} = <b>{money(r.exclusive.nodeValue)}</b> a node</>
-                        : <em className="dl-flag warn">no price</em>}
-                    </div>
-                  )}
-                  {b.city && (
-                    <div className="dl-excl">
-                      {b.boss
-                        ? <><strong>{BOSS_NAME[b.boss]}</strong> from depth {DELVE_BOSSES.find((x) => x.id === b.boss).minDepth} · {money(bossValues[b.boss] || 0)} a kill</>
-                        : "No fossil pool."}
-                    </div>
-                  )}
-
-                  {open && (
-                    <div className="dl-biome-body">
-                      {!!r.poolNames.length && (
-                        <>
-                          <h5>Common pool · average {money(r.poolAvg)}</h5>
-                          <ul className="dl-chips">
-                            {r.poolPrices.map((p) => (
-                              <li key={p.name} className={p.found ? "" : "unpriced"}>
-                                {p.name.replace(/ Fossil$/, "")}
-                                <b>{p.found ? money(p.chaos) : "—"}</b>
-                              </li>
-                            ))}
-                          </ul>
-                          {r.poolCoverage < 1 && (
-                            <p className="dl-note">
-                              {Math.round((1 - r.poolCoverage) * 100)}% of this pool has no price — the average is
-                              over what is priced, so it reads high if the missing ones are the cheap ones.
-                            </p>
-                          )}
-                        </>
-                      )}
-                      <h5>Per delve level</h5>
-                      <table className="dl-parts">
-                        <tbody>
-                          {r.exclusive && <tr><td>{settings.exclusivePerDelve}× {r.exclusive.node}</td><td>{money(r.parts.exclusive)}</td></tr>}
-                          {!!r.poolNames.length && <tr><td>{settings.genericPerDelve}× generic fossil node</td><td>{money(r.parts.generic)}</td></tr>}
-                          {!!r.poolNames.length && <tr><td>{settings.cachePerDelve}× smuggler's cache</td><td>{money(r.parts.cache)}</td></tr>}
-                          {b.city && <tr><td>{settings.bossPerCity}× boss node</td><td>{money(r.parts.boss)}</td></tr>}
-                          <tr className="dl-parts-total"><td>Total</td><td>{money(r.perDelve)}</td></tr>
-                        </tbody>
-                      </table>
-                      {!!b.themed.length && (
-                        <>
-                          <h5>Other nodes here</h5>
-                          <p className="dl-note">{b.themed.join(" · ")}</p>
-                        </>
-                      )}
-                      <p className="dl-note">
-                        Spawn weight {b.weight.lo.weight} at depth ≤{b.weight.lo.depth}, {b.weight.hi.weight} at
-                        depth ≥{b.weight.hi.depth}.{b.note ? ` ${b.note}` : ""}
-                      </p>
-                    </div>
-                  )}
-                </article>
-              );
-            })}
-          </div>
-        </>
-      )}
 
       {/* ================= FOSSILS ================= */}
       {view === "fossils" && (
         <>
-          <div className="dl-table-wrap">
-            <table className="dl-table">
-              <thead>
-                <tr><th>Fossil</th><th className="r">Price</th><th className="r">24h</th><th>Where</th></tr>
-              </thead>
-              <tbody>
-                {fossils.map((f) => {
-                  const t = trendBy[f.name];
-                  return (
-                    <tr key={f.name} className={f.found ? "" : "unpriced"}>
-                      <td>
-                        {f.name.replace(/ Fossil$/, "")}
-                        {f.exclusive && <em className="dl-flag">node</em>}
-                        {f.wall && <em className="dl-flag" title="Behind a fractured wall">wall</em>}
-                      </td>
-                      <td className="r num">{f.found ? money(f.chaos) : "—"}</td>
-                      <td className="r"><PctBadge v={t?.change24} /></td>
-                      <td className="dl-where">
-                        {f.exclusive
-                          ? <><b>{f.exclusive.node}</b> · {BIOME_NAME[f.exclusive.biome]}</>
-                          : f.biomes.map((id) => BIOME_NAME[id]).join(", ") || "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="st-tools">
+            <div className="st-ctl">
+              <span>Sort by price</span>
+              <div className="st-seg">
+                <button className={sortDir === "desc" ? "on" : ""} onClick={() => setSortDir("desc")}>High → Low</button>
+                <button className={sortDir === "asc" ? "on" : ""} onClick={() => setSortDir("asc")}>Low → High</button>
+              </div>
+            </div>
+            <div className="st-ctl">
+              <span>Price change</span>
+              <div className="st-seg">
+                {["4h", "8h", "12h", "24h", "48h"].map((w) => (
+                  <button key={w} className={chgWindow === w ? "on" : ""} onClick={() => setChgWindow(w)}>{w}</button>
+                ))}
+              </div>
+            </div>
+            <label className="st-ctl">
+              <span>Filter</span>
+              <input className="st-tool-filter" type="text" placeholder="Filter fossils"
+                value={filter} onChange={(e) => setFilter(e.target.value)} />
+            </label>
           </div>
+
+          <section className="st-cat-wrap">
+            <PriceChart
+              rows={fossilChart.rows}
+              cur={fossilChart.cur}
+              axisLabel={axisLabel}
+              label={selName ? <>Price history: <em>{selName}</em></> : "Select a fossil"}
+              seriesName={selName}
+              dragSel={dragSel} setDragSel={setDragSel}
+            />
+            <div className="st-cat-grid">
+              {fossilList.map((f) => (
+                <button key={f.name}
+                  className={`st-row ${selName === f.name ? "focused" : ""}`}
+                  onClick={() => { setSelFossil(f.name); setDragSel(null); }}
+                  title={f.exclusive ? `${f.exclusive.node} · ${BIOME_NAME[f.exclusive.biome]}` : f.biomes.map((b) => BIOME_NAME[b]).join(", ")}>
+                  <span className="st-row-name">
+                    <FossilIcon tone={BIOME_TONE[f.biomes[0]] || "#c9a24b"} exclusive={!!f.exclusive} />
+                    {f.name}
+                    {f.exclusive && <em className="dl-flag">node</em>}
+                    {f.wall && <em className="dl-flag" title="Behind a fractured wall">wall</em>}
+                  </span>
+                  <span className="st-row-price"><PctBadge v={chgOf(f.name)} /> {money(f.chaos)}</span>
+                </button>
+              ))}
+              {!fossilList.length && <div className="st-cat-note">Nothing matches that filter.</div>}
+            </div>
+          </section>
 
           <h4 className="dl-h">Resonators</h4>
           {resoItems.length ? (
-            <div className="dl-table-wrap">
-              <table className="dl-table">
-                <thead><tr><th>Resonator</th><th className="r">Sockets</th><th className="r">Price</th><th className="r">24h</th></tr></thead>
-                <tbody>
-                  {[...resoItems]
-                    .sort((a, b) => b.chaosValue - a.chaosValue)
-                    .map((it) => {
-                      const tier = RESONATOR_ORDER.find((t) => it.name.startsWith(t));
-                      return (
-                        <tr key={it.name}>
-                          <td>{it.name.replace(/ Resonator$/, "")}</td>
-                          <td className="r num">{tier ? RESONATOR_SOCKETS[tier] : "—"}</td>
-                          <td className="r num">{money(it.chaosValue)}</td>
-                          <td className="r"><PctBadge v={it.change24} /></td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+            <div className="st-cat-grid dl-grid-plain">
+              {[...resoItems].sort((a, b) => (sortDir === "desc" ? b.chaosValue - a.chaosValue : a.chaosValue - b.chaosValue))
+                .map((it) => {
+                  const tier = RESONATOR_ORDER.find((t) => it.name.startsWith(t));
+                  return (
+                    <div key={it.name} className="st-row st-row-static">
+                      <span className="st-row-name">
+                        <ResonatorIcon sockets={tier ? RESONATOR_SOCKETS[tier] : 1} />
+                        {it.name}
+                      </span>
+                      <span className="st-row-price"><PctBadge v={chgOf(it.name)} /> {money(it.chaosValue)}</span>
+                    </div>
+                  );
+                })}
             </div>
           ) : (
             <p className="dl-note">
@@ -449,6 +434,184 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
         </>
       )}
 
+      {/* ================= BIOMES ================= */}
+      {view === "biomes" && (
+        <>
+          <div className="dl-subbar">
+            <div className="st-seg">
+              <button className={rankBy === "value" ? "on" : ""} onClick={() => setRankBy("value")}
+                title="What a delve level of this biome is worth if you steer into it">Worth steering to</button>
+              <button className={rankBy === "expected" ? "on" : ""} onClick={() => setRankBy("expected")}
+                title="That value times how much of the mine the biome occupies at this depth">Weighted by how common</button>
+            </div>
+            {biomes.anyInterpolated && (
+              <span className="dl-hint">
+                Depth {settings.depth} sits inside at least one biome's weight ramp — the wiki gives both ends
+                and says the middle scales non-linearly without giving the curve, so those shares are
+                eased between the two and are approximate.
+              </span>
+            )}
+          </div>
+
+          {/* expanded biome — same shape as the mechanic panel on Scarabs */}
+          {openRow && (
+            <section className="st-panel">
+              <div className="st-panel-head">
+                <div className="st-panel-title">
+                  <FossilIcon size={26} tone={openRow.biome.tone} exclusive />
+                  <h2>{openRow.biome.name}</h2>
+                  <span className="st-panel-total">{money(openRow.perDelve)} per delve</span>
+                  <span className="st-panel-total">{pctText(openRow.share)} of the mine</span>
+                  {openRow.biome.city && <em className="st-tag st-tag-panel">city biome</em>}
+                </div>
+                <button className="st-close" onClick={() => { setOpenBiome(null); setFocusFossil(null); setDragSel(null); }}>Close</button>
+              </div>
+
+              <div className="st-panel-body">
+                <div>
+                  <PriceChart
+                    rows={biomeChart.rows}
+                    cur={biomeChart.cur}
+                    height={260}
+                    axisLabel={axisLabel}
+                    label={focusFossil ? <>Value per delve <em>and</em> {focusFossil}</> : "Value per delve across the league"}
+                    seriesName="Per delve"
+                    overlayName={focusFossil}
+                    overlayTone={openRow.biome.tone}
+                    dragSel={dragSel} setDragSel={setDragSel}
+                    empty={openRow.biome.city
+                      ? "City biomes have no fossil pool — their value is their boss, and a drop table has no price history."
+                      : "History builds up with each data refresh — check back after a couple of runs."}
+                  />
+                  <div className="dl-panel-detail">
+                    {openRow.exclusive && (
+                      <p className="dl-excl">
+                        <strong>{openRow.exclusive.node}</strong> → {settings.exclusiveQty}× {openRow.exclusive.fossil}
+                        {openRow.exclusive.found
+                          ? <> @ {money(openRow.exclusive.chaos)} = <b>{money(openRow.exclusive.nodeValue)}</b> a node</>
+                          : <em className="dl-flag warn">no price</em>}
+                      </p>
+                    )}
+                    {openRow.biome.city && openRow.biome.boss && (
+                      <p className="dl-excl">
+                        <strong>{BOSS_NAME[openRow.biome.boss]}</strong> from depth{" "}
+                        {DELVE_BOSSES.find((x) => x.id === openRow.biome.boss).minDepth} ·{" "}
+                        {money(bossValues[openRow.biome.boss] || 0)} a kill
+                      </p>
+                    )}
+                    <h5>Per delve level</h5>
+                    <table className="dl-parts">
+                      <tbody>
+                        {openRow.exclusive && <tr><td>{settings.exclusivePerDelve}× {openRow.exclusive.node}</td><td>{money(openRow.parts.exclusive)}</td></tr>}
+                        {!!openRow.poolNames.length && <tr><td>{settings.genericPerDelve}× generic fossil node</td><td>{money(openRow.parts.generic)}</td></tr>}
+                        {!!openRow.poolNames.length && <tr><td>{settings.cachePerDelve}× smuggler's cache</td><td>{money(openRow.parts.cache)}</td></tr>}
+                        {openRow.biome.city && <tr><td>{settings.bossPerCity}× boss node</td><td>{money(openRow.parts.boss)}</td></tr>}
+                        <tr className="dl-parts-total"><td>Total</td><td>{money(openRow.perDelve)}</td></tr>
+                      </tbody>
+                    </table>
+                    {!!openRow.biome.themed.length && (
+                      <>
+                        <h5>Other nodes here</h5>
+                        <p className="dl-note">{openRow.biome.themed.join(" · ")}</p>
+                      </>
+                    )}
+                    <p className="dl-note">
+                      Spawn weight {openRow.biome.weight.lo.weight} at depth ≤{openRow.biome.weight.lo.depth},{" "}
+                      {openRow.biome.weight.hi.weight} at depth ≥{openRow.biome.weight.hi.depth}.
+                      {openRow.biome.note ? ` ${openRow.biome.note}` : ""}
+                      {openRow.poolCoverage < 1 && ` ${Math.round((1 - openRow.poolCoverage) * 100)}% of the pool has no price, so the average is over what is priced.`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="st-breakdown">
+                  <div className="st-breakdown-head"><span>Fossil</span><span>Price</span></div>
+                  {openRow.exclusive && (
+                    <button className={`st-row ${focusFossil === openRow.exclusive.fossil ? "focused" : ""}`}
+                      onClick={() => setFocusFossil(focusFossil === openRow.exclusive.fossil ? null : openRow.exclusive.fossil)}
+                      title="Show this fossil on the chart">
+                      <span className="st-row-name">
+                        <FossilIcon size={18} tone={openRow.biome.tone} exclusive />
+                        {openRow.exclusive.fossil}<em className="dl-flag">node</em>
+                      </span>
+                      <span className="st-row-price"><PctBadge v={chgOf(openRow.exclusive.fossil)} /> {money(openRow.exclusive.chaos)}</span>
+                    </button>
+                  )}
+                  {openRow.poolPrices.map((p) => (
+                    <button key={p.name} className={`st-row ${focusFossil === p.name ? "focused" : ""}`}
+                      onClick={() => setFocusFossil(focusFossil === p.name ? null : p.name)}
+                      title="Show this fossil on the chart">
+                      <span className="st-row-name">
+                        <FossilIcon size={18} tone={openRow.biome.tone} />
+                        {p.name}
+                      </span>
+                      <span className="st-row-price"><PctBadge v={chgOf(p.name)} /> {money(p.chaos)}</span>
+                    </button>
+                  ))}
+                  {!openRow.poolNames.length && !openRow.exclusive && (
+                    <div className="dl-note" style={{ padding: "12px 14px" }}>
+                      No fossil pool — a city biome's value is its boss.
+                    </div>
+                  )}
+                  {!!openRow.poolNames.length && (
+                    <div className="st-breakdown-hint">
+                      Pool average {money(openRow.poolAvg)} · tap a fossil to overlay it on the graph.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
+
+          <div className="dl-biomes">
+            {ranked.map((r) => {
+              const b = r.biome;
+              const dead = r.weight <= 0;
+              const headline = rankBy === "expected" ? r.expected : r.perDelve;
+              return (
+                <article key={b.id} className={`dl-biome${dead ? " dead" : ""}${openBiome === b.id ? " open" : ""}`} style={{ "--tone": b.tone }}>
+                  <button className="dl-biome-head"
+                    onClick={() => { setOpenBiome(openBiome === b.id ? null : b.id); setFocusFossil(null); setDragSel(null); }}
+                    aria-expanded={openBiome === b.id}>
+                    <span className="dl-dot" />
+                    <span className="dl-biome-name">
+                      {b.name}
+                      {b.city && <em className="dl-flag">city</em>}
+                      {dead && <em className="dl-flag warn">not at this depth</em>}
+                    </span>
+                    <span className="dl-biome-val">{money(headline)}<em>/delve</em></span>
+                  </button>
+
+                  <div className="dl-share" title={`Spawn weight ${Math.round(r.weight)} — ${pctText(r.share)} of the mine at depth ${settings.depth}`}>
+                    {!dead && <i style={{ width: `${Math.min(100, r.share * 100 * 3)}%` }} />}
+                    <span>
+                      {dead
+                        ? `Doesn't spawn at depth ${settings.depth}`
+                        : `${pctText(r.share)} of the mine${!r.exact ? " (approx)" : ""}`}
+                    </span>
+                  </div>
+
+                  {r.exclusive && (
+                    <div className="dl-excl">
+                      <strong>{r.exclusive.node}</strong> → {settings.exclusiveQty}× {r.exclusive.fossil}
+                      {r.exclusive.found
+                        ? <> @ {money(r.exclusive.chaos)} = <b>{money(r.exclusive.nodeValue)}</b> a node</>
+                        : <em className="dl-flag warn">no price</em>}
+                    </div>
+                  )}
+                  {b.city && b.boss && (
+                    <div className="dl-excl">
+                      <strong>{BOSS_NAME[b.boss]}</strong> from depth {DELVE_BOSSES.find((x) => x.id === b.boss).minDepth} ·{" "}
+                      {money(bossValues[b.boss] || 0)} a kill
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       {/* ================= BOSSES ================= */}
       {view === "bosses" && (
         <>
@@ -476,7 +639,6 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                     {" · "}about {b.encountersPer100.toFixed(1)} per 100 delves at depth {settings.depth}
                   </div>
 
-                  {/* p10 — median — p90, against the mean */}
                   <div className="dl-spread" title="10th to 90th percentile of one kill, with the median marked and the mean as a line">
                     <i className="band" style={{ left: `${(d.p10 / top) * 100}%`, width: `${((d.p90 - d.p10) / top) * 100}%` }} />
                     <i className="med" style={{ left: `${(d.median / top) * 100}%` }} />
@@ -552,6 +714,3 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     </section>
   );
 }
-
-const BIOME_NAME = Object.fromEntries(BIOMES.map((b) => [b.id, b.name]));
-const BOSS_NAME = Object.fromEntries(DELVE_BOSSES.map((b) => [b.id, b.name]));

@@ -61,3 +61,11 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # The action's default is 10 minutes, and when it gives up it does not
+          # just fail — it CANCELS the deployment it was waiting on. GitHub's
+          # Pages backend intermittently sits in deployment_queued / syncing_files
+          # for longer than that (actions/deploy-pages#406, open and upstream),
+          # which turns a deployment that would have landed into a failed run.
+          # Waiting half an hour costs nothing; the job is idle polling.
+          timeout: 1800000

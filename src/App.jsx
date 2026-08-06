@@ -3,6 +3,7 @@ import {
   ComposedChart, Area, Line, XAxis, YAxis, Tooltip, CartesianGrid,
   ReferenceDot, ReferenceArea, ResponsiveContainer,
 } from "recharts";
+import PriceChart, { PctBadge, dayAxis, fmtDay, fmtRate, rateAt, realPct } from "./PriceChart.jsx";
 import BossProfit from "./BossProfit.jsx";
 import Delve from "./Delve.jsx";
 import { SMART_DIV_AT, fmtChaos, fmtDiv, fmtPrice, unitFor, unitForSeries } from "./money.js";
@@ -213,46 +214,8 @@ function buildDemoData() {
 
 /* ---------------- shared helpers ------------------------------- */
 
-function fmtDay(d) { const n = Math.round(d * 10) / 10; return Number.isInteger(n) ? String(n) : n.toFixed(1); }
-/* Whole-day hardpoints, always: domain snaps outward to full days (day 0,
-   day 1, ...) and every 4h data point still plots at its true position. */
-function dayAxis(rows) {
-  if (!rows || !rows.length) return { domain: [0, 1], ticks: [0, 1] };
-  const min = Math.floor(rows[0].day);
-  const max = Math.max(Math.ceil(rows[rows.length - 1].day), min + 1);
-  const step = Math.max(1, Math.ceil((max - min) / 14)); // cap tick count on long leagues
-  const ticks = [];
-  for (let d = min; d <= max; d += step) ticks.push(d);
-  return { domain: [min, max], ticks };
-}
-/* ---- divine-rate helpers ----
-   The rate series shares its x axis with the price history, so "what did a
-   divine cost on day d" is a nearest-point lookup. */
-function rateAt(series, day) {
-  if (!series || !series.length) return null;
-  let best = series[0];
-  for (const p of series) if (Math.abs(p.day - day) < Math.abs(best.day - day)) best = p;
-  return best.rate;
-}
-/* Change measured in divine instead of chaos: what's left after the chaos
-   drift between the two ends of the window is taken out. */
-function realPct(v1, r1, v2, r2) {
-  if (!(v1 > 0) || !(v2 > 0) || !(r1 > 0) || !(r2 > 0)) return null;
-  return ((v2 / r2) / (v1 / r1) - 1) * 100;
-}
-function fmtRate(v) { return v >= 1000 ? `${(v / 1000).toFixed(2)}k` : Math.round(v).toString(); }
-
-function PctBadge({ v, real }) {
-  if (v == null || !isFinite(v)) return <span className="st-pct flat">—</span>;
-  const cls = v > 0.5 ? "up" : v < -0.5 ? "down" : "flat";
-  const arrow = v > 0.5 ? "▲" : v < -0.5 ? "▼" : "•";
-  return (
-    <span className={`st-pct ${cls}${real ? " real" : ""}`}
-      title={real ? "Divine-adjusted: the move after chaos drift is taken out" : undefined}>
-      {arrow} {Math.abs(v).toFixed(1)}%
-    </span>
-  );
-}
+/* fmtDay / dayAxis / rateAt / realPct / fmtRate / PctBadge live in
+   PriceChart.jsx — they are the chart's vocabulary and three tabs share it. */
 
 function ScarabIcon({ size = 22, tone = "#c9a24b" }) {
   return (
@@ -670,12 +633,12 @@ export default function ScarabTracker() {
     });
     const cur = unitForSeries(raw.map((r) => r.chaosTotal), currency, divineRate);
     const div = cur === "divine" ? divineRate : 1;
-    // chaosTotal stays unscaled: the real-% maths has to divide by the rate
-    // that applied on that day, not by today's.
+    // `chaos` stays unscaled: the real-% maths has to divide by the rate that
+    // applied on that day, not by today's.
     const rows = raw.map((r) => ({
-      day: r.day, chaosTotal: r.chaosTotal, rate: r.rate,
-      total: Math.round((r.chaosTotal / div) * 100) / 100,
-      focus: r.chaosFocus == null ? null : Math.round((r.chaosFocus / div) * 100) / 100,
+      day: r.day, chaos: r.chaosTotal, rate: r.rate,
+      value: Math.round((r.chaosTotal / div) * 100) / 100,
+      overlay: r.chaosFocus == null ? null : Math.round((r.chaosFocus / div) * 100) / 100,
     }));
     return { rows, cur };
   }, [openGroupData, histories, currency, divineRate, focusScarab, rateHistory]);
@@ -691,12 +654,7 @@ export default function ScarabTracker() {
     : (dataSource === "static" && staticInfo?.historySource === "self")
       ? "days since first snapshot" : "league day";
 
-  const extremes = useMemo(() => {
-    if (chartData.length < 2) return null;
-    let hi = chartData[0], lo = chartData[0];
-    for (const r of chartData) { if (r.total > hi.total) hi = r; if (r.total < lo.total) lo = r; }
-    return { hi, lo };
-  }, [chartData]);
+  /* high/low markers are computed inside PriceChart */
 
   const CHG_KEYS = { "4h": "change4", "8h": "change8", "12h": "change12", "24h": "change24", "48h": "change48" };
   const chgKey = CHG_KEYS[chgWindow] || "change24";
@@ -930,83 +888,20 @@ export default function ScarabTracker() {
           </div>
 
           <div className="st-panel-body">
-            <div className="st-chart">
-              <div className="st-chart-label">
-                {focusScarab ? <>Set total <em>and</em> {focusScarab}</> : "Set total across the league"}
-                {realMode && rateReady && <span className="st-rate-key"> · <i className="st-rate-swatch" />chaos per divine</span>}
-                {histLoading && <span className="st-loading"> · loading history…</span>}
-                <span className="st-drag-hint"> · drag on the graph to measure a range</span>
-              </div>
-              {dragSel && !dragSel.active && Math.abs(dragSel.end - dragSel.start) > 0.01 && chartData.length > 1 && (() => {
-                const a = Math.min(dragSel.start, dragSel.end), b = Math.max(dragSel.start, dragSel.end);
-                const at = (d) => chartData.reduce((best, p) => (Math.abs(p.day - d) < Math.abs(best.day - d) ? p : best), chartData[0]);
-                const p1 = at(a), p2 = at(b);
-                const pct = p1.total > 0 ? (p2.total / p1.total - 1) * 100 : null;
-                const rpct = (realMode && rateReady) ? realPct(p1.chaosTotal, p1.rate, p2.chaosTotal, p2.rate) : null;
-                const f = (v) => (chartCur === "chaos" ? fmtChaos(v) : fmtDiv(v));
-                return (
-                  <div className="st-range">
-                    Day {fmtDay(p1.day)} → Day {fmtDay(p2.day)}: {f(p1.total)}{chartUnit} → {f(p2.total)}{chartUnit}
-                    {" "}<PctBadge v={pct} />
-                    {rpct != null && (
-                      <span className="st-range-real"> · real <PctBadge v={rpct} real /></span>
-                    )}
-                    <button className="st-range-clear" onClick={() => setDragSel(null)} aria-label="Clear selection">✕</button>
-                  </div>
-                );
-              })()}
-              {chartData.length > 1 ? (
-                <ResponsiveContainer width="100%" height={260}>
-                  <ComposedChart data={chartData} margin={{ top: 18, right: 18, bottom: 4, left: 0 }}
-                    style={{ userSelect: "none" }}
-                    onMouseDown={(e) => { if (e && e.activeLabel != null) setDragSel({ start: e.activeLabel, end: e.activeLabel, active: true }); }}
-                    onMouseMove={(e) => { if (e && e.activeLabel != null) setDragSel((sel) => (sel && sel.active ? { ...sel, end: e.activeLabel } : sel)); }}
-                    onMouseUp={() => setDragSel((sel) => (sel ? { ...sel, active: false } : sel))}
-                    onMouseLeave={() => setDragSel((sel) => (sel && sel.active ? { ...sel, active: false } : sel))}>
-                    <defs>
-                      <linearGradient id="stFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#c9a24b" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#c9a24b" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="#3a332a" strokeDasharray="2 5" vertical={false} />
-                    <XAxis dataKey="day" type="number" domain={dayAxis(chartData).domain} ticks={dayAxis(chartData).ticks}
-                      tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay}
-                      label={{ value: scarabAxisLabel, position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
-                    <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
-                      tickFormatter={(v) => (chartCur === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
-                    {realMode && rateReady && (
-                      <YAxis yAxisId="rate" orientation="right" width={46} stroke="#4a4234"
-                        tick={{ fill: "#7f9fb8", fontSize: 11 }} tickFormatter={fmtRate}
-                        domain={["auto", "auto"]} />
-                    )}
-                    <Tooltip
-                      contentStyle={{ background: "#211c15", border: "1px solid #5a4d33", borderRadius: 6, fontSize: 12 }}
-                      labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
-                      formatter={(v, n) => (n === "rate"
-                        ? [`${fmtRate(v)}c`, "1 divine"]
-                        : [`${chartCur === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${chartUnit}`, n === "total" ? "Set total" : focusScarab])}
-                      labelFormatter={(d) => `Day ${fmtDay(d)}`} />
-                    {dragSel && dragSel.start !== dragSel.end && (
-                      <ReferenceArea x1={Math.min(dragSel.start, dragSel.end)} x2={Math.max(dragSel.start, dragSel.end)}
-                        fill="#c9a24b" fillOpacity={0.13} stroke="#c9a24b" strokeOpacity={0.4} />
-                    )}
-                    <Area type="monotone" dataKey="total" stroke="#d8b355" strokeWidth={2} fill="url(#stFill)" name="total" isAnimationActive={false} />
-                    {focusScarab && <Line type="monotone" dataKey="focus" stroke={GROUP_TONES[openGroupData.name] || "#7fb4d4"} strokeWidth={1.8} dot={false} isAnimationActive={false} />}
-                    {realMode && rateReady && (
-                      <Line yAxisId="rate" type="monotone" dataKey="rate" name="rate" stroke="#6f97b3" strokeWidth={1.5}
-                        strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
-                    )}
-                    {extremes && <ReferenceDot x={extremes.hi.day} y={extremes.hi.total} r={4} fill="#8fd47f" stroke="#1b150c"
-                      label={{ value: `High ${chartCur === "chaos" ? fmtChaos(extremes.hi.total) : fmtDiv(extremes.hi.total)}${chartUnit} · d${fmtDay(extremes.hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
-                    {extremes && <ReferenceDot x={extremes.lo.day} y={extremes.lo.total} r={4} fill="#d47f7f" stroke="#1b150c"
-                      label={{ value: `Low ${chartCur === "chaos" ? fmtChaos(extremes.lo.total) : fmtDiv(extremes.lo.total)}${chartUnit} · d${fmtDay(extremes.lo.day)}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="st-chart-empty">{histLoading ? "Loading price history…" : "No history available."}</div>
-              )}
-            </div>
+            <PriceChart
+              rows={chartData}
+              cur={chartCur}
+              height={260}
+              axisLabel={scarabAxisLabel}
+              label={focusScarab ? <>Set total <em>and</em> {focusScarab}</> : "Set total across the league"}
+              extra={histLoading ? <span className="st-loading"> · loading history…</span> : null}
+              seriesName="Set total"
+              overlayName={focusScarab}
+              overlayTone={GROUP_TONES[openGroupData.name] || "#7fb4d4"}
+              dragSel={dragSel} setDragSel={setDragSel}
+              realMode={realMode} rateReady={rateReady}
+              empty={histLoading ? "Loading price history…" : "No history available."}
+            />
 
             <div className="st-breakdown">
               <div className="st-breakdown-head">
@@ -1055,87 +950,17 @@ export default function ScarabTracker() {
           day: p.day, value: Math.round((p.value / div) * 100) / 100,
           chaos: p.value, rate: rateAt(activeRateHistory, p.day),
         }));
-        let hi = null, lo = null;
-        if (rows.length > 1) { hi = rows[0]; lo = rows[0]; for (const r of rows) { if (r.value > hi.value) hi = r; if (r.value < lo.value) lo = r; } }
         return (
           <section className="st-cat-wrap">
-            <div className="st-chart">
-              <div className="st-chart-label">
-                {selName ? <>Price history: <em>{selName}</em></> : "Select an item"}
-                {realMode && rateReady && <span className="st-rate-key"> · <i className="st-rate-swatch" />chaos per divine</span>}
-                <span className="st-drag-hint"> · drag on the graph to measure a range</span>
-              </div>
-              {dragSel && !dragSel.active && Math.abs(dragSel.end - dragSel.start) > 0.01 && rows.length > 1 && (() => {
-                const a = Math.min(dragSel.start, dragSel.end), b = Math.max(dragSel.start, dragSel.end);
-                const at = (d) => rows.reduce((best, pt) => (Math.abs(pt.day - d) < Math.abs(best.day - d) ? pt : best), rows[0]);
-                const p1 = at(a), p2 = at(b);
-                const pct = p1.value > 0 ? (p2.value / p1.value - 1) * 100 : null;
-                const rpct = (realMode && rateReady) ? realPct(p1.chaos, p1.rate, p2.chaos, p2.rate) : null;
-                const f = (v) => (catCur === "chaos" ? fmtChaos(v) : fmtDiv(v));
-                return (
-                  <div className="st-range">
-                    Day {fmtDay(p1.day)} → Day {fmtDay(p2.day)}: {f(p1.value)}{catUnit} → {f(p2.value)}{catUnit}
-                    {" "}<PctBadge v={pct} />
-                    {rpct != null && (
-                      <span className="st-range-real"> · real <PctBadge v={rpct} real /></span>
-                    )}
-                    <button className="st-range-clear" onClick={() => setDragSel(null)} aria-label="Clear selection">✕</button>
-                  </div>
-                );
-              })()}
-              {rows.length > 1 ? (
-                <ResponsiveContainer width="100%" height={220}>
-                  <ComposedChart data={rows} margin={{ top: 18, right: 18, bottom: 4, left: 0 }}
-                    style={{ userSelect: "none" }}
-                    onMouseDown={(e) => { if (e && e.activeLabel != null) setDragSel({ start: e.activeLabel, end: e.activeLabel, active: true }); }}
-                    onMouseMove={(e) => { if (e && e.activeLabel != null) setDragSel((sel) => (sel && sel.active ? { ...sel, end: e.activeLabel } : sel)); }}
-                    onMouseUp={() => setDragSel((sel) => (sel ? { ...sel, active: false } : sel))}
-                    onMouseLeave={() => setDragSel((sel) => (sel && sel.active ? { ...sel, active: false } : sel))}>
-                    <defs>
-                      <linearGradient id="stFillCat" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#c9a24b" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#c9a24b" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="#3a332a" strokeDasharray="2 5" vertical={false} />
-                    <XAxis dataKey="day" type="number" domain={dayAxis(rows).domain} ticks={dayAxis(rows).ticks}
-                      tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" tickFormatter={fmtDay}
-                      label={{ value: (cd.historySource === "ninja" ? "league day" : "days since first snapshot"), position: "insideBottomRight", fill: "#6f6656", fontSize: 11, dy: 2 }} />
-                    <YAxis tick={{ fill: "#8d8371", fontSize: 11 }} stroke="#4a4234" width={52}
-                      tickFormatter={(v) => (catCur === "chaos" ? fmtChaos(v) : fmtDiv(v))} />
-                    {realMode && rateReady && (
-                      <YAxis yAxisId="rate" orientation="right" width={46} stroke="#4a4234"
-                        tick={{ fill: "#7f9fb8", fontSize: 11 }} tickFormatter={fmtRate}
-                        domain={["auto", "auto"]} />
-                    )}
-                    <Tooltip
-                      contentStyle={{ background: "#211c15", border: "1px solid #5a4d33", borderRadius: 6, fontSize: 12 }}
-                      labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
-                      formatter={(v, n) => (n === "rate"
-                        ? [`${fmtRate(v)}c`, "1 divine"]
-                        : [`${catCur === "chaos" ? fmtChaos(v) : fmtDiv(v)} ${catUnit}`, selName])}
-                      labelFormatter={(d) => `Day ${fmtDay(d)}`} />
-                    {dragSel && dragSel.start !== dragSel.end && (
-                      <ReferenceArea x1={Math.min(dragSel.start, dragSel.end)} x2={Math.max(dragSel.start, dragSel.end)}
-                        fill="#c9a24b" fillOpacity={0.13} stroke="#c9a24b" strokeOpacity={0.4} />
-                    )}
-                    <Area type="monotone" dataKey="value" stroke="#d8b355" strokeWidth={2} fill="url(#stFillCat)" isAnimationActive={false} />
-                    {realMode && rateReady && (
-                      <Line yAxisId="rate" type="monotone" dataKey="rate" name="rate" stroke="#6f97b3" strokeWidth={1.5}
-                        strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
-                    )}
-                    {hi && <ReferenceDot x={hi.day} y={hi.value} r={4} fill="#8fd47f" stroke="#1b150c"
-                      label={{ value: `High ${catCur === "chaos" ? fmtChaos(hi.value) : fmtDiv(hi.value)}${catUnit} · d${fmtDay(hi.day)}`, fill: "#8fd47f", fontSize: 11, position: "top" }} />}
-                    {lo && <ReferenceDot x={lo.day} y={lo.value} r={4} fill="#d47f7f" stroke="#1b150c"
-                      label={{ value: `Low ${catCur === "chaos" ? fmtChaos(lo.value) : fmtDiv(lo.value)}${catUnit} · d${fmtDay(lo.day)}`, fill: "#d47f7f", fontSize: 11, position: "bottom" }} />}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="st-chart-empty" style={{ height: 220 }}>
-                  History builds up with each data refresh — check back after a couple of runs.
-                </div>
-              )}
-            </div>
+            <PriceChart
+              rows={rows}
+              cur={catCur}
+              axisLabel={cd.historySource === "ninja" ? "league day" : "days since first snapshot"}
+              label={selName ? <>Price history: <em>{selName}</em></> : "Select an item"}
+              seriesName={selName}
+              dragSel={dragSel} setDragSel={setDragSel}
+              realMode={realMode} rateReady={rateReady}
+            />
             <div className="st-cat-grid">
               {list.map((m) => (
                 <button key={m.name}
@@ -1852,4 +1677,12 @@ const css = `
 .dl-boss-body { margin-top: 12px; border-top: 1px solid #2c261d; padding-top: 4px; }
 .dl-boss-body .dl-table { font-size: 12.5px; }
 .dl-boss-body .dl-table td, .dl-boss-body .dl-table th { padding-left: 0; padding-right: 0; }
+
+.dl-panel-detail { padding: 4px 14px 14px; }
+.dl-panel-detail h5 {
+  margin: 14px 0 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #6f6656;
+}
+.dl-panel-detail .dl-excl { padding: 0 0 4px; }
+.dl-grid-plain .st-row { cursor: default; }
+.st-row-static { display: flex; align-items: center; justify-content: space-between; }
 `;

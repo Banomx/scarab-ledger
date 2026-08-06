@@ -166,6 +166,35 @@ export function computeBiomes(priceOf, settings = {}, bossValues = {}) {
   return { rows: out, mineAverage, anyInterpolated, depth: s.depth };
 }
 
+/* A biome's value per delve, day by day, from the fossil price history.
+
+   Same question the mechanic panel's "set total across the league" answers,
+   asked of a biome instead of a scarab set: is this biome getting better to
+   run, or is it just that everything went up? Every point re-runs
+   computeBiome() against that day's prices, so the curve moves for exactly
+   the reasons the current number does.
+
+   City biomes have no fossil pool, so they get no curve — their value is
+   their boss, and a boss drop table has no price history of its own. An
+   empty array is the honest answer there, not a flat line. */
+export function biomeValueSeries(biome, histories, settings = {}, bossValue = null) {
+  const names = [...biome.pool, ...(biome.exclusive ? [biome.exclusive.fossil] : [])];
+  const daySet = new Set();
+  for (const n of names) for (const p of (histories?.[n] || [])) daySet.add(p.day);
+  const days = [...daySet].sort((a, b) => a - b);
+  if (days.length < 2) return [];
+  return days.map((d) => {
+    const priceOf = (name) => {
+      const h = histories?.[name];
+      if (!h || !h.length) return { chaos: 0, found: false };
+      const pt = h.find((p) => p.day === d)
+        ?? h.reduce((best, p) => (Math.abs(p.day - d) < Math.abs(best.day - d) ? p : best), h[0]);
+      return { chaos: pt.value, found: pt.value > 0 };
+    };
+    return { day: d, value: computeBiome(biome, priceOf, settings, bossValue).perDelve };
+  });
+}
+
 /* ---------------- bosses ---------------- */
 
 export function computeDelveBosses(resolve, settings = {}) {
