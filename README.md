@@ -272,8 +272,10 @@ Two naming wrinkles it also pins:
 Three questions, three views.
 
 **Fossils & resonators** — the price list, with the same furniture as the
-Astrolabes and Catalysts tabs (sort, change window, filter, one chart, one
-grid), because it is the same question asked of different items. Each fossil
+Astrolabes and Catalysts tabs (sort, change window, **Divine-adjusted**, filter,
+one chart, one grid), because it is the same question asked of different items.
+Resonators share the chart but keep their own list, so sorting one never
+reorders the other. Each fossil
 is tinted by the biome it comes from and badged if it only drops from that
 biome's own node or sits behind a fractured wall. Underneath: resonator prices
 and what each node type is worth once price is multiplied by count.

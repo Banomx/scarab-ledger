@@ -7,7 +7,7 @@ import {
   biomeValueSeries, loadSettings, saveSettings, sanitizeSettings,
 } from "./delve.js";
 import { makeResolver } from "./bossProfit.js";
-import PriceChart, { PctBadge } from "./PriceChart.jsx";
+import PriceChart, { PctBadge, rateAt } from "./PriceChart.jsx";
 import { unitForSeries } from "./money.js";
 
 /* ================================================================
@@ -110,6 +110,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const [selFossil, setSelFossil] = useState(null);     // charted on the Fossils view
   const [focusFossil, setFocusFossil] = useState(null); // overlaid on a biome's curve
   const [dragSel, setDragSel] = useState(null);
+  const [realMode, setRealMode] = useState(false);      // read every % in divine terms
   const [fossilData, setFossilData] = useState(null);   // {items, generatedAt} | "missing"
   const [resoData, setResoData] = useState(null);
   const [hist, setHist] = useState({});                 // name -> [{day, value}]
@@ -156,6 +157,24 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const rate = (fossilData && fossilData !== "missing" && fossilData.divineRate) || divineRate;
   const axisLabel = (fossilData && fossilData !== "missing" && fossilData.historyAxis) || "days since first snapshot";
 
+  /* Divine-adjusted needs two things, and they go missing independently:
+     the rate CURVE (for the dashed line and the drag readout) and the
+     per-item change*R fields (for the badges). A snapshot taken before the
+     rate feature existed has prices but no rate, so it has neither; one
+     taken since has both. Checked separately so the banner can say which
+     case you are in instead of the toggle silently doing nothing. */
+  const rateHistory = useMemo(() => {
+    const fromFossils = fossilData && fossilData !== "missing" ? fossilData.rateHistory : null;
+    const fromReso = resoData && resoData !== "missing" ? resoData.rateHistory : null;
+    return (Array.isArray(fromFossils) && fromFossils.length ? fromFossils : fromReso) || [];
+  }, [fossilData, resoData]);
+  const rateReady = rateHistory.length > 1;
+  const realBadges = useMemo(
+    () => [...fossilItems, ...resoItems].some((it) => isFinite(it.change24R) || isFinite(it.change48R)),
+    [fossilData, resoData]
+  );
+  const useReal = realMode && rateReady;
+
   const trendBy = useMemo(() => {
     const m = {};
     for (const it of [...fossilItems, ...resoItems]) m[it.name] = it;
@@ -199,8 +218,26 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     return rows;
   }, [biomes, rankBy]);
 
+  /* What the divine itself did over the same window the badges use. Without
+     this the toggle is a black box: you see every fossil turn red and cannot
+     tell whether fossils fell or the divine ran away from them. */
+  const rateDrift = useMemo(() => {
+    if (!rateReady) return null;
+    const hours = parseInt(chgWindow, 10);
+    const last = rateHistory[rateHistory.length - 1];
+    const wantDay = last.day - hours / 24;
+    const then = rateHistory.reduce((best, p) => (Math.abs(p.day - wantDay) < Math.abs(best.day - wantDay) ? p : best), rateHistory[0]);
+    if (!(then.rate > 0) || !(last.rate > 0)) return null;
+    return { pct: (last.rate / then.rate - 1) * 100, now: last.rate };
+  }, [rateHistory, rateReady, chgWindow]);
+
   const money = (c) => (c > 0 ? fmtPrice(c, currency, rate) : "—");
-  const chgOf = (name) => trendBy[name]?.[CHG_KEYS[chgWindow] || "change24"];
+  const chgKey = CHG_KEYS[chgWindow] || "change24";
+  const chgOf = (name) => {
+    const it = trendBy[name];
+    if (!it) return undefined;
+    return (useReal && realBadges) ? it[`${chgKey}R`] : it[chgKey];
+  };
 
   const reset = () => setSettings(sanitizeSettings({ ...DEFAULTS, depth: settings.depth }));
 
@@ -231,9 +268,12 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     const div = cur === "divine" ? rate : 1;
     return {
       cur,
-      rows: s.map((p) => ({ day: p.day, chaos: p.value, rate: null, value: Math.round((p.value / div) * 100) / 100 })),
+      rows: s.map((p) => ({
+        day: p.day, chaos: p.value, rate: rateAt(rateHistory, p.day),
+        value: Math.round((p.value / div) * 100) / 100,
+      })),
     };
-  }, [hist, selName, currency, rate]);
+  }, [hist, selName, currency, rate, rateHistory]);
 
   /* ---- biome panel ---- */
   const openRow = openBiome ? biomes.rows.find((r) => r.biome.id === openBiome) : null;
@@ -248,12 +288,12 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     return {
       cur,
       rows: base.map((p) => ({
-        day: p.day, chaos: p.value, rate: null,
+        day: p.day, chaos: p.value, rate: rateAt(rateHistory, p.day),
         value: Math.round((p.value / div) * 100) / 100,
         overlay: overlay && overlay.length ? Math.round((at(overlay, p.day).value / div) * 100) / 100 : null,
       })),
     };
-  }, [openRow, hist, settings, bossValues, currency, rate, focusFossil]);
+  }, [openRow, hist, settings, bossValues, currency, rate, focusFossil, rateHistory]);
 
   return (
     <section className="dl-wrap">
@@ -347,6 +387,14 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
           {generatedAt ? ` · updated ${new Date(generatedAt).toLocaleString()}` : ""}
           {" · "}1 Divine ≈ {Math.round(rate)} Chaos
           {fossilData === "missing" && priceMap && priceMap !== "missing" ? " · fossil trends appear after the next refresh" : ""}
+          {useReal && rateDrift && (
+            <span className="st-banner-real">
+              {" "}· divine {rateDrift.pct >= 0 ? "+" : "−"}{Math.abs(rateDrift.pct).toFixed(1)}% in {chgWindow}
+              {realBadges
+                ? ", so every % here is divine-adjusted"
+                : " — these snapshots predate the stored rate, so the % badges stay in chaos"}
+            </span>
+          )}
         </div>
       )}
 
@@ -376,6 +424,19 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                 ))}
               </div>
             </div>
+            <div className="st-ctl st-checks">
+              <span>Divine drift</span>
+              <div className="st-checks-row">
+                <label className={`st-check ${rateReady ? "" : "st-check-off"}`}
+                  title={rateReady
+                    ? "Price everything in divine instead of chaos: a fossil only counts as up if it beat the divine rate."
+                    : "Needs at least two snapshots with a stored divine rate — it builds up over the next few data refreshes."}>
+                  <input type="checkbox" checked={useReal} disabled={!rateReady}
+                    onChange={(e) => setRealMode(e.target.checked)} />
+                  <span>Divine-adjusted</span>
+                </label>
+              </div>
+            </div>
             <label className="st-ctl">
               <span>Filter</span>
               <input className="st-tool-filter" type="text" placeholder="Filter fossils & resonators"
@@ -392,6 +453,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
               label={selName ? <>Price history: <em>{selName}</em></> : "Select a fossil"}
               seriesName={selName}
               dragSel={dragSel} setDragSel={setDragSel}
+              realMode={realMode} rateReady={rateReady}
             />
             <div className="st-cat-grid">
               {fossilList.map((f) => (
@@ -405,7 +467,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                     {f.exclusive && <em className="dl-flag">node</em>}
                     {f.wall && <em className="dl-flag" title="Behind a fractured wall">wall</em>}
                   </span>
-                  <span className="st-row-price"><PctBadge v={chgOf(f.name)} /> {money(f.chaos)}</span>
+                  <span className="st-row-price"><PctBadge v={chgOf(f.name)} real={useReal && realBadges} /> {money(f.chaos)}</span>
                 </button>
               ))}
               {!fossilList.length && <div className="st-cat-note">No fossil matches that filter.</div>}
@@ -429,7 +491,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         {it.name.replace(/ Resonator$/, "")}
                         {tier && <em className="dl-flag" title={`${RESONATOR_SOCKETS[tier]} sockets`}>{RESONATOR_SOCKETS[tier]}s</em>}
                       </span>
-                      <span className="st-row-price"><PctBadge v={chgOf(it.name)} /> {money(it.chaosValue)}</span>
+                      <span className="st-row-price"><PctBadge v={chgOf(it.name)} real={useReal && realBadges} /> {money(it.chaosValue)}</span>
                     </button>
                   );
                 })}
@@ -593,7 +655,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         <FossilIcon size={18} tone={openRow.biome.tone} exclusive />
                         {openRow.exclusive.fossil}<em className="dl-flag">node</em>
                       </span>
-                      <span className="st-row-price"><PctBadge v={chgOf(openRow.exclusive.fossil)} /> {money(openRow.exclusive.chaos)}</span>
+                      <span className="st-row-price"><PctBadge v={chgOf(openRow.exclusive.fossil)} real={useReal && realBadges} /> {money(openRow.exclusive.chaos)}</span>
                     </button>
                   )}
                   {openRow.poolPrices.map((p) => (
@@ -604,7 +666,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         <FossilIcon size={18} tone={openRow.biome.tone} />
                         {p.name}
                       </span>
-                      <span className="st-row-price"><PctBadge v={chgOf(p.name)} /> {money(p.chaos)}</span>
+                      <span className="st-row-price"><PctBadge v={chgOf(p.name)} real={useReal && realBadges} /> {money(p.chaos)}</span>
                     </button>
                   ))}
                   {!openRow.poolNames.length && !openRow.exclusive && (
