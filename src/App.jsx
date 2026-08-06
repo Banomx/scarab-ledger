@@ -1709,4 +1709,13 @@ const css = `
   text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
 }
 .dl-inline-link:hover { color: #f0dfa8; }
+
+.dl-sub-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 12px 14px 8px; margin-top: 4px; border-top: 1px solid #2c261d;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: #a99c7f;
+}
+.dl-sub-head em {
+  font-style: normal; font-size: 11px; text-transform: none; letter-spacing: 0.02em; color: #6f6656;
+}
 `;

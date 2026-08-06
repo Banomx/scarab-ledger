@@ -215,7 +215,19 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     return list.sort((a, b) => (sortDir === "desc" ? b.chaos - a.chaos : a.chaos - b.chaos));
   }, [fossils, filter, sortDir, havePrices]);
 
-  const selName = (selFossil && fossilList.some((f) => f.name === selFossil)) ? selFossil : fossilList[0]?.name;
+  /* Resonators share the chart but not the grid: one graph, two lists, and
+     sorting or filtering one never reorders the other. */
+  const resoList = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    const list = resoItems.filter((it) => !q || it.name.toLowerCase().includes(q));
+    return [...list].sort((a, b) => (sortDir === "desc" ? b.chaosValue - a.chaosValue : a.chaosValue - b.chaosValue));
+  }, [resoItems, filter, sortDir]);
+
+  const selectable = useMemo(
+    () => new Set([...fossilList.map((f) => f.name), ...resoList.map((r) => r.name)]),
+    [fossilList, resoList]
+  );
+  const selName = (selFossil && selectable.has(selFossil)) ? selFossil : fossilList[0]?.name || resoList[0]?.name;
   const fossilChart = useMemo(() => {
     const s = hist[selName] || [];
     const cur = unitForSeries(s.map((p) => p.value), currency, rate);
@@ -367,7 +379,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             </div>
             <label className="st-ctl">
               <span>Filter</span>
-              <input className="st-tool-filter" type="text" placeholder="Filter fossils"
+              <input className="st-tool-filter" type="text" placeholder="Filter fossils & resonators"
                 value={filter} onChange={(e) => setFilter(e.target.value)} />
             </label>
           </div>
@@ -376,6 +388,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             <PriceChart
               rows={fossilChart.rows}
               cur={fossilChart.cur}
+              height={fossilChart.rows.length > 1 ? 220 : 64}
               axisLabel={axisLabel}
               label={selName ? <>Price history: <em>{selName}</em></> : "Select a fossil"}
               seriesName={selName}
@@ -396,32 +409,40 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                   <span className="st-row-price"><PctBadge v={chgOf(f.name)} /> {money(f.chaos)}</span>
                 </button>
               ))}
-              {!fossilList.length && <div className="st-cat-note">Nothing matches that filter.</div>}
+              {!fossilList.length && <div className="st-cat-note">No fossil matches that filter.</div>}
             </div>
-          </section>
 
-          <h4 className="dl-h">Resonators</h4>
-          {resoItems.length ? (
-            <div className="st-cat-grid dl-grid-plain">
-              {[...resoItems].sort((a, b) => (sortDir === "desc" ? b.chaosValue - a.chaosValue : a.chaosValue - b.chaosValue))
-                .map((it) => {
+            <div className="dl-sub-head">
+              Resonators
+              <em>same graph, own list — sorting these never reorders the fossils</em>
+            </div>
+            {resoList.length ? (
+              <div className="st-cat-grid">
+                {resoList.map((it) => {
                   const tier = RESONATOR_ORDER.find((t) => it.name.startsWith(t));
                   return (
-                    <div key={it.name} className="st-row st-row-static">
+                    <button key={it.name}
+                      className={`st-row ${selName === it.name ? "focused" : ""}`}
+                      onClick={() => { setSelFossil(it.name); setDragSel(null); }}
+                      title="Show price history">
                       <span className="st-row-name">
                         <ResonatorIcon sockets={tier ? RESONATOR_SOCKETS[tier] : 1} />
-                        {it.name}
+                        {it.name.replace(/ Resonator$/, "")}
+                        {tier && <em className="dl-flag" title={`${RESONATOR_SOCKETS[tier]} sockets`}>{RESONATOR_SOCKETS[tier]}s</em>}
                       </span>
                       <span className="st-row-price"><PctBadge v={chgOf(it.name)} /> {money(it.chaosValue)}</span>
-                    </div>
+                    </button>
                   );
                 })}
-            </div>
-          ) : (
-            <p className="dl-note">
-              No resonator snapshot yet — <code>resonators.json</code> appears after the next data refresh.
-            </p>
-          )}
+              </div>
+            ) : (
+              <div className="st-cat-note">
+                {resoItems.length
+                  ? "No resonator matches that filter."
+                  : <>No resonator snapshot yet — <code>resonators.json</code> appears after the next data refresh.</>}
+              </div>
+            )}
+          </section>
 
           <h4 className="dl-h">What a node is worth</h4>
           <p className="dl-note">
