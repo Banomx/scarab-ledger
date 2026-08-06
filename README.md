@@ -315,6 +315,20 @@ carries its boss node. Those are **knobs**, not numbers — set them under
 **Assumptions**, they persist, and the fossil prices and boss EVs don't depend
 on either.
 
+Each knob is badged with where its number came from, because a figure somebody
+counted shouldn't sit next to one I picked and look equally solid:
+
+| knob | default | badge | basis |
+|---|---|---|---|
+| Special fossils per biome node | 3 | `seen` | a delve guide states "about three on average" — one delver, no sample size |
+| Fossils per smuggler's cache | 5 | `seen` | counted out on camera at ~5 fossils for ~100c. One node, one run |
+| Common fossils alongside | 1 | `guess` | undocumented; set low so it barely moves the node value |
+| Fossils per generic fossil node | 2 | `guess` | undocumented; set low so an ordinary node isn't flattered |
+| Boss node per city biome | 0.25 | `guess` | undocumented; set low so the encounter rate errs down |
+
+The rule for anything unsourced is that the error runs toward *understating* a
+biome — the tab should never talk you into a farm.
+
 There used to be a third knob: how many fossil nodes a delve level contains.
 That one was both unknowable and load-bearing — it multiplied every biome
 figure, and the default was about 3x too generous, which the market itself

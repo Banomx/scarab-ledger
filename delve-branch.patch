@@ -1,7 +1,7 @@
 From 736473425dcc6e07cdc6b6d2b9e2331f38353d6b Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 13:32:45 +0000
-Subject: [PATCH 1/8] Delve tab: fossil prices, biome ranking, boss value per
+Subject: [PATCH 1/9] Delve tab: fossil prices, biome ranking, boss value per
  kill
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -1986,7 +1986,7 @@ index 0000000..6a40f72
 From dd01fb0337402ceca7356254e3b04310e250d963 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 14:05:44 +0000
-Subject: [PATCH 2/8] CI: don't cancel an in-flight Pages deployment
+Subject: [PATCH 2/9] CI: don't cancel an in-flight Pages deployment
 
 A second run entering the 'pages' concurrency group was cancelling the
 first mid-deploy, which surfaces as 'Error: Deployment cancelled' from
@@ -2029,7 +2029,7 @@ index e8fe148..a5ce980 100644
 From e09dd89bf4b87e660e79e87356fb4224a661b37d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 14:40:32 +0000
-Subject: [PATCH 3/8] CI: give the Pages deployment 30 minutes before aborting
+Subject: [PATCH 3/9] CI: give the Pages deployment 30 minutes before aborting
 
 actions/deploy-pages defaults to a 10-minute wait and CANCELS the
 deployment when it expires. GitHub's Pages backend intermittently sits
@@ -2065,7 +2065,7 @@ index a5ce980..95493e1 100644
 From 10661076a0ac56471eb7ad984f302d9e0fa5cce0 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 14:49:57 +0000
-Subject: [PATCH 4/8] Delve: share the real price chart, lead with fossils
+Subject: [PATCH 4/9] Delve: share the real price chart, lead with fossils
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -3453,7 +3453,7 @@ index 1de993e..1600393 100644
 From 4e771f4e6de7ba3a653a9766351c4dfc80f32e7d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 15:30:36 +0000
-Subject: [PATCH 5/8] Delve: turn Aul's unrated drop into a ceiling, not a
+Subject: [PATCH 5/9] Delve: turn Aul's unrated drop into a ceiling, not a
  blank
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -3560,7 +3560,7 @@ index 6a40f72..546dcf5 100644
 From d950a85c6102a4d74ebe2926c8fbf921785384ec Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 15:35:36 +0000
-Subject: [PATCH 6/8] Delve: say what "per delve" means, and stop overstating
+Subject: [PATCH 6/9] Delve: say what "per delve" means, and stop overstating
  it
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -3770,7 +3770,7 @@ index 546dcf5..6eb286d 100644
 From cf4a57a0296fb47dbe646a63aa5cf98e673d6530 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 15:44:41 +0000
-Subject: [PATCH 7/8] Delve: resonators share the fossil graph, keep their own
+Subject: [PATCH 7/9] Delve: resonators share the fossil graph, keep their own
  list
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -3920,7 +3920,7 @@ index 52656ac..68b79b6 100644
 From 7e0ac7fccd8993a55ee34912f57311d5f31e06a7 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 6 Aug 2026 18:20:35 +0000
-Subject: [PATCH 8/8] Delve: quote biomes per node, not per delve
+Subject: [PATCH 8/9] Delve: quote biomes per node, not per delve
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -4552,6 +4552,237 @@ index 6eb286d..e22254f 100644
    { key: "bossPerCity", label: "Boss node per city biome", group: "Bosses", step: 0.05,
 -    help: "A city biome may carry its boss. Nothing published — this is the guess the encounter rate rides on." },
 +    help: "A city biome may carry its boss. Nothing published — this is the guess the encounter rate rides on. Affects the Bosses view only." },
+ ];
+ 
+ /* ---------------- resonators ---------------- */
+-- 
+2.43.0
+
+
+From e4f3a0c1619e42609df9a7365e95839ffd839841 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 6 Aug 2026 18:27:56 +0000
+Subject: [PATCH 9/9] Delve: badge where each assumption came from, lower the
+ unsourced ones
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Two of the node-count assumptions have somebody's counted figure behind
+them and three do not, and until now they all rendered identically. They
+don't any more: each carries a `source` and the panel badges it `seen`
+or `guess`, with the basis in the row's tooltip.
+
+  seen   3 special fossils per biome node (a delve guide states "about
+         three on average"), 5 per smuggler's cache (counted on camera
+         at ~5 for ~100c). One delver, no sample size — evidence, thin.
+  guess  common fossils alongside, fossils per generic node, boss node
+         per city biome. Nothing published, nothing observed.
+
+The guessed ones drop: 2 -> 1, 3 -> 2, and bossPerCity 0.5 -> 0.25. The
+rule is that an unsourced number errs toward understating a biome — the
+tab should never talk you into a farm. A test pins that ordering, so a
+guess can't quietly grow past its sourced neighbour.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01ERdvL4QxcxEM9GTbJLR9Db
+---
+ README.md              | 14 ++++++++++++
+ scripts/test-delve.mjs | 24 ++++++++++++++++++---
+ src/App.jsx            |  7 ++++++
+ src/Delve.jsx          | 15 +++++++------
+ src/delveData.js       | 49 +++++++++++++++++++++++++++++++-----------
+ 5 files changed, 88 insertions(+), 21 deletions(-)
+
+diff --git a/README.md b/README.md
+index 44ede8b..82aaf66 100644
+--- a/README.md
++++ b/README.md
+@@ -315,6 +315,20 @@ carries its boss node. Those are **knobs**, not numbers — set them under
+ **Assumptions**, they persist, and the fossil prices and boss EVs don't depend
+ on either.
+ 
++Each knob is badged with where its number came from, because a figure somebody
++counted shouldn't sit next to one I picked and look equally solid:
++
++| knob | default | badge | basis |
++|---|---|---|---|
++| Special fossils per biome node | 3 | `seen` | a delve guide states "about three on average" — one delver, no sample size |
++| Fossils per smuggler's cache | 5 | `seen` | counted out on camera at ~5 fossils for ~100c. One node, one run |
++| Common fossils alongside | 1 | `guess` | undocumented; set low so it barely moves the node value |
++| Fossils per generic fossil node | 2 | `guess` | undocumented; set low so an ordinary node isn't flattered |
++| Boss node per city biome | 0.25 | `guess` | undocumented; set low so the encounter rate errs down |
++
++The rule for anything unsourced is that the error runs toward *understating* a
++biome — the tab should never talk you into a farm.
++
+ There used to be a third knob: how many fossil nodes a delve level contains.
+ That one was both unknowable and load-bearing — it multiplied every biome
+ figure, and the default was about 3x too generous, which the market itself
+diff --git a/scripts/test-delve.mjs b/scripts/test-delve.mjs
+index 1f9c7a7..7f3650f 100644
+--- a/scripts/test-delve.mjs
++++ b/scripts/test-delve.mjs
+@@ -9,7 +9,7 @@
+ 
+ import assert from "node:assert/strict";
+ import {
+-  BIOMES, FOSSILS, DELVE_BOSSES, DEFAULTS, TUNABLES, NODES, FALLBACKS,
++  BIOMES, FOSSILS, DELVE_BOSSES, DEFAULTS, TUNABLES, NODES, FALLBACKS, SOURCES,
+ } from "../src/delveData.js";
+ import {
+   weightAt, weightExact, biomeShares, makePriceOf, fossilRows,
+@@ -67,8 +67,26 @@ test("every exclusive node in NODES matches its biome's declared node", () => {
+   }
+ });
+ 
+-test("every tunable names a real default", () => {
+-  for (const t of TUNABLES) assert.ok(t.key in DEFAULTS, `tunable ${t.key} has no default`);
++test("every tunable names a real default and declares where its number came from", () => {
++  for (const t of TUNABLES) {
++    assert.ok(t.key in DEFAULTS, `tunable ${t.key} has no default`);
++    assert.ok(t.source in SOURCES, `tunable ${t.key} has no source tag`);
++    assert.ok(t.help, `tunable ${t.key} has no explanation`);
++  }
++});
++
++test("unsourced assumptions are the low ones", () => {
++  // The rule is: a number nobody counted errs toward understating a biome.
++  // If a "guess" ever ends up above its sourced neighbour, that rule broke.
++  const by = Object.fromEntries(TUNABLES.map((t) => [t.key, t]));
++  assert.equal(by.exclusiveQty.source, "observed");
++  assert.equal(by.cacheQty.source, "observed");
++  assert.equal(by.exclusiveExtra.source, "guess");
++  assert.equal(by.genericQty.source, "guess");
++  assert.ok(DEFAULTS.exclusiveExtra < DEFAULTS.exclusiveQty,
++    "the guessed extra should not outweigh the counted special drop");
++  assert.ok(DEFAULTS.genericQty < DEFAULTS.cacheQty,
++    "a generic node should not be assumed richer than an observed cache");
+ });
+ 
+ test("boss drop rates are the poewiki 3.25 n=100 figures", () => {
+diff --git a/src/App.jsx b/src/App.jsx
+index 7eba248..bbbdb7c 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -1722,4 +1722,11 @@ const css = `
+ .dl-mode-note { font-size: 12px; color: #8d8371; line-height: 1.55; max-width: 74ch; }
+ .dl-mode-note strong { color: #c4b795; font-weight: 600; }
+ .dl-biome-val em { display: block; text-align: right; margin-left: 0; }
++
++.dl-src {
++  font-style: normal; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em;
++  border: 1px solid #5a4d33; border-radius: 3px; padding: 1px 4px; margin-left: 7px; color: #8d8371;
++}
++.dl-src.ok { border-color: #4f7a45; color: #a5d48f; }
++.dl-src.warn { border-color: #7a5c33; color: #d9a86a; }
+ `;
+diff --git a/src/Delve.jsx b/src/Delve.jsx
+index e4974d9..df42451 100644
+--- a/src/Delve.jsx
++++ b/src/Delve.jsx
+@@ -1,6 +1,6 @@
+ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+ import {
+-  BIOMES, NODES, TUNABLES, DEFAULTS, DELVE_BOSSES, RESONATOR_ORDER, RESONATOR_SOCKETS,
++  BIOMES, NODES, TUNABLES, DEFAULTS, SOURCES, DELVE_BOSSES, RESONATOR_ORDER, RESONATOR_SOCKETS,
+ } from "./delveData.js";
+ import {
+   makePriceOf, fossilRows, computeBiomes, computeDelveBosses, killDistribution,
+@@ -284,11 +284,11 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+         <div className="dl-assume">
+           <p className="dl-assume-lead">
+             The wiki publishes biome pools, spawn weights and boss drop rates. It does not publish how many
+-            fossils a node drops, how many nodes a delve level has, or how often a city biome carries its boss —
+-            so those are yours to set. Everything below feeds the per-delve numbers; the fossil prices and the
+-            boss drop rates do not depend on any of it. The node frequencies are the biggest lever by far —
+-            each one prints what it implies in plain terms, so check that against your own runs before
+-            trusting a per-delve figure.
++            fossils a node drops, so that is yours to set. Two of these have someone's counted figure behind
++            them and are badged <em className="dl-src ok">seen</em>; the rest are badged{" "}
++            <em className="dl-src warn">guess</em> and are set low on purpose, so the tab understates a biome
++            rather than talking you into one. Hover any row for where its number came from. Fossil prices and
++            boss drop rates depend on none of it.
+           </p>
+           {[...new Set(TUNABLES.map((t) => t.group))].map((group) => (
+             <div key={group} className="dl-assume-group">
+@@ -297,6 +297,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
+                 <label key={t.key} className="dl-assume-row" title={t.help}>
+                   <span>
+                     {t.label}
++                    {/* A number somebody counted should not sit next to one I
++                        picked out of the air looking equally solid. */}
++                    <em className={`dl-src ${SOURCES[t.source]?.tone || ""}`}>{SOURCES[t.source]?.tag}</em>
+                   </span>
+                   <NumInput value={num(settings[t.key], DEFAULTS[t.key])} step={t.step}
+                     onCommit={(n) => patch({ [t.key]: n })} />
+diff --git a/src/delveData.js b/src/delveData.js
+index e22254f..000e645 100644
+--- a/src/delveData.js
++++ b/src/delveData.js
+@@ -207,28 +207,53 @@ export const NODES = [
+ 
+ export const DEFAULTS = {
+   depth: 300,
+-  /* fossils per node */
+-  exclusiveQty: 3,        // special fossils from the biome's own node
+-  exclusiveExtra: 2,      // common-pool fossils alongside them
+-  genericQty: 3,          // common-pool fossils from an unnamed fossil node
+-  cacheQty: 5,            // common-pool fossils from a smuggler's cache
++  /* Fossils per node. Two of these have a source; the rest do not, and the
++     ones that don't are set low on purpose — see TUNABLES below, which
++     carries the provenance the UI badges. Erring low means the tab
++     understates a biome rather than talking you into one. */
++  exclusiveQty: 3,        // observed
++  exclusiveExtra: 1,      // no source — deliberately low
++  genericQty: 2,          // no source — deliberately low
++  cacheQty: 5,            // observed, one run
+   /* How often a city biome actually carries its boss node. Only the Bosses
+      view uses this — it converts "this city is 3.5% of the mine" into "you
+      will meet Ahuatotli about twice per 100 delves". The biome ranking is
+-     quoted per node and does not touch it. */
+-  bossPerCity: 0.5,
++     quoted per node and does not touch it. Nothing published, so it is set
++     low: overstating it would inflate how often you expect a boss. */
++  bossPerCity: 0.25,
+   /* wall-locked fossils only count if you blast for them */
+   openWalls: true,
+ };
+ 
++/* Where each assumption comes from, badged in the UI so a number with a
++   source doesn't sit next to one I picked and look equally solid.
++
++     observed  someone counted it and said so out loud. Thin evidence —
++               one delver, no sample size — but evidence.
++     guess     nothing published and nothing observed. Set low so the
++               error runs toward "this biome is worth less than the tab
++               says" rather than the other way. */
++export const SOURCES = {
++  observed: { tag: "seen", tone: "ok" },
++  guess: { tag: "guess", tone: "warn" },
++};
++
+ export const TUNABLES = [
+   { key: "exclusiveQty", label: "Special fossils per biome node", group: "Per node", step: 0.5,
+-    help: "Crystal Spire, Humid Fissure and friends. Community figure is about three." },
+-  { key: "exclusiveExtra", label: "Common fossils alongside", group: "Per node", step: 0.5 },
+-  { key: "genericQty", label: "Fossils per generic fossil node", group: "Per node", step: 0.5 },
+-  { key: "cacheQty", label: "Fossils per smuggler's cache", group: "Per node", step: 0.5 },
++    source: "observed",
++    help: "Crystal Spire, Humid Fissure and friends. A delve guide puts it at about three on average — one person's experience, no sample size, but it is the only figure anyone states." },
++  { key: "exclusiveExtra", label: "Common fossils alongside", group: "Per node", step: 0.5,
++    source: "guess",
++    help: "Whether a biome node also drops ordinary pool fossils, and how many, is not documented anywhere. Set to 1 so it barely moves the node value." },
++  { key: "genericQty", label: "Fossils per generic fossil node", group: "Per node", step: 0.5,
++    source: "guess",
++    help: "Unnamed 'Contains Fossils' nodes. No published count. Set to 2 — low, so an ordinary node is not flattered." },
++  { key: "cacheQty", label: "Fossils per smuggler's cache", group: "Per node", step: 0.5,
++    source: "observed",
++    help: "A delve guide counted a cache out on camera at roughly five fossils for about 100 chaos. One node, one run — treat it as a data point, not a rate." },
+   { key: "bossPerCity", label: "Boss node per city biome", group: "Bosses", step: 0.05,
+-    help: "A city biome may carry its boss. Nothing published — this is the guess the encounter rate rides on. Affects the Bosses view only." },
++    source: "guess",
++    help: "How often a city biome carries its boss node. Nothing published. Set to 0.25 so the encounter rate errs low. Affects the Bosses view only — the biome ranking is per node and does not use it." },
  ];
  
  /* ---------------- resonators ---------------- */

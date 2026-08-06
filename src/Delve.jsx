@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  BIOMES, NODES, TUNABLES, DEFAULTS, DELVE_BOSSES, RESONATOR_ORDER, RESONATOR_SOCKETS,
+  BIOMES, NODES, TUNABLES, DEFAULTS, SOURCES, DELVE_BOSSES, RESONATOR_ORDER, RESONATOR_SOCKETS,
 } from "./delveData.js";
 import {
   makePriceOf, fossilRows, computeBiomes, computeDelveBosses, killDistribution,
@@ -284,11 +284,11 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
         <div className="dl-assume">
           <p className="dl-assume-lead">
             The wiki publishes biome pools, spawn weights and boss drop rates. It does not publish how many
-            fossils a node drops, how many nodes a delve level has, or how often a city biome carries its boss —
-            so those are yours to set. Everything below feeds the per-delve numbers; the fossil prices and the
-            boss drop rates do not depend on any of it. The node frequencies are the biggest lever by far —
-            each one prints what it implies in plain terms, so check that against your own runs before
-            trusting a per-delve figure.
+            fossils a node drops, so that is yours to set. Two of these have someone's counted figure behind
+            them and are badged <em className="dl-src ok">seen</em>; the rest are badged{" "}
+            <em className="dl-src warn">guess</em> and are set low on purpose, so the tab understates a biome
+            rather than talking you into one. Hover any row for where its number came from. Fossil prices and
+            boss drop rates depend on none of it.
           </p>
           {[...new Set(TUNABLES.map((t) => t.group))].map((group) => (
             <div key={group} className="dl-assume-group">
@@ -297,6 +297,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                 <label key={t.key} className="dl-assume-row" title={t.help}>
                   <span>
                     {t.label}
+                    {/* A number somebody counted should not sit next to one I
+                        picked out of the air looking equally solid. */}
+                    <em className={`dl-src ${SOURCES[t.source]?.tone || ""}`}>{SOURCES[t.source]?.tag}</em>
                   </span>
                   <NumInput value={num(settings[t.key], DEFAULTS[t.key])} step={t.step}
                     onCommit={(n) => patch({ [t.key]: n })} />

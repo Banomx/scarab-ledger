@@ -207,28 +207,53 @@ export const NODES = [
 
 export const DEFAULTS = {
   depth: 300,
-  /* fossils per node */
-  exclusiveQty: 3,        // special fossils from the biome's own node
-  exclusiveExtra: 2,      // common-pool fossils alongside them
-  genericQty: 3,          // common-pool fossils from an unnamed fossil node
-  cacheQty: 5,            // common-pool fossils from a smuggler's cache
+  /* Fossils per node. Two of these have a source; the rest do not, and the
+     ones that don't are set low on purpose — see TUNABLES below, which
+     carries the provenance the UI badges. Erring low means the tab
+     understates a biome rather than talking you into one. */
+  exclusiveQty: 3,        // observed
+  exclusiveExtra: 1,      // no source — deliberately low
+  genericQty: 2,          // no source — deliberately low
+  cacheQty: 5,            // observed, one run
   /* How often a city biome actually carries its boss node. Only the Bosses
      view uses this — it converts "this city is 3.5% of the mine" into "you
      will meet Ahuatotli about twice per 100 delves". The biome ranking is
-     quoted per node and does not touch it. */
-  bossPerCity: 0.5,
+     quoted per node and does not touch it. Nothing published, so it is set
+     low: overstating it would inflate how often you expect a boss. */
+  bossPerCity: 0.25,
   /* wall-locked fossils only count if you blast for them */
   openWalls: true,
 };
 
+/* Where each assumption comes from, badged in the UI so a number with a
+   source doesn't sit next to one I picked and look equally solid.
+
+     observed  someone counted it and said so out loud. Thin evidence —
+               one delver, no sample size — but evidence.
+     guess     nothing published and nothing observed. Set low so the
+               error runs toward "this biome is worth less than the tab
+               says" rather than the other way. */
+export const SOURCES = {
+  observed: { tag: "seen", tone: "ok" },
+  guess: { tag: "guess", tone: "warn" },
+};
+
 export const TUNABLES = [
   { key: "exclusiveQty", label: "Special fossils per biome node", group: "Per node", step: 0.5,
-    help: "Crystal Spire, Humid Fissure and friends. Community figure is about three." },
-  { key: "exclusiveExtra", label: "Common fossils alongside", group: "Per node", step: 0.5 },
-  { key: "genericQty", label: "Fossils per generic fossil node", group: "Per node", step: 0.5 },
-  { key: "cacheQty", label: "Fossils per smuggler's cache", group: "Per node", step: 0.5 },
+    source: "observed",
+    help: "Crystal Spire, Humid Fissure and friends. A delve guide puts it at about three on average — one person's experience, no sample size, but it is the only figure anyone states." },
+  { key: "exclusiveExtra", label: "Common fossils alongside", group: "Per node", step: 0.5,
+    source: "guess",
+    help: "Whether a biome node also drops ordinary pool fossils, and how many, is not documented anywhere. Set to 1 so it barely moves the node value." },
+  { key: "genericQty", label: "Fossils per generic fossil node", group: "Per node", step: 0.5,
+    source: "guess",
+    help: "Unnamed 'Contains Fossils' nodes. No published count. Set to 2 — low, so an ordinary node is not flattered." },
+  { key: "cacheQty", label: "Fossils per smuggler's cache", group: "Per node", step: 0.5,
+    source: "observed",
+    help: "A delve guide counted a cache out on camera at roughly five fossils for about 100 chaos. One node, one run — treat it as a data point, not a rate." },
   { key: "bossPerCity", label: "Boss node per city biome", group: "Bosses", step: 0.05,
-    help: "A city biome may carry its boss. Nothing published — this is the guess the encounter rate rides on. Affects the Bosses view only." },
+    source: "guess",
+    help: "How often a city biome carries its boss node. Nothing published. Set to 0.25 so the encounter rate errs low. Affects the Bosses view only — the biome ranking is per node and does not use it." },
 ];
 
 /* ---------------- resonators ---------------- */

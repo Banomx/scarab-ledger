@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import {
-  BIOMES, FOSSILS, DELVE_BOSSES, DEFAULTS, TUNABLES, NODES, FALLBACKS,
+  BIOMES, FOSSILS, DELVE_BOSSES, DEFAULTS, TUNABLES, NODES, FALLBACKS, SOURCES,
 } from "../src/delveData.js";
 import {
   weightAt, weightExact, biomeShares, makePriceOf, fossilRows,
@@ -67,8 +67,26 @@ test("every exclusive node in NODES matches its biome's declared node", () => {
   }
 });
 
-test("every tunable names a real default", () => {
-  for (const t of TUNABLES) assert.ok(t.key in DEFAULTS, `tunable ${t.key} has no default`);
+test("every tunable names a real default and declares where its number came from", () => {
+  for (const t of TUNABLES) {
+    assert.ok(t.key in DEFAULTS, `tunable ${t.key} has no default`);
+    assert.ok(t.source in SOURCES, `tunable ${t.key} has no source tag`);
+    assert.ok(t.help, `tunable ${t.key} has no explanation`);
+  }
+});
+
+test("unsourced assumptions are the low ones", () => {
+  // The rule is: a number nobody counted errs toward understating a biome.
+  // If a "guess" ever ends up above its sourced neighbour, that rule broke.
+  const by = Object.fromEntries(TUNABLES.map((t) => [t.key, t]));
+  assert.equal(by.exclusiveQty.source, "observed");
+  assert.equal(by.cacheQty.source, "observed");
+  assert.equal(by.exclusiveExtra.source, "guess");
+  assert.equal(by.genericQty.source, "guess");
+  assert.ok(DEFAULTS.exclusiveExtra < DEFAULTS.exclusiveQty,
+    "the guessed extra should not outweigh the counted special drop");
+  assert.ok(DEFAULTS.genericQty < DEFAULTS.cacheQty,
+    "a generic node should not be assumed richer than an observed cache");
 });
 
 test("boss drop rates are the poewiki 3.25 n=100 figures", () => {

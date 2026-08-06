@@ -1722,4 +1722,11 @@ const css = `
 .dl-mode-note { font-size: 12px; color: #8d8371; line-height: 1.55; max-width: 74ch; }
 .dl-mode-note strong { color: #c4b795; font-weight: 600; }
 .dl-biome-val em { display: block; text-align: right; margin-left: 0; }
+
+.dl-src {
+  font-style: normal; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em;
+  border: 1px solid #5a4d33; border-radius: 3px; padding: 1px 4px; margin-left: 7px; color: #8d8371;
+}
+.dl-src.ok { border-color: #4f7a45; color: #a5d48f; }
+.dl-src.warn { border-color: #7a5c33; color: #d9a86a; }
 `;
