@@ -1685,4 +1685,11 @@ const css = `
 .dl-panel-detail .dl-excl { padding: 0 0 4px; }
 .dl-grid-plain .st-row { cursor: default; }
 .st-row-static { display: flex; align-items: center; justify-content: space-between; }
+
+.dl-apply {
+  background: #2c2414; color: #d9c48a; border: 1px solid #6b5730; border-radius: 3px;
+  font-family: inherit; font-size: 10px; padding: 1px 5px; margin-left: 6px; cursor: pointer;
+  text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap;
+}
+.dl-apply:hover { color: #f0dfa8; border-color: #8d7442; }
 `;

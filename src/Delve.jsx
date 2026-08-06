@@ -671,6 +671,24 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                                   {l.label}
                                   {src.unrated && <em className="dl-flag warn" title="Listed as a drop, no published rate">unrated</em>}
                                   {src.preliminary && <em className="dl-flag" title="Wiki calls this a preliminary estimate">prelim</em>}
+                                  {/* Zero sightings in a sample is a ceiling, not a blank:
+                                      the rule of three puts 95% confidence under 3/n. */}
+                                  {src.unrated && src.sampleZero > 0 && l.rate === 0 && (
+                                    <button className="dl-apply"
+                                      title={`Absent from the ${src.sampleZero}-kill rate list, so it likely dropped 0 times. Rule of three: 95% confident it is under ${(300 / src.sampleZero).toFixed(0)}%. Click to use that ceiling.`}
+                                      onClick={() => setSettings((st) => sanitizeSettings({
+                                        ...st,
+                                        bosses: {
+                                          ...(st.bosses || {}),
+                                          [b.delve.id]: {
+                                            ...((st.bosses || {})[b.delve.id] || {}),
+                                            drops: { ...(((st.bosses || {})[b.delve.id] || {}).drops || {}), [l.key]: { chance: 3 / src.sampleZero } },
+                                          },
+                                        },
+                                      }))}>
+                                      use ≤{(300 / src.sampleZero).toFixed(0)}%
+                                    </button>
+                                  )}
                                 </td>
                                 <td className="r">
                                   <NumInput value={Math.round(l.rate * 1000) / 10} step={1} width={54} suffix="%"
@@ -695,7 +713,8 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                       </table>
                       <p className="dl-note">
                         Rates: poewiki, {b.delve.sample}. Lines roll independently — Ahuatotli's six sum past
-                        100% because a kill can hand you several.
+                        100% because a kill can hand you several. Prices are poe.ninja's, including the
+                        divination cards.
                         {b.missingPrices > 0 && ` ${b.missingPrices} line${b.missingPrices > 1 ? "s have" : " has"} no poe.ninja price and contribute nothing.`}
                       </p>
                     </div>

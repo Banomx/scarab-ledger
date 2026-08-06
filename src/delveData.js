@@ -302,7 +302,14 @@ export const DELVE_BOSSES = [
         { item: "Ahkeli's Meadow", chance: 0.08 },
         { item: "Uzaza's Valley", chance: 0.08 },
         { item: "Putembo's Mountain", chance: 0.08 },
-        { item: "Desecrated Virtue", chance: 0, unrated: true },
+        // A divination card, so poe.ninja prices it like any other (the
+        // DivinationCard type is already in the price map). What's missing is
+        // the RATE: the wiki lists it in Aul's drop table but leaves it out of
+        // the n=100 rate list, which most likely means it didn't drop once in
+        // that sample. Zero of 100 is not "no information" — by the rule of
+        // three it puts a 95% ceiling of about 3% on it, and the UI offers
+        // that ceiling as a one-click value rather than baking a guess in.
+        { item: "Desecrated Virtue", chance: 0, unrated: true, sampleZero: 100 },
       ]),
     ],
   },
