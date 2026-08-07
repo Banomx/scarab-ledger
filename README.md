@@ -333,6 +333,11 @@ fossil totals and minutes can replace guide quantities and unlock a personal
 priced-pool hourly range; a timed route with no encounters remains a valid dry
 sample.
 
+**How to make money** opens a compact pathing guide sourced from Duddybrainzz's
+3.28 depth-5000 test. It separates route priorities and sulphite setup from the
+historical six-hour result, links each point to its video timestamp and never
+feeds the old league prices or reported hourly rate into the live calculator.
+
 PoEDB supplies biome weights plus exclusive encounter tier, weight and minimum
 depth. All six exclusive encounters are tier 4 with weight 100, which supports
 a relative comparison. Because the server curve is not public, the working

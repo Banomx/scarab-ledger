@@ -84,6 +84,12 @@ inside the Delve Assumptions panel. Boss signals carry a boss id through `src/Ap
 and missing-price links open the relevant boss instead of the first boss in the
 list.
 
+The Delve toolbar also owns a collapsible money guide. Its route priorities,
+sulphite loop and historical sample are static, timestamped observations from
+Duddybrainzz's 3.28 deep-Delve video. They are presentation-only: the guide does
+not alter price resolution, depth curves, samples or EV. Historical profit is
+explicitly labelled and remains separate from current generated snapshots.
+
 ## Delve estimation boundary
 
 The six biome-exclusive fossil encounters share PoEDB tier 4 and encounter

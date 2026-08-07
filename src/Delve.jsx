@@ -107,6 +107,36 @@ const VIEWS = [
   ["bosses", "Bosses"],
 ];
 
+const MONEY_GUIDE_VIDEO = "https://www.youtube.com/watch?v=tA-V2IhRJdA";
+const MONEY_GUIDE_TIPS = [
+  {
+    label: "Route first",
+    title: "Pay up to four travel nodes for premium targets",
+    body: "Prioritise Hollow or Faceted fossil encounters and the Vaal boss. Duddybrainzz was willing to spend four travel nodes to reach them.",
+    time: 50,
+  },
+  {
+    label: "Also take",
+    title: "Aul, generic fossils and Fractured Fossil nodes",
+    body: "These were the other detours called worth taking. Use the live cards below to decide which fossil target is actually paying today.",
+    time: 50,
+  },
+  {
+    label: "Sulphite loop",
+    title: "Touch sulphite and leave the map",
+    body: "The example used a few 8-mod Jungle Valley maps with one Sulphite Scarab, ran only to the sulphite deposits, then left. Four sacrifice fragments are optional.",
+    time: 125,
+  },
+  {
+    label: "Market check",
+    title: "Treat carries and fracture crafts as extra profit",
+    body: "Check demand for Aul Bloodline carries and the current margin on fracturing +2 socketed minion boots or gloves onto Leviathan bases before committing currency.",
+    time: 80,
+  },
+];
+
+const moneyGuideUrl = (seconds) => `${MONEY_GUIDE_VIDEO}&t=${seconds}s`;
+
 export default function Delve({ league, staticBase, currency, divineRate, fmtPrice, fmtChaos, unitFor }) {
   const [view, setView] = useState("fossils");
   const [settings, setSettings] = useState(() => loadSettings());
@@ -120,6 +150,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const [editingSample, setEditingSample] = useState(null);
   const [showAssumptions, setShowAssumptions] = useState(false);
   const [showSamples, setShowSamples] = useState(false);
+  const [showMoneyGuide, setShowMoneyGuide] = useState(false);
   const [openBiome, setOpenBiome] = useState(null);
   const [openBoss, setOpenBoss] = useState(null);
   const [openBossDrop, setOpenBossDrop] = useState(null);
@@ -578,6 +609,70 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
         </button>
         <button className="dl-reset" onClick={reset}>Reset settings</button>
       </div>
+
+      <div className="dl-money-launch">
+        <span>Route priorities and a sourced six-hour deep-Delve case study</span>
+        <button className={`dl-money-btn${showMoneyGuide ? " on" : ""}`}
+          aria-expanded={showMoneyGuide} aria-controls="dl-money-guide"
+          onClick={() => setShowMoneyGuide((v) => !v)}>
+          How to make money <span aria-hidden="true">{showMoneyGuide ? "-" : "+"}</span>
+        </button>
+      </div>
+
+      {showMoneyGuide && (
+        <section id="dl-money-guide" className="dl-money-guide">
+          <header className="dl-money-head">
+            <div>
+              <span><em className="dl-src warn">3.28 guide</em> creator observations, not a guaranteed rate</span>
+              <h3>What to path toward</h3>
+              <p>
+                Practical notes from Duddybrainzz's depth-5000 profit test. Live target prices still come from
+                the calculator below; the historical run is context for the route, not an input to your EV.
+              </p>
+            </div>
+            <a href={MONEY_GUIDE_VIDEO} target="_blank" rel="noreferrer">Watch the full video</a>
+          </header>
+
+          <div className="dl-money-grid">
+            {MONEY_GUIDE_TIPS.map((tip) => (
+              <article key={tip.title}>
+                <span>{tip.label}</span>
+                <h4>{tip.title}</h4>
+                <p>{tip.body}</p>
+                <a href={moneyGuideUrl(tip.time)} target="_blank" rel="noreferrer">
+                  See it at {Math.floor(tip.time / 60)}:{String(tip.time % 60).padStart(2, "0")}
+                </a>
+              </article>
+            ))}
+          </div>
+
+          <div className="dl-money-context">
+            <div>
+              <span>Depth rule</span>
+              <strong>Reward scaling stopped at 1500 in the test</strong>
+              <p>Past the cap, go deeper for the challenge or path sideways for efficient targets; do not expect the reward scaling itself to keep rising.</p>
+            </div>
+            <div>
+              <span>3.28 case study - six hours, depth 4900 to 5250</span>
+              <strong>12 Vaal bosses / 3 Doryani maps / 300k azurite</strong>
+              <p>
+                The creator reported 187 divines total, or 31 div/hour: 63d raw Delve loot, 96d from three maps,
+                20d net from the minion-boot fracture and 8d from other rares. Those old prices are not reused here.
+              </p>
+            </div>
+            <div>
+              <span>Expectation</span>
+              <strong>Consistent and relaxed, but depth is the investment</strong>
+              <p>The creator described less reliance on lucky spikes than Breach, while noting that reaching a worthwhile depth costs time and build investment.</p>
+            </div>
+          </div>
+
+          <p className="dl-money-source">
+            Source: <a href={moneyGuideUrl(200)} target="_blank" rel="noreferrer">Duddybrainzz, "Deep Delve Profitability - 3.28 PoE Mirage League"</a>,
+            published 23 April 2026. Sulphite setup and the optional sacrifice fragments come from the video description.
+          </p>
+        </section>
+      )}
 
       {showAssumptions && (
         <div className="dl-assume">
