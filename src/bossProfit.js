@@ -94,6 +94,22 @@ export function matchVariant(hint, variants) {
   return null;
 }
 
+/* Bosses like Catarina drop uniques VEILED and unidentified, and that is a
+   different item economically: unidentified is a bet on the roll, identified
+   is a known quantity. poe.watch prices both — "Unidentified Cinderswallow
+   Urn" runs about nine times the identified urn — so a line that says it is
+   veiled should look for that name before the plain one.
+
+   Driven off the label rather than a hand-kept list, because the label already
+   says it ("Veiled Cinderswallow Urn (Life)") and any list would rot as items
+   come and go. A source that doesn't carry the unidentified form simply misses
+   and falls through to the plain name. */
+export function isUnidentified(d) {
+  if (!d) return false;
+  if (d.unidentified === true) return true;
+  return /\b(?:unid|unidentified|veiled)\b/i.test(`${d.label || ""} ${d.item || ""}`);
+}
+
 function candidates(item) {
   const out = [item];
   if (/ map$/i.test(item)) out.push(item.replace(/ map$/i, ""));
@@ -150,7 +166,7 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } =
     return isFinite(t) ? Math.floor((now - t) / 86400000) : null;
   }
 
-  return function resolve(item, aliases = [], fallback = null, variant = null) {
+  return function resolve(item, aliases = [], fallback = null, variant = null, unidentified = false) {
     // An override is always keyed on the name the dataset uses, so it wins
     // before any aliasing.
     if (priceOverrides[item] != null && isFinite(priceOverrides[item])) {
@@ -160,7 +176,9 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } =
     if (item.startsWith("@")) {
       entry = synthetic(item);
     } else if (priceMap) {
-      const names = [item, ...aliases];
+      // The unidentified name goes FIRST, so it wins where the source has it
+      // and costs nothing where it doesn't.
+      const names = unidentified ? [`Unidentified ${item}`, item, ...aliases] : [item, ...aliases];
       for (const n of names) { if (priceMap[n]) { entry = priceMap[n]; break; } }
       if (!entry) {
         for (const n of names) {
@@ -250,7 +268,7 @@ export function computeBoss(boss, resolve, settings = {}) {
         pct = rate;
         qty = rate * (scaled ? qMul : 1);
       }
-      const p = resolve(d.item, d.aliases, d.fallback, variantHint(d));
+      const p = resolve(d.item, d.aliases, d.fallback, variantHint(d), isUnidentified(d));
       const label = d.label || (d.item.startsWith("@") ? SYNTHETIC[d.item]?.label : null) || d.item;
       return {
         key: dropKey(d), item: d.item, label, rate, pct, qty,

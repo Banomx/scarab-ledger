@@ -15,6 +15,9 @@
    deflated under it" (rateHistory + the change*R fields below).             */
 
 import { mkdir, writeFile, rm } from "node:fs/promises";
+import {
+  watchLeagues, matchWatchLeague, fetchWatchLeague, watchCategoryItems,
+} from "./poewatch.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -85,15 +88,17 @@ async function getLeagues() {
 
 /* ---------- extra exchange categories (same features as scarabs) ---------- */
 const EXTRA_CATEGORIES = [
-  { key: "astrolabes", type: "Astrolabe", re: /astrolabe/i },
-  { key: "catalysts", type: "Currency", re: /catalyst/i }, // catalysts live inside Currency
+  // `watch` narrows which poe.watch categories a name regex may match in;
+  // without it /fossil/i would happily pick up a unique with the word in it.
+  { key: "astrolabes", type: "Astrolabe", re: /astrolabe/i, watch: ["currency"] },
+  { key: "catalysts", type: "Currency", re: /catalyst/i, watch: ["currency"] }, // catalysts live inside Currency
   // The Delve tab could read fossil prices out of prices.json, which already
   // covers the Fossil and Resonator types for the boss tab. It gets its own
   // category anyway because prices.json is a bare name -> price map: no
   // sparkline, no self-history, so no "is this fossil going up?" — which is
   // the whole question a delver is asking.
-  { key: "fossils", type: "Fossil", re: /fossil/i },
-  { key: "resonators", type: "Resonator", re: /resonator/i },
+  { key: "fossils", type: "Fossil", re: /fossil/i, watch: ["fossil"] },
+  { key: "resonators", type: "Resonator", re: /resonator/i, watch: ["resonator"] },
 ];
 
 async function getExchangeCategory(lgParams, type, nameRe, divisor = null) {
@@ -109,7 +114,17 @@ async function getExchangeCategory(lgParams, type, nameRe, divisor = null) {
 }
 
 /* ---------- prices ---------- */
-async function getScarabPrices(lgParams, divisor = null) {
+async function getScarabPrices(lgParams, divisor = null, watch = null) {
+  // 0) poe.watch, when it answered for this league. Its scarab category is a
+  //    single flat array with listing counts attached, so there is nothing to
+  //    calibrate and nothing to disambiguate.
+  if (watch?.rows?.length) {
+    const items = watchCategoryItems(watch.rows, /scarab/i, watch.rate, ["scarab"]);
+    if (items.length) {
+      console.log(`  prices via poe.watch (${items.length} scarabs)`);
+      return { items, source: "watch", leagueParam: lgParams[0], exchangeDivineRate: watch.rate };
+    }
+  }
   // 1) legacy itemoverview (kept alive via redirects historically)
   for (const p of lgParams) {
     const j = await tryJson(`${NINJA}/api/data/itemoverview?league=${encodeURIComponent(p)}&type=Scarab`);
@@ -395,7 +410,15 @@ async function getExchangeContext(lgParams) {
   return null;
 }
 
-async function getPriceMap(lgParams, ctx) {
+/* Source precedence, highest first:
+     -1  poe.watch      — the primary. One shape, real listing counts, and it
+                          carries items poe.ninja does not list at all.
+      0  poe.ninja exchange / stash items
+      1  poe.ninja stash currency  (gap-fill only)
+      3  the pre-migration legacy endpoint
+   poe.ninja is not removed: poe.watch can be down or thin on a category, and
+   a filled price beats an empty one. */
+async function getPriceMap(lgParams, ctx, watch = null) {
   const p = ctx ? ctx.leagueParam : lgParams[0];
   if (!p) return null;
   const div = (ctx?.divisor) || 1;
@@ -500,6 +523,27 @@ async function getPriceMap(lgParams, ctx) {
     if (n) counts[`legacy:${t}`] = n;
   }
 
+  // poe.watch runs last but ranks first: add() replaces anything held at a
+  // worse rank, so this displaces poe.ninja wherever both know an item.
+  //
+  // Roll variants are the exception. poe.ninja splits some uniques by roll and
+  // poe.watch does not, so those maps are lifted out before the overwrite and
+  // put back afterwards — poe.watch's better headline price, poe.ninja's
+  // per-variant detail, rather than losing one to gain the other.
+  const ninjaVariants = {};
+  for (const [name, e] of Object.entries(acc)) {
+    if (Object.keys(e.byVariant || {}).length > 1) ninjaVariants[name] = e.byVariant;
+  }
+  if (watch?.prices) {
+    let n = 0;
+    for (const [name, e] of Object.entries(watch.prices)) {
+      if (!(e.c > 0)) continue;
+      add(-1, name, e.c, true);
+      n++;
+    }
+    if (n) counts["poe.watch"] = n;
+  }
+
   if (!Object.keys(acc).length) return null;
 
   // Lower-middle median: with an even number of listings (a unique with two
@@ -511,6 +555,19 @@ async function getPriceMap(lgParams, ctx) {
   };
   const prices = {};
   for (const [name, e] of Object.entries(acc)) {
+    // A poe.watch entry already resolved its own spread and listing count over
+    // the full row set; re-deriving them from the single value added above
+    // would throw that away.
+    const w = (e.rank === -1) ? watch?.prices?.[name] : null;
+    if (w) {
+      prices[name] = { ...w };
+      if (ninjaVariants[name]) {
+        const v = {};
+        for (const [k, val] of Object.entries(ninjaVariants[name])) v[k] = Math.round(val * 100) / 100;
+        prices[name].v = v;
+      }
+      continue;
+    }
     // All three bases must describe the SAME population: the item as a boss
     // drops it. poe.ninja's "variants" mix two unrelated things — genuine roll
     // variants (Atziri's Splendour Armour vs ES/Eva) and post-drop states a
@@ -942,26 +999,53 @@ async function main() {
   const leagues = await getLeagues();
   console.log("Leagues:", leagues.map((l) => l.name).join(", "));
 
+  // poe.watch names its leagues independently, so resolve the list once and
+  // map each of ours onto it. An empty list here is not fatal: every code path
+  // below falls through to poe.ninja.
+  const watchLgs = await watchLeagues();
+  console.log(watchLgs.length
+    ? `poe.watch leagues: ${watchLgs.map((l) => l.name).join(", ")}`
+    : "poe.watch unreachable — this run is poe.ninja only");
+
   const written = [];
   for (const [li, lg] of leagues.entries()) {
     try {
+      // One poe.watch pull per league covers every tab: scarabs, the extra
+      // categories and the boss price map all read from these same rows.
+      const watchName = matchWatchLeague(lg.name, watchLgs);
+      const watch = watchName ? await fetchWatchLeague(watchName) : null;
+      if (watch) {
+        const cats = Object.entries(watch.counts).filter(([, n]) => n).length;
+        console.log(`  poe.watch: ${watch.rows.length} rows over ${cats} categories, ${Object.keys(watch.prices).length} names`
+          + (watch.failed.length ? `, no data for ${watch.failed.join("/")}` : ""));
+        console.log(`  poe.watch divine rate: ${Math.round(watch.rate)}c via ${watch.rateSource}`
+          + (watch.direct ? ` (the Divine Orb listing itself says ${Math.round(watch.direct)}c — thin, so not used)` : ""));
+      } else if (watchLgs.length) {
+        console.log(`  poe.watch: no league matching "${lg.name}" — poe.ninja only for this one`);
+      }
+
       const ctx = await getExchangeContext(lg.params);
-      const priced = await getScarabPrices(lg.params, ctx?.divisor);
+      const priced = await getScarabPrices(lg.params, ctx?.divisor, watch);
       if (!priced || !priced.items.length) { console.log(`- ${lg.name}: no usable scarab data, skipping`); continue; }
       const { items, source, leagueParam, exchangeDivineRate } = priced;
 
       // Divine rate: when prices come from the exchange overview, derive the
       // rate from that same response (live market, consistent with the scarab
       // prices). The stash/legacy currency endpoints can serve stale values.
-      const divineRate = (source === "exchange" && exchangeDivineRate)
-        ? exchangeDivineRate
-        : await getDivineRate(leagueParam, exchangeDivineRate);
+      const divineRate = (watch?.rate > 0)
+        ? watch.rate
+        : (source === "exchange" && exchangeDivineRate)
+          ? exchangeDivineRate
+          : await getDivineRate(leagueParam, exchangeDivineRate);
       // divineValue may be missing/zero from some sources — recompute
       for (const it of items) if (!it.divineValue) it.divineValue = it.chaosValue / divineRate;
 
       const slug = slugify(lg.name);
       let history = {};
       let ninjaMaxAgo = 0;
+      // Only the legacy endpoint serves per-item history. poe.watch has a
+      // seven-point daily series, but the site's own snapshots are 4-hourly
+      // and already deeper than that, so self-history stays the chart source.
       if (source === "legacy" && lg.group === "current" && li < HISTORY_LEAGUES) {
         const nh = await getNinjaHistory(leagueParam, items);
         history = nh.series;
@@ -1008,7 +1092,7 @@ async function main() {
       await writeFile(path.join(dir, "selfhistory.json"), JSON.stringify(self));
       // broad price map for the boss profitability tab
       try {
-        const pm = await getPriceMap(lg.params, ctx);
+        const pm = await getPriceMap(lg.params, ctx, watch);
         if (pm) {
           await writeFile(path.join(dir, "prices.json"), JSON.stringify({ generatedAt, divineRate, prices: pm.prices }));
           console.log(`  prices: ${Object.keys(pm.prices).length} names across ${pm.categories} sources (league=${pm.leagueParam})`);
@@ -1023,7 +1107,12 @@ async function main() {
       // extra categories: astrolabes + catalysts, same treatment as scarabs
       for (const cat of EXTRA_CATEGORIES) {
         try {
-          const r = await getExchangeCategory(lg.params, cat.type, cat.re, ctx?.divisor);
+          let r = null;
+          if (watch) {
+            const wi = watchCategoryItems(watch.rows, cat.re, watch.rate || divineRate, cat.watch);
+            if (wi.length) r = { items: wi, source: "watch" };
+          }
+          if (!r) r = await getExchangeCategory(lg.params, cat.type, cat.re, ctx?.divisor);
           if (!r || !r.items.length) { console.log(`  ${cat.key}: no data for ${lg.name}`); continue; }
           const rate2 = r.exchangeDivineRate || divineRate;
           for (const it of r.items) if (!it.divineValue) it.divineValue = it.chaosValue / rate2;

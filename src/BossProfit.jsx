@@ -712,7 +712,16 @@ function Stat({ label, value, tone, big, title }) {
 /* Click a price to override it; the ↺ puts the market price back. */
 function PriceCell({ item, chaos, overridden, entry, onSet, money }) {
   const [editing, setEditing] = useState(false);
-  const spread = entry && entry.n > 1 ? `${entry.n} listings · ${Math.round(entry.lo)}–${Math.round(entry.hi)}c` : null;
+  /* poe.watch reports how many listings a price came from, which poe.ninja
+     never did — a thin price and a liquid one used to look identical. Prefer
+     that count; fall back to the number of forms we merged. */
+  const spread = entry && (entry.daily > 0 || entry.n > 1)
+    ? [
+        entry.daily > 0 ? `${entry.daily} listings/day` : `${entry.n} listings`,
+        entry.hi > entry.lo ? `${Math.round(entry.lo)}–${Math.round(entry.hi)}c` : null,
+        entry.thin ? "thin market — treat with care" : null,
+      ].filter(Boolean).join(" · ")
+    : null;
   if (editing) {
     return <NumInput value={Math.round(chaos * 100) / 100} step={0.1} width={78} suffix="c"
       onCommit={(v) => { onSet(item, v); setEditing(false); }} />;

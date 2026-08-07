@@ -1,6 +1,22 @@
 # Scarab Ledger
 
-Path of Exile 1 scarab price tracker, grouped by league mechanic. Live data from poe.ninja.
+Path of Exile 1 scarab price tracker, grouped by league mechanic.
+
+Prices come from **poe.watch** first, with **poe.ninja** behind it as a fallback.
+poe.watch publishes one flat array per item category with a chaos price, a
+listing count and a low-confidence flag on every row, and — the reason it leads
+— it prices the *unidentified* forms of veiled uniques, which is what several
+bosses actually drop and what poe.ninja has no entry for at all. poe.ninja stays
+wired up because it can be reachable when poe.watch is not, and it still carries
+a few names and the per-roll variant splits that poe.watch does not.
+
+One note for anyone reading `scripts/poewatch.mjs`: poe.watch's `mean`/`min`/`max`
+are chaos, but you have to infer that — there is no Chaos Orb row, and Exalted Orb
+reads 1. The per-row `divine` and `exalted` fields are inconsistent with `mean`
+and with each other. The divine rate is the currency-exchange one, recovered as
+`mean / divine` from every row — that ratio is the same constant across unrelated
+items, whereas Divine Orb's own item listing is thin and reads about 25% lower.
+Taking the listing instead would misprice every divine figure on the site.
 
 ## Run locally
 
