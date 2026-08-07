@@ -134,7 +134,7 @@ const ELDRITCH_ORBS = [
 export const BOSSES = [
   /* ================= Pinnacle ================= */
   {
-    id: "shaper", name: "The Shaper", group: "Pinnacle", rates: "ledger",
+    id: "shaper", name: "The Shaper", group: "Pinnacle", rates: "wiki",
     entry: [
       { item: "Fragment of the Hydra" }, { item: "Fragment of the Phoenix" },
       { item: "Fragment of the Chimera" }, { item: "Fragment of the Minotaur" },
@@ -142,10 +142,10 @@ export const BOSSES = [
     ttk: 240, overhead: 0,
     groups: [
       pool([
-        { item: "Shaper's Touch", share: 0.55 },
-        { item: "Voidwalker", share: 0.32 },
-        { item: "Solstice Vigil", share: 0.11 },
-        { item: "Dying Sun", share: 0.02 },
+        { item: "Shaper's Touch", share: 0.56 },
+        { item: "Voidwalker", share: 0.26 },
+        { item: "Solstice Vigil", share: 0.15 },
+        { item: "Dying Sun", share: 0.03 },
       ]),
       SHAPER_FRAGS,
       extra(SHAPER_EXTRA),

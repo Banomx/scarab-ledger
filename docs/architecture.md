@@ -58,4 +58,6 @@ then the identified item.
 `src/Overview.jsx` is the default view and reads the same generated snapshots as
 the detailed tools. It calls the pure boss and Delve calculation modules instead
 of maintaining separate estimates. Popular farms remains a dedicated scarab-only
-view, while TTK profiles stay inside Boss profit.
+view, while TTK profiles stay inside Boss profit. Boss signals carry a boss id
+through `src/App.jsx`, so profitability and missing-price links open the relevant
+boss instead of the first boss in the list.

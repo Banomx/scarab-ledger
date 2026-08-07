@@ -348,6 +348,7 @@ export default function ScarabTracker() {
   const [showHorned, setShowHorned] = useState(true);
   const [chgWindow, setChgWindow] = useState("24h");      // 24h | 48h
   const [tab, setTab] = useState("overview");             // overview | farms | prices | astrolabes | catalysts | bosses | delve
+  const [bossTarget, setBossTarget] = useState(null);      // boss opened from an Overview signal
   const [openGroup, setOpenGroup] = useState(null);
   const [focusScarab, setFocusScarab] = useState(null);
   const [histories, setHistories] = useState({});         // name -> [{day,value}]
@@ -748,7 +749,7 @@ export default function ScarabTracker() {
         <button className={tab === "catalysts" ? "on" : ""} onClick={() => { setTab("catalysts"); setDragSel(null); }}>Catalysts</button>
         <button className={tab === "bosses" ? "on" : ""}
           onClick={() => {
-            setTab("bosses"); setDragSel(null);
+            setTab("bosses"); setBossTarget(null); setDragSel(null);
             // Boss values run to thousands of chaos, so chaos is the wrong unit
             // here and entering the tab switches away from it. Smart already
             // quotes the big numbers in divine, so leave that choice alone.
@@ -888,9 +889,12 @@ export default function ScarabTracker() {
           mode={mode}
           dataSource={dataSource}
           staticInfo={staticInfo}
-          onOpenTab={(nextTab) => {
+          onOpenTab={(nextTab, bossId = null) => {
             setTab(nextTab); setDragSel(null);
-            if (nextTab === "bosses") setCurrency((current) => current === "chaos" ? "divine" : current);
+            if (nextTab === "bosses") {
+              setBossTarget(bossId);
+              setCurrency((current) => current === "chaos" ? "divine" : current);
+            }
           }}
         />
       )}
@@ -1026,6 +1030,7 @@ export default function ScarabTracker() {
           fmtChaos={fmtChaos}
           fmtDiv={fmtDiv}
           unitFor={unitFor}
+          initialBoss={bossTarget}
         />
       )}
 

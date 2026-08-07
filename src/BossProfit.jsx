@@ -106,7 +106,7 @@ function TimeInput({ value, onCommit, width = 58, title, custom }) {
 /* unitFor resolves the "smart" currency to chaos or divine for one value;
    for the fixed modes it just hands the mode back. */
 export default function BossProfit({ league, staticBase, currency, divineRate, fmtPrice, fmtChaos, fmtDiv,
-                                     unitFor = (chaos, cur) => cur }) {
+                                     unitFor = (chaos, cur) => cur, initialBoss = null }) {
   const [priceMap, setPriceMap] = useState(null);   // null = loading, "missing" = no snapshot
   const [generatedAt, setGeneratedAt] = useState(null);
   // Which price sources actually answered on the day this snapshot was taken.
@@ -115,7 +115,8 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   const [activeName, setActiveName] = useState(() => loadActive(loadProfiles()));
   const [view, setView] = useState("bosses");       // bosses | profiles
   const [editingProfile, setEditingProfile] = useState(null);
-  const [selected, setSelected] = useState(BOSSES[0].id);
+  const [selected, setSelected] = useState(() =>
+    BOSSES.some((boss) => boss.id === initialBoss) ? initialBoss : BOSSES[0].id);
   const [sortKey, setSortKey] = useState("profitPerHour");
   const [runs, setRuns] = useState(10);
   const [importOpen, setImportOpen] = useState(false);

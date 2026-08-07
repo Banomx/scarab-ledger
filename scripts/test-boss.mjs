@@ -64,9 +64,9 @@ function evOf(bossId, prices, key) {
 }
 const P = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { c: v, lo: v, hi: v, n: 1 }]));
 
-// Shaper: pool 55% x 11.0c = 6.05c; guaranteed 50% x 50.9c = 25.4c;
+// Shaper: pool 56% x 11.0c = 6.16c; guaranteed 50% x 50.9c = 25.4c;
 // additional 12% x 130c = 15.6c  (no quantity scaling on Shaper)
-ok(near(evOf("shaper", P({ "Shaper's Touch": 11.0 }), "Shaper's Touch").value, 6.05), "shaper pool EV");
+ok(near(evOf("shaper", P({ "Shaper's Touch": 11.0 }), "Shaper's Touch").value, 6.16), "shaper pool EV");
 ok(near(evOf("shaper", P({ "Fragment of Shape": 50.9 }), "Fragment of Shape").value, 25.45), "shaper guaranteed EV");
 ok(near(evOf("shaper", P({ "Shaper's Exalted Orb": 130 }), "Shaper's Exalted Orb").value, 15.6), "shaper additional EV");
 
@@ -142,12 +142,12 @@ const prices = P({
 });
 const r = makeResolver(prices);
 const shaper = computeBoss(BOSSES.find((b) => b.id === "shaper"), r);
-// .55*100 + .32*200 + .11*300 + .02*1000 = 55+64+33+20 = 172
-ok(near(shaper.gross, 172), `shaper gross ${shaper.gross} != 172`);
+// .56*100 + .26*200 + .15*300 + .03*1000 = 56+52+45+30 = 183
+ok(near(shaper.gross, 183), `shaper gross ${shaper.gross} != 183`);
 ok(near(shaper.entryCost, 40), `shaper entry ${shaper.entryCost} != 40`);
-ok(near(shaper.net, 132), `shaper net ${shaper.net}`);
+ok(near(shaper.net, 143), `shaper net ${shaper.net}`);
 ok(near(shaper.runsPerHour, 15), `shaper kph ${shaper.runsPerHour} != 15 (reference shows KPH 15)`);
-ok(near(shaper.profitPerHour, 132 * 15), "shaper profit/hr");
+ok(near(shaper.profitPerHour, 143 * 15), "shaper profit/hr");
 console.log(`shaper: gross ${shaper.gross}c, entry ${shaper.entryCost}c, net ${shaper.net}c, ${shaper.runsPerHour} kph`);
 
 /* Only the typical price is ever used. lo/hi survive in the snapshot for the
@@ -157,13 +157,13 @@ ok(near(computeBoss(BOSSES.find((b) => b.id === "shaper"),
      makeResolver({ ...prices, "Dying Sun": { c: prices["Dying Sun"].c, lo: 1, hi: 40000, n: 3 } })).gross, shaper.gross),
    "lo/hi in the price map must not change gross");
 const ov = computeBoss(BOSSES.find((b) => b.id === "shaper"), makeResolver(prices, { priceOverrides: { "Dying Sun": 0 } }));
-ok(near(ov.gross, 152), `price override gross ${ov.gross} != 152`);
+ok(near(ov.gross, 153), `price override gross ${ov.gross} != 153`);
 
 // per-boss overrides: timing, rates, quantity
 const tuned = computeBoss(BOSSES.find((b) => b.id === "shaper"), r,
   { ttk: 30, overhead: 30, drops: { "Dying Sun": { share: 0.5 } }, groups: { pool: { rolls: 2 } } });
 ok(tuned.runSeconds === 60 && near(tuned.runsPerHour, 60), "tuned timing");
-ok(near(tuned.gross, (0.55 * 100 + 0.32 * 200 + 0.11 * 300 + 0.5 * 1000) * 2 + 0), `tuned pool gross ${tuned.gross}`);
+ok(near(tuned.gross, (0.56 * 100 + 0.26 * 200 + 0.15 * 300 + 0.5 * 1000) * 2 + 0), `tuned pool gross ${tuned.gross}`);
 const qUp = computeBoss(BOSSES.find((b) => b.id === "eater"), makeResolver(P({ "Exceptional Eldritch Ichor": 100 })), { quantity: 0 });
 ok(near(qUp.gross, 15), `quantity 0 should give 0.15*100 = 15, got ${qUp.gross}`);
 
@@ -234,6 +234,18 @@ ok(fb.fallbackAge != null && fb.fallbackAge >= 0, `fallback should report its ag
   }
   ok(hard.length === 0, `bossData.js should carry no hand-set prices, found: ${hard.join(", ")}`);
 }
+
+{
+  const shaper = BOSSES.find((boss) => boss.id === "shaper");
+  const pool = shaper.groups.find((group) => group.id === "pool");
+  const shares = Object.fromEntries(pool.drops.map((drop) => [drop.item, drop.share]));
+  ok(shaper.rates === "wiki", "regular Shaper's current pool is sourced from the wiki estimate");
+  eqv(shares["Shaper's Touch"], 0.56, "Shaper's Touch uses the current 56% estimate");
+  eqv(shares.Voidwalker, 0.26, "Voidwalker uses the current 26% estimate");
+  eqv(shares["Solstice Vigil"], 0.15, "Solstice Vigil uses the current 15% estimate");
+  eqv(shares["Dying Sun"], 0.03, "Dying Sun uses the current 3% estimate");
+}
+
 const undated = computeBoss(
   { id: "u", name: "u", group: "Other", rates: "ledger", entry: [], ttk: 60, overhead: 0,
     groups: [{ id: "additional", kind: "independent", label: "x", drops: [{ item: "Nope", chance: 1, fallback: { chaos: 5 } }] }] },

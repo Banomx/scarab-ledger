@@ -96,9 +96,14 @@ export default function Overview({
     const best = rows
       .filter((row) => !row.entryUnknown && row.net > 0)
       .sort((a, b) => b.net - a.net)[0] || null;
+    const gaps = rows.flatMap((row) => row.hiddenLines.map((line) => ({
+      boss: row.boss,
+      line,
+    })));
     return {
       best,
-      missing: rows.reduce((sum, row) => sum + row.missingPrices, 0),
+      missing: gaps.length,
+      firstGap: gaps[0] || null,
     };
   }, [snapshots, profile, divineRate]);
 
@@ -200,7 +205,7 @@ export default function Overview({
               : snapshots === null ? "Loading boss prices" : "No complete positive boss estimate available"}
             note="Calculated from the active TTK profile, current entry price and editable drop table."
             value={bossSummary?.best ? fmtPrice(bossSummary.best.net, currency, divineRate) : "—"}
-            onClick={() => onOpenTab("bosses")}
+            onClick={() => onOpenTab("bosses", bossSummary?.best?.boss?.id)}
           />
           <Signal
             kind="Delve"
@@ -225,13 +230,17 @@ export default function Overview({
             kind="Data"
             title={bossSummary
               ? bossSummary.missing > 0
-                ? `${bossSummary.missing} boss drop price${bossSummary.missing === 1 ? " is" : "s are"} currently missing`
+                ? bossSummary.missing === 1
+                  ? `${bossSummary.firstGap.line.label} has no current price (${bossSummary.firstGap.boss.name})`
+                  : `${bossSummary.missing} boss drop prices are missing; first is ${bossSummary.firstGap.line.label} (${bossSummary.firstGap.boss.name})`
                 : "All configured boss drops have a usable price"
               : snapshots === null ? "Checking price coverage" : "Broad boss pricing is not in this snapshot"}
-            note="Missing lines contribute zero until a supported source supplies a price."
+            note={bossSummary?.missing > 0
+              ? "The drop is configured, but contributes zero until a supported source supplies a price."
+              : "Every configured drop currently contributes to its boss estimate."}
             value={bossSummary ? (bossSummary.missing > 0 ? "Check gaps" : "Covered") : "Unavailable"}
             tone={bossSummary?.missing > 0 ? "warn" : ""}
-            onClick={() => onOpenTab("bosses")}
+            onClick={() => onOpenTab("bosses", bossSummary?.firstGap?.boss?.id)}
           />
         </section>
 
