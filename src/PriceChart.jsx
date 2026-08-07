@@ -143,8 +143,8 @@ export function PriceChart({
             onMouseLeave={() => setDragSel && setDragSel((sel) => (sel && sel.active ? { ...sel, active: false } : sel))}>
             <defs>
               <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#c9a24b" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#c9a24b" stopOpacity={0.02} />
+                <stop offset="0%" stopColor="#ef4f19" stopOpacity={0.35} />
+                <stop offset="100%" stopColor="#ef4f19" stopOpacity={0.02} />
               </linearGradient>
             </defs>
             <CartesianGrid stroke="#3a332a" strokeDasharray="2 5" vertical={false} />
@@ -157,7 +157,7 @@ export function PriceChart({
                 tick={{ fill: "#7f9fb8", fontSize: 11 }} tickFormatter={fmtRate} domain={["auto", "auto"]} />
             )}
             <Tooltip
-              contentStyle={{ background: "#211c15", border: "1px solid #5a4d33", borderRadius: 6, fontSize: 12 }}
+              contentStyle={{ background: "#17100d", border: "1px solid #65351f", borderRadius: 6, fontSize: 12 }}
               labelStyle={{ color: "#c9bfa8" }} itemStyle={{ color: "#e5d9b8" }}
               formatter={(v, n) => (n === "rate"
                 ? [`${fmtRate(v)}c`, "1 divine"]
@@ -165,9 +165,9 @@ export function PriceChart({
               labelFormatter={(d) => `Day ${fmtDay(d)}`} />
             {dragSel && dragSel.start !== dragSel.end && (
               <ReferenceArea x1={Math.min(dragSel.start, dragSel.end)} x2={Math.max(dragSel.start, dragSel.end)}
-                fill="#c9a24b" fillOpacity={0.13} stroke="#c9a24b" strokeOpacity={0.4} />
+                fill="#ef4f19" fillOpacity={0.13} stroke="#ef4f19" strokeOpacity={0.4} />
             )}
-            <Area type="monotone" dataKey="value" name="value" stroke="#d8b355" strokeWidth={2}
+            <Area type="monotone" dataKey="value" name="value" stroke="#ff6a24" strokeWidth={2}
               fill={`url(#${gradId})`} isAnimationActive={false} />
             {overlayName && (
               <Line type="monotone" dataKey="overlay" name="overlay" stroke={overlayTone} strokeWidth={1.8}

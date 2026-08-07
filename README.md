@@ -2,6 +2,11 @@
 
 Path of Exile 1 farming profitability and market price tools.
 
+The site opens on **Overview**, which reuses the existing scarab movement,
+boss EV, Delve biome and category-price calculations to surface current signals.
+Each signal links to the full tool; **Popular farms** keeps its existing scarab
+strategy layout.
+
 Exchange-traded prices come from **GGG's public Currency Exchange API** first.
 The scheduled snapshot reads the latest completed hourly digest and calculates
 the volume-weighted chaos price from the quantities that actually traded. GGG
@@ -430,6 +435,8 @@ nominal-vs-real split, the upside-down backfill, and the day-axis alignment.
 ## Where things live
 
 - `src/App.jsx` — shell, scarab catalogue, demo fallback, live fetching, styles
+- `src/Overview.jsx` — landing-page signals assembled from the existing tool
+  calculations and generated market snapshots
 - `src/bossData.js` / `src/bossProfit.js` / `src/BossProfit.jsx` — boss profit
   dataset, pure calculation layer (no React, so the maths is testable), and UI
 - `src/PriceChart.jsx` — the price graph, shared by the mechanic panel, the

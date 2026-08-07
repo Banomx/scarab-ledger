@@ -46,3 +46,10 @@ roll variants generally require poe.watch or poe.ninja. Boss drop rates and
 Delve biome rules remain curated project data and are not supplied by any price
 API.
 
+## UI composition
+
+`src/App.jsx` owns the shared shell, global market controls and scarab views.
+`src/Overview.jsx` is the default view and reads the same generated snapshots as
+the detailed tools. It calls the pure boss and Delve calculation modules instead
+of maintaining separate estimates. Popular farms remains a dedicated scarab-only
+view, while TTK profiles stay inside Boss profit.
