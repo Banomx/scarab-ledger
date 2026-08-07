@@ -78,11 +78,13 @@ badged `shared quote` rather than implying variant-level precision.
 `src/App.jsx` owns the shared shell, global market controls and scarab views.
 `src/Overview.jsx` is the default view and reads the same generated snapshots as
 the detailed tools. It calls the pure boss and Delve calculation modules instead
-of maintaining separate estimates. Popular farms remains a dedicated scarab-only
-view, while TTK profiles stay inside Boss profit and Delve sample profiles stay
-inside the Delve Assumptions panel. Boss signals carry a boss id through `src/App.jsx`, so profitability
-and missing-price links open the relevant boss instead of the first boss in the
-list.
+of maintaining separate estimates. The compact briefing presents one selectable
+headline, four signal selectors, three decision desks and a data-quality strip.
+These are alternate presentations of existing results, not new calculations.
+Popular farms remains a dedicated scarab-only view, while TTK profiles stay
+inside Boss profit and Delve sample profiles stay inside the Delve Assumptions
+panel. Boss summaries and price gaps carry a boss id through `src/App.jsx`, so
+their links open the relevant boss instead of the first boss in the list.
 
 The Delve toolbar also owns a collapsible money guide. Its route priorities,
 sulphite loop and historical sample are static, timestamped observations from

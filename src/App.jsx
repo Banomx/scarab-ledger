@@ -1405,73 +1405,112 @@ const css = `
 /* ---------------- overview ---------------- */
 .ov-main { color: #e7dcd6; width: 100%; }
 .ov-status {
-  display: flex; flex-wrap: wrap; gap: 7px 12px; margin-bottom: 24px; padding: 11px 15px;
+  display: flex; flex-wrap: wrap; gap: 5px 14px; margin-bottom: 10px; padding: 7px 10px;
   color: #a08a80; background: #0e0907; border: 1px solid #342017; border-radius: 3px;
-  font-size: 12px;
+  font-size: 11px;
 }
 .ov-status b { color: #d8bcae; font-weight: 500; }
 .ov-head {
-  display: flex; justify-content: space-between; gap: 22px; align-items: end; margin-bottom: 22px;
+  display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 10px;
 }
-.ov-kicker { color: #f15b21; font-size: 11px; font-weight: 500; letter-spacing: .13em; text-transform: uppercase; }
-.ov-head h2 { margin: 5px 0 3px; color: #f0e3dc; font-size: 31px; font-weight: 500; }
-.ov-head p { margin: 0; color: #9f8e86; font-size: 13.5px; }
+.ov-kicker { color: #f15b21; font-size: 10px; font-weight: 500; letter-spacing: .13em; text-transform: uppercase; }
+.ov-head h2 { margin: 3px 0 2px; color: #f0e3dc; font-size: 22px; font-weight: 500; }
+.ov-head p { margin: 0; color: #9f8e86; font-size: 12px; }
 .ov-window { display: flex; gap: 2px; padding: 2px; background: #15100d; border: 1px solid #483024; border-radius: 3px; }
 .ov-window button {
-  padding: 7px 10px; color: #a08c82; background: transparent; border: 0; border-radius: 2px;
-  cursor: pointer; font: inherit; font-size: 11.5px;
+  padding: 5px 8px; color: #a08c82; background: transparent; border: 0; border-radius: 2px;
+  cursor: pointer; font: inherit; font-size: 10.5px;
 }
 .ov-window button.on { color: #fff0e7; background: #7a2a13; }
-.ov-window button:focus-visible, .ov-signal:focus-visible { outline: 2px solid #ff6a24; outline-offset: 2px; }
-.ov-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 320px); gap: 20px; }
-.ov-section-title {
-  margin: 0; padding: 0 0 10px; color: #b49c91; border-bottom: 1px solid #432b20;
-  font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase;
+.ov-window button:focus-visible, .ov-signal:focus-visible, .ov-feature button:focus-visible,
+.ov-desk button:focus-visible, .ov-attention button:focus-visible { outline: 2px solid #ff6a24; outline-offset: 2px; }
+.ov-briefing { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, .75fr); gap: 8px; }
+.ov-feature {
+  min-height: 190px; padding: 14px; border: 1px solid #66301e; border-left: 3px solid #f05a24;
+  border-radius: 6px; background: radial-gradient(circle at 88% 22%, rgba(241,80,25,.14), transparent 26%), linear-gradient(125deg, #1b0e0a, #100b09 68%);
 }
-.ov-signals { background: #120d0b; border: 1px solid #3e281e; border-radius: 3px; overflow: hidden; }
-.ov-signals .ov-section-title { padding: 14px 16px 11px; }
+.ov-feature-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.ov-feature-top em {
+  color: #d5a28e; border: 1px solid #6c3927; border-radius: 3px; padding: 2px 5px;
+  font-size: 9px; font-style: normal; letter-spacing: .07em; text-transform: uppercase;
+}
+.ov-feature h3 { max-width: 760px; margin: 12px 0 4px; color: #f7e7df; font-size: 25px; font-weight: 500; line-height: 1.15; }
+.ov-feature-number { display: flex; flex-wrap: wrap; gap: 7px; align-items: baseline; }
+.ov-feature-number strong { color: #efcdbd; font-size: 18px; font-weight: 500; }
+.ov-feature-number strong.up { color: #69bfa1; }
+.ov-feature-number strong.down { color: #d47f7f; }
+.ov-feature-number span { color: #9d8379; font-size: 10.5px; }
+.ov-feature > p { max-width: 760px; margin: 8px 0; color: #b49a90; font-size: 11.5px; line-height: 1.4; }
+.ov-feature-bottom { display: flex; justify-content: space-between; gap: 10px; align-items: end; }
+.ov-feature-flow { display: flex; flex-wrap: wrap; gap: 5px; }
+.ov-feature-flow span { padding: 3px 6px; color: #a98f84; background: #120d0b; border: 1px solid #40271e; font-size: 10px; }
+.ov-feature button, .ov-desk button {
+  flex: 0 0 auto; padding: 5px 8px; color: #e6a078; background: #17100d; border: 1px solid #65351f;
+  border-radius: 4px; cursor: pointer; font: inherit; font-size: 10.5px;
+}
+.ov-feature button:hover, .ov-desk button:hover { color: #f4dfd3; border-color: #bd461d; }
+.ov-signal-list { display: grid; gap: 4px; }
 .ov-signal {
-  display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 16px; align-items: center;
-  width: 100%; min-height: 88px; padding: 15px 16px; color: inherit; background: transparent;
-  border: 0; border-bottom: 1px solid #2f1f18; font: inherit; text-align: left;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 9px; align-items: center;
+  width: 100%; min-height: 44px; padding: 7px 9px; color: inherit; background: #120e0c;
+  border: 1px solid #3d281f; border-radius: 4px; font: inherit; text-align: left; cursor: pointer;
 }
-.ov-signal:last-child { border-bottom: 0; }
-button.ov-signal { cursor: pointer; transition: background 120ms ease; }
-button.ov-signal:hover { background: #1a100c; }
-.ov-kind { color: #ef5b24; font-size: 10.5px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
-.ov-signal-copy { min-width: 0; }
-.ov-signal-copy strong { display: block; color: #e7dcd6; font-size: 14px; font-weight: 500; }
-.ov-signal-copy small { display: block; margin-top: 5px; color: #8e7e76; font-size: 12px; line-height: 1.45; }
-.ov-value { color: #dbccc4; font-size: 14px; font-weight: 500; text-align: right; white-space: nowrap; }
+.ov-signal:hover, .ov-signal.on { border-color: #a94320; background: #1a100d; }
+.ov-signal .ov-kind { grid-column: 1; }
+.ov-signal > strong { grid-column: 1; color: #e8d8d1; font-size: 11px; font-weight: 500; line-height: 1.3; }
+.ov-kind { color: #ef5b24; font-size: 9.5px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; }
+.ov-value { grid-column: 2; grid-row: 1 / 3; color: #dbccc4; font-size: 12px; font-weight: 500; text-align: right; white-space: nowrap; }
 .ov-value.up { color: #69bfa1; }
 .ov-value.down { color: #d47f7f; }
-.ov-value.warn { color: #ff6530; }
-.ov-side { display: flex; flex-direction: column; gap: 18px; }
-.ov-side-section { background: #100c0a; border-top: 2px solid #e44817; }
-.ov-side-section .ov-section-title { padding: 13px 14px 10px; }
-.ov-context-row {
-  display: flex; justify-content: space-between; gap: 14px; padding: 11px 14px;
-  border-bottom: 1px solid #302018; font-size: 12px;
+.ov-section-title {
+  margin: 13px 0 6px; padding: 0; color: #9e8176; border: 0;
+  font-size: 10px; font-weight: 500; letter-spacing: .13em; text-transform: uppercase;
 }
-.ov-context-row:last-child { border-bottom: 0; }
-.ov-context-row span { color: #97867e; }
-.ov-context-row strong { color: #dbcec7; font-weight: 500; text-align: right; text-transform: capitalize; }
-.ov-quality { padding: 13px 14px; color: #9d8b82; font-size: 12px; line-height: 1.5; }
-.ov-quality strong { display: block; margin-bottom: 4px; color: #ddd0c8; font-weight: 500; }
-.ov-quality + .ov-quality { border-top: 1px solid #302018; }
+.ov-desks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.ov-desk { min-width: 0; padding: 10px; color: #d7c8c1; background: #120e0c; border: 1px solid #3e281f; border-radius: 5px; }
+.ov-desk header { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.ov-desk h3 { margin: 0; color: #eadbd4; font-size: 13px; font-weight: 500; }
+.ov-desk header em { color: #d65c2d; font-size: 8.5px; font-style: normal; letter-spacing: .08em; text-transform: uppercase; }
+.ov-desk > p { margin: 4px 0 7px; color: #9d857b; font-size: 10px; line-height: 1.35; }
+.ov-desk dl { margin: 0; border-top: 1px solid #34231c; }
+.ov-desk dl div {
+  display: flex; justify-content: space-between; gap: 10px; padding: 5px 0;
+  border-bottom: 1px solid #281c17; font-size: 10.5px;
+}
+.ov-desk dt { color: #9f877d; }
+.ov-desk dd { margin: 0; color: #e6d7d0; font-weight: 500; text-align: right; }
+.ov-desk > button { margin-top: 7px; }
+.ov-attention {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 8px;
+  border: 1px solid #3e281f; background: #0f0c0a;
+}
+.ov-attention > div, .ov-attention > button {
+  display: block; min-width: 0; padding: 7px 10px; color: inherit; background: transparent;
+  border: 0; border-right: 1px solid #3a261e; font: inherit; text-align: left;
+}
+.ov-attention > :last-child { border-right: 0; }
+.ov-attention > button { cursor: pointer; }
+.ov-attention > button:hover { background: #1a100d; }
+.ov-attention span { color: #d35a2c; font-size: 8.5px; letter-spacing: .09em; text-transform: uppercase; }
+.ov-attention strong { display: block; margin: 3px 0; color: #d9c8c0; font-size: 10.5px; font-weight: 500; }
+.ov-attention small { display: block; color: #8f786f; font-size: 9.5px; line-height: 1.35; }
 @media (max-width: 720px) {
   .st-head { align-items: flex-start; flex-direction: column; }
   .st-controls { width: 100%; justify-content: space-between; }
-  .ov-layout { grid-template-columns: 1fr; }
-  .ov-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .ov-head { align-items: flex-start; flex-direction: column; }
+  .ov-briefing, .ov-desks, .ov-attention { grid-template-columns: 1fr; }
+  .ov-signal-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ov-attention > div, .ov-attention > button { border-right: 0; border-bottom: 1px solid #3a261e; }
+  .ov-attention > :last-child { border-bottom: 0; }
 }
 @media (max-width: 480px) {
   .st-controls { align-items: stretch; flex-direction: column; }
   .st-ctl select { width: 100%; }
-  .ov-head { align-items: flex-start; flex-direction: column; }
-  .ov-side { grid-template-columns: 1fr; }
-  .ov-signal { grid-template-columns: 68px minmax(0, 1fr); }
-  .ov-value { grid-column: 2; text-align: left; }
+  .ov-signal-list { grid-template-columns: 1fr; }
+  .ov-feature h3 { font-size: 20px; }
+  .ov-feature-bottom { align-items: flex-start; flex-direction: column; }
 }
 
 /* ---------------- boss profitability ---------------- */

@@ -2,11 +2,11 @@
 
 Path of Exile 1 farming profitability and market price tools.
 
-The site opens on **Overview**, which reuses the existing scarab movement,
-boss EV, Delve biome and category-price calculations to surface current signals.
-Each signal links to the full tool; **Popular farms** keeps its existing scarab
-strategy layout. Boss price-coverage warnings name the unpriced drop and open
-the boss that contains it.
+The site opens on a compact **Overview** briefing. It reuses the existing scarab
+movement, boss EV, Delve biome and category-price calculations in a selectable
+headline, three decision desks and a small data-quality strip. Every result links
+to the full tool; **Popular farms** keeps its existing scarab-strategy layout.
+Boss price-coverage warnings still open the boss that contains the first gap.
 
 Exchange-traded prices come from **GGG's public Currency Exchange API** first.
 The scheduled snapshot reads the latest completed hourly digest and calculates
