@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node scripts/test-money.mjs && node scripts/test-boss.mjs && node scripts/test-delve.mjs && node scripts/test-fetch-shapes.mjs"
+    "test": "node scripts/test-money.mjs && node scripts/test-boss.mjs && node scripts/test-trade-prices.mjs && node scripts/test-fetch-shapes.mjs",
+    "trade-prices": "node scripts/trade-prices.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

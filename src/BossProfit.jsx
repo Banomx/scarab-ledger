@@ -109,6 +109,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                                      unitFor = (chaos, cur) => cur }) {
   const [priceMap, setPriceMap] = useState(null);   // null = loading, "missing" = no snapshot
   const [generatedAt, setGeneratedAt] = useState(null);
+  const [trade, setTrade] = useState(null);         // scripts/trade-prices.mjs output, if committed
   const [profiles, setProfiles] = useState(() => loadProfiles());
   const [activeName, setActiveName] = useState(() => loadActive(loadProfiles()));
   const [view, setView] = useState("bosses");       // bosses | profiles
@@ -147,12 +148,32 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
     return () => { cancelled = true; };
   }, [staticBase]);
 
+  /* Hand-measured trade prices for what poe.ninja doesn't index. Optional by
+     design: the file only exists once someone has run scripts/trade-prices.mjs
+     and committed it, and the tab works without it. */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${import.meta.env.BASE_URL}trade-prices.json`);
+        if (res.ok) {
+          const j = await res.json();
+          if (!cancelled) setTrade(j);
+          return;
+        }
+      } catch { /* not published — poe.ninja only */ }
+      if (!cancelled) setTrade(null);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const resolve = useMemo(
     () => makeResolver(priceMap && priceMap !== "missing" ? priceMap : null, {
       priceOverrides: profile?.priceOverrides || {},
+      tradePrices: trade?.prices || null,
       divineRate,
     }),
-    [priceMap, profile, divineRate]
+    [priceMap, profile, divineRate, trade]
   );
 
   const rows = useMemo(
@@ -191,6 +212,13 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
   }, [rows, sortKey, groupFilter, uberFilter, safety]);
 
   const maxProfit = Math.max(1, ...rows.map((r) => Math.abs(r.profitPerHour)));
+
+  /* Trade prices are a snapshot of a moment, not a feed — so how old they are
+     is part of the number. Past a fortnight the flag goes amber. */
+  const tradeAge = useMemo(() => {
+    const t = trade?.generatedAt ? Date.parse(trade.generatedAt) : NaN;
+    return isFinite(t) ? Math.floor((Date.now() - t) / 86400000) : null;
+  }, [trade]);
 
   const current = rows.find((r) => r.boss.id === selected) || rows[0];
 
@@ -650,7 +678,11 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                             <span className="bp-cell-name" title={l.item !== l.label ? `Priced as: ${l.item}` : undefined}>
                               {l.label}
                               {l.fallback && <FallbackFlag age={l.fallbackAge} />}
-                              {l.variant && <em className="bp-flag" title={`Priced on poe.ninja's "${l.variant}" roll variant, not the name-wide figure`}>{l.variant}</em>}
+                              {l.variant && <em className="bp-flag" title={l.trade
+                                ? `Measured off the trade site for the "${l.variant}" roll${tradeAge != null ? `, ${tradeAge}d ago` : ""}`
+                                : `Priced on poe.ninja's "${l.variant}" roll variant, not the name-wide figure`}>{l.variant}</em>}
+                              {l.trade && <em className={`bp-flag ${tradeAge != null && tradeAge > 14 ? "warn" : ""}`}
+                                title={`From a trade-site search, not poe.ninja${tradeAge != null ? ` — measured ${tradeAge} day(s) ago` : ""}`}>trade</em>}
                               {l.variantMissed && <em className="bp-flag warn" title="This line names a roll variant, but nothing on poe.ninja matched it — showing the name-wide price, which may be well off">variant?</em>}
                               {!l.found && l.qty > 0 && <em className="bp-flag warn" title="No poe.ninja price under this name — set one manually">no price</em>}
                             </span>

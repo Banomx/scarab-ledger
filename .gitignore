@@ -1,2 +1,6 @@
 node_modules
 dist
+
+# Your trade searches and any session token stay local.
+trade-queries.json
+.env

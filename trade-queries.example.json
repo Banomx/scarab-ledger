@@ -1,0 +1,35 @@
+{
+  "_readme": [
+    "Copy this file to trade-queries.json and edit it. Run: node scripts/trade-prices.mjs",
+    "",
+    "Each entry re-runs a search you built on pathofexile.com/trade, so the query is",
+    "yours: narrow it however you would to price-check the item by hand. For a veiled",
+    "or unidentified drop that usually means setting Identified: No, picking the exact",
+    "base, and adding the specific veiled mod.",
+    "",
+    "priceKey is how the site looks the price up:",
+    "  \"Cinderswallow Urn\"          the item, whatever variant",
+    "  \"Cinderswallow Urn|Life\"     one specific roll variant of it",
+    "The part after | is matched loosely against the drop line's own variant, so the",
+    "label \"Veiled Cinderswallow Urn (Life)\" in bossData.js finds \"...|Life\".",
+    "",
+    "Trade search URLs go stale between leagues — the query id is tied to the league",
+    "in the URL. At league start, rebuild the searches and paste the new URLs.",
+    "Set \"skip\": true on an entry to leave it out without deleting it."
+  ],
+
+  "divineRate": null,
+
+  "items": [
+    {
+      "priceKey": "Cinderswallow Urn|Life",
+      "url": "https://www.pathofexile.com/trade/search/Allflame/REPLACE_ME",
+      "note": "veiled, unidentified, life recovery mod"
+    },
+    {
+      "priceKey": "Cinderswallow Urn|ES",
+      "url": "https://www.pathofexile.com/trade/search/Allflame/REPLACE_ME",
+      "skip": true
+    }
+  ]
+}
