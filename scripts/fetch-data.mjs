@@ -101,7 +101,9 @@ const EXTRA_CATEGORIES = [
   // `watch` narrows which poe.watch categories a name regex may match in;
   // without it /fossil/i would happily pick up a unique with the word in it.
   { key: "astrolabes", type: "Astrolabe", re: /astrolabe/i, watch: ["currency"] },
-  { key: "catalysts", type: "Currency", re: /catalyst/i, watch: ["currency"] }, // catalysts live inside Currency
+  // You query poe.watch's `currency` for catalysts but the rows come back
+  // tagged `catalysts`, so both spellings have to be accepted.
+  { key: "catalysts", type: "Currency", re: /catalyst/i, watch: ["currency", "catalysts"] },
   // The Delve tab could read fossil prices out of prices.json, which already
   // covers the Fossil and Resonator types for the boss tab. It gets its own
   // category anyway because prices.json is a bare name -> price map: no

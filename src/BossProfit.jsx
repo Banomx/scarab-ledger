@@ -532,7 +532,9 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                       <span className="bp-item-name">
                         <i className="bp-dot" />{r.boss.name}
                         {badge && <em className="bp-flag" title={badge.title}>{badge.text}</em>}
-                        {r.missingPrices > 0 && <em className="bp-flag warn" title={`${r.missingPrices} drop(s) have no price`}>?</em>}
+                        {r.missingPrices > 0 && <em className="bp-flag warn"
+                          title={`${r.missingPrices} drop(s) are not priced by poe.watch or poe.ninja and are not shown${
+                            r.hiddenShare > 0 ? ` — they account for ${Math.round(r.hiddenShare * 100)}% of this boss's pool, so the real EV is higher than shown` : ""}`}>?</em>}
                       </span>
                       <span className="bp-item-meta">
                         {r.boss.group}
@@ -614,7 +616,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                           <NumInput value={l.qty} width={40} title="Quantity" onCommit={(v) => setEntryQty(current.boss.id, l.item, v)} />
                         )}
                         {l.fallback && <FallbackFlag age={l.fallbackAge} />}
-                        {!l.found && <em className="bp-flag warn" title="No poe.ninja price under this name">no price</em>}
+                        {!l.found && <em className="bp-flag warn" title="Neither poe.watch nor poe.ninja prices this — the entry cost is understated">no price</em>}
                       </span>
                     ))}
                     <span className="bp-entry-total">= {money(current.entryCost)}</span>
@@ -644,6 +646,15 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                           <span className="bp-group-sub">{money(g.subtotal)}</span>
                         </span>
                       </div>
+                      {g.hiddenLines.length > 0 && (
+                        <div className="bp-hidden-note">
+                          {g.hiddenLines.length} drop{g.hiddenLines.length > 1 ? "s" : ""} not shown — no market price
+                          {g.hiddenShare > 0 && ` · ${Math.round(g.hiddenShare * 100)}% of this pool`}
+                          <em title="Their share is not redistributed over the drops that are shown: doing that would claim the boss always hands you one of these instead, which would inflate the EV. So this group's value is a floor.">
+                            {g.hiddenLines.map((l) => l.label).join(", ")}
+                          </em>
+                        </div>
+                      )}
                       <div className="bp-table">
                         <div className="bp-tr bp-th">
                           <span>Item</span><span>{g.kind === "weighted" ? "Weight" : "Rate"}</span><span>Value</span><span>EV</span>
@@ -655,7 +666,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                               {l.fallback && <FallbackFlag age={l.fallbackAge} />}
                               {l.variant && <em className="bp-flag" title={`Priced on poe.ninja's "${l.variant}" roll variant, not the name-wide figure`}>{l.variant}</em>}
                               {l.variantMissed && <em className="bp-flag warn" title="This line names a roll variant, but nothing on poe.ninja matched it — showing the name-wide price, which may be well off">variant?</em>}
-                              {!l.found && l.qty > 0 && <em className="bp-flag warn" title="No poe.ninja price under this name — set one manually">no price</em>}
+                              {!l.found && l.qty > 0 && <em className="bp-flag warn" title="Not priced by either source — set one manually">no price</em>}
                             </span>
                             <span className="bp-cell-rate">
                               <NumInput
@@ -695,7 +706,7 @@ function FallbackFlag({ age }) {
   const stale = age != null && age >= 30;
   return (
     <em className={`bp-flag ${stale ? "warn" : ""}`}
-      title={`poe.ninja lists no price for this, so the value is declared in bossData.js${
+      title={`Neither price source lists this, so the value is declared in bossData.js${
         age != null ? ` — last checked ${age} day${age === 1 ? "" : "s"} ago` : ""}${
         stale ? ". Worth re-checking." : ""}`}>
       set{stale ? ` ${age}d` : ""}

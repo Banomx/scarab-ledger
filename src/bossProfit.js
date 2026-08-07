@@ -110,10 +110,22 @@ export function isUnidentified(d) {
   return /\b(?:unid|unidentified|veiled)\b/i.test(`${d.label || ""} ${d.item || ""}`);
 }
 
+/* The same item under the spellings the sources actually use.
+
+   "Map": poe.ninja labels map base types inconsistently, so try both.
+
+   "Support": the exceptional support gems are listed WITHOUT the suffix on
+   poe.watch — the gem the game calls "Void Shockwave Support" is filed as
+   "Void Shockwave". That silently unpriced seven gems, and because they are
+   only ever a couple of percent of a drop pool it looked like thin market
+   data rather than a naming mismatch. Both directions are tried, since which
+   spelling a source uses is not something to memorise per item. */
 function candidates(item) {
   const out = [item];
   if (/ map$/i.test(item)) out.push(item.replace(/ map$/i, ""));
   else out.push(`${item} Map`);
+  if (/ support$/i.test(item)) out.push(item.replace(/ support$/i, ""));
+  else out.push(`${item} Support`);
   return out;
 }
 
@@ -279,15 +291,34 @@ export function computeBoss(boss, resolve, settings = {}) {
       };
     });
     lines.sort((a, b) => b.value - a.value);
+
+    /* A line the market cannot price is not shown. It contributed nothing to
+       the EV anyway — an unpriced drop is worth 0 — so hiding it changes what
+       you read, not what you earn.
+       Its share is deliberately NOT redistributed over the survivors. Doing
+       that would assert the boss always hands you one of the remaining items,
+       which inflates every EV by exactly the share that was removed. The
+       honest reading is "this pool has a hole in it", and the size of the hole
+       is reported so it can be seen rather than guessed at. */
+    const shown = lines.filter((l) => l.found || l.qty <= 0);
+    const hidden = lines.filter((l) => !(l.found || l.qty <= 0));
+
     return {
       ...g, rolls, base, totalWeight, scaled,
-      lines, subtotal: lines.reduce((s, l) => s + l.value, 0),
+      lines: shown,
+      hiddenLines: hidden,
+      // Only pools have a share that sums to one, so only there is a missing
+      // fraction meaningful. Independent drops each stand alone.
+      hiddenShare: g.kind === "pool" ? hidden.reduce((s, l) => s + l.pct, 0) : 0,
+      subtotal: shown.reduce((s, l) => s + l.value, 0),
     };
   });
 
   const dropLines = groups.flatMap((g) => g.lines);
+  const hiddenLines = groups.flatMap((g) => g.hiddenLines);
+  const hiddenShare = Math.min(1, groups.reduce((s, g) => s + g.hiddenShare, 0));
   const gross = groups.reduce((s, g) => s + g.subtotal, 0);
-  const missingPrices = dropLines.filter((l) => !l.found && l.qty > 0).length;
+  const missingPrices = hiddenLines.length;
   const net = gross - entryCost;
   const runSeconds = Math.max(1, ttk + overhead);
   const runsPerHour = 3600 / runSeconds;
@@ -295,7 +326,7 @@ export function computeBoss(boss, resolve, settings = {}) {
   return {
     boss, ttk, overhead, quantity, runSeconds, runsPerHour,
     entryLines, entryCost, entryUnknown,
-    groups, dropLines, gross, net,
+    groups, dropLines, hiddenLines, hiddenShare, gross, net,
     profitPerHour: net * runsPerHour,
     grossPerHour: gross * runsPerHour,
     missingPrices,

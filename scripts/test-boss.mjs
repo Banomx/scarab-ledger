@@ -92,12 +92,12 @@ ok(near(enl.pct, 1 / 3, 1e-9), `gem weight share ${enl.pct}`);
 ok(near(enl.qty, 0.02 / 3, 1e-9), `gem expected qty ${enl.qty}`);
 ok(near(enl.value, 55.8, 0.2), `gem EV ${enl.value.toFixed(2)} != ~55.8`);
 
-// Catarina lists Cinderswallow Urn three times; each variant must be its own
-// editable row, all pricing off the same item name.
-const cat = computeBoss(BOSSES.find((b) => b.id === "catarina"), makeResolver(P({ "Cinderswallow Urn": 100 })));
+// Catarina used to list Cinderswallow Urn three times, one per veiled mod.
+// The market prices one unidentified urn, so it is one row now — see the
+// merge assertions further down.
+const cat = computeBoss(BOSSES.find((b) => b.id === "catarina"), makeResolver(P({ "Unidentified Cinderswallow Urn": 100 })));
 const urns = cat.dropLines.filter((l) => l.item === "Cinderswallow Urn");
-ok(urns.length === 3, `expected 3 urn rows, got ${urns.length}`);
-ok(new Set(urns.map((l) => l.key)).size === 3, "urn rows need distinct keys");
+ok(urns.length === 1, `expected 1 urn row, got ${urns.length}`);
 ok(near(urns.reduce((s, l) => s + l.value, 0), 30), "urn rows total 0.30 x 100c");
 
 // T17 fragments are a multi-roll pool, not per-item chances: 2 rolls split
@@ -173,9 +173,13 @@ ok(near(rSyn("@awakened-common").chaos, 50), "@awakened-common mean");
 ok(near(rSyn("@awakened-exceptional").chaos, 3000), "@awakened-exceptional mean");
 ok(rSyn("@nope").found === false, "unknown synthetic resolves to not-found");
 
-// missing prices are flagged, not silently zeroed; chance:0 lines aren't flagged
+// With no price map at all every line is unpriced, so every line is hidden
+// and nothing is left claiming to be worth something.
 const blind = computeBoss(BOSSES.find((b) => b.id === "shaper"), makeResolver({}));
-ok(blind.gross === 0 && blind.missingPrices === blind.dropLines.length, `blind missing ${blind.missingPrices}`);
+ok(blind.gross === 0, `blind gross ${blind.gross}`);
+ok(blind.dropLines.length === 0, `nothing should be shown when nothing is priced: ${blind.dropLines.length}`);
+ok(blind.missingPrices === blind.hiddenLines.length && blind.hiddenLines.length > 0,
+   `blind hidden ${blind.hiddenLines.length}`);
 ok(blind.entryUnknown === true, "blind entryUnknown");
 // A chance:0 line — an item that's documented as dropping but has no published
 // rate — must survive into the table so it can be edited, without polluting the
@@ -199,8 +203,13 @@ ok(near(domLine(P({}), { divineRate: 100 }).unit, 370), "fallback tracks the div
 // a real listing always beats the declared number
 const real = domLine(P({ "Orb of Dominance": 12 }), { divineRate: 200 });
 ok(near(real.unit, 12) && !real.fallback, `a live price must win, got ${real.unit}`);
-// and with no divine rate to convert against, it stays honestly unpriced
-ok(domLine(P({}), { divineRate: 0 }).found === false, "no divine rate means no fallback price");
+// A divine-denominated fallback needs a rate to convert against. Without one
+// it cannot be priced, so the line is hidden rather than shown at zero.
+{
+  const noRate = computeBoss(BOSSES.find((b) => b.id === "uber-elder"), makeResolver(P({}), { divineRate: 0 }));
+  ok(!noRate.dropLines.some((l) => l.item === "Orb of Dominance"), "no divine rate means no fallback price, so no row");
+  ok(noRate.hiddenLines.some((l) => l.item === "Orb of Dominance"), "and it shows up as hidden");
+}
 // declared prices carry their age so the UI can flag a stale one
 ok(fb.fallbackAge != null && fb.fallbackAge >= 0, `fallback should report its age, got ${fb.fallbackAge}`);
 const undated = computeBoss(
@@ -231,7 +240,9 @@ const GEM_SOURCES = {
   "Greater Spell Echo Support": ["uber-atziri"],
   "Vaal Sacrifice Support": ["uber-atziri"],
   "Foulgrasp Support": ["esh-tul"],
-  "Hiveborn Support": ["esh-tul"],
+  // poewiki's exceptional-gem table calls this one "Hiveborn Support"; both
+  // the game and poe.watch call it Summon Hiveborn, so that is the name used.
+  "Summon Hiveborn": ["esh-tul"],
   "Hextoad Support": ["king-in-the-mists"],
   "Hexpass Support": ["king-in-the-mists"],
   "Greater Kinetic Instability Support": ["cortex", "uber-cortex"],
@@ -317,7 +328,10 @@ ok(sanitizeProfile(null, "fallback").name === "fallback", "null profile falls ba
 for (const b of BOSSES) {
   const c = computeBoss(b, r);
   ok(isFinite(c.profitPerHour) && isFinite(c.gross) && isFinite(c.net), `${b.id}: non-finite result`);
-  ok(c.dropLines.length === b.groups.reduce((s, g) => s + g.drops.length, 0), `${b.id}: dropped a line`);
+  // Lines nothing can price are hidden rather than shown at zero, so shown +
+  // hidden has to account for every line in the data.
+  ok(c.dropLines.length + c.hiddenLines.length === b.groups.reduce((s, g) => s + g.drops.length, 0),
+     `${b.id}: lost a line — ${c.dropLines.length} shown + ${c.hiddenLines.length} hidden`);
 }
 
 /* ---------------- reset scope ----------------
@@ -383,6 +397,103 @@ eqv(variantHint(null), null, "null line must not throw");
   // An override still wins: it is keyed on the item and beats every variant.
   eqv(makeResolver(pm, { priceOverrides: { "Cinderswallow Urn": 5 } })("Cinderswallow Urn", [], null, "ES").chaos, 5,
       "a manual override beats the variant price");
+}
+
+/* ---------------- unpriced drops are hidden, not zeroed ----------------
+   The brief was blunt: if poe.watch cannot price it, it should not be on the
+   page. Hiding is safe because an unpriced line was already worth 0 — what
+   must NOT happen is the freed share being handed to the survivors, which
+   would silently inflate every EV by exactly the share removed. */
+{
+  const catarina = BOSSES.find((b) => b.id === "catarina");
+  const full = { "Unidentified Cinderswallow Urn": { c: 1000 }, "Spinehail": { c: 5 },
+                 "Cane of Kulemak": { c: 10 }, "The Devouring Diadem": { c: 20 },
+                 "Bitterbind Point": { c: 30 }, "The Queen's Hunger": { c: 40 } };
+  // Price her extras too, so the only variable under test is the pool.
+  for (const d of catarina.groups.flatMap((g) => g.drops)) if (!full[d.item]) full[d.item] = { c: 1 };
+
+  const poolOf = (c) => c.groups.find((g) => g.kind === "pool");
+  const whole = computeBoss(catarina, makeResolver(full));
+  ok(poolOf(whole).hiddenLines.length === 0, `everything priced should hide nothing: ${poolOf(whole).hiddenLines.length}`);
+
+  // Drop the 30% urn from the market and the pool loses exactly its value.
+  // Both names have to go: the veiled line asks for the unidentified item
+  // first and falls through to the plain one, so leaving either would price it.
+  const without = { ...full };
+  delete without["Unidentified Cinderswallow Urn"];
+  delete without["Cinderswallow Urn"];
+  const partial = computeBoss(catarina, makeResolver(without));
+  ok(poolOf(partial).hiddenLines.length === 1, `the unpriced line is hidden: ${poolOf(partial).hiddenLines.length}`);
+  ok(!partial.dropLines.some((l) => /Cinderswallow/.test(l.label)), "and is gone from the shown lines");
+  eqv(Math.round(partial.hiddenShare * 100), 30, "its share is reported, not silently dropped");
+  eqv(Math.round(whole.gross - partial.gross), 300, "gross falls by exactly the missing line's value");
+  ok(partial.gross < whole.gross, "shares must NOT be redistributed — that would inflate the EV");
+}
+
+/* Catarina's pool is one line per tradeable item. poe.watch carries a single
+   unidentified urn and a single cane — its three cane rows differ by link
+   count, not by veiling — so the ledger's split lines are summed, not dropped. */
+{
+  const pool = BOSSES.find((b) => b.id === "catarina").groups.find((g) => g.kind === "pool");
+  const names = pool.drops.map((d) => d.item);
+  eqv(names.length, new Set(names).size, "no item may appear twice in one pool");
+  ok(Math.abs(pool.drops.reduce((s, d) => s + d.share, 0) - 1) < 1e-9,
+     `pool shares must still total 1: ${pool.drops.reduce((s, d) => s + d.share, 0)}`);
+  const urn = pool.drops.find((d) => d.item === "Cinderswallow Urn");
+  eqv(urn.share, 0.30, "the three urn lines merged into one at their combined share");
+  eqv(pool.drops.find((d) => d.item === "Cane of Kulemak").share, 0.18, "and the three cane lines likewise");
+  ok(/veiled/i.test(urn.label), "the label must keep saying veiled — that is what finds the unidentified price");
+}
+
+/* ---------------- name spellings between sources ----------------
+   poe.watch files the exceptional support gems WITHOUT the suffix the game
+   uses: "Void Shockwave Support" is "Void Shockwave" there. Seven gems went
+   unpriced on that alone, and at 2% of a pool each it read as thin market
+   data rather than a naming mismatch — which is why it survived a full audit
+   pass before anyone noticed. */
+{
+  const pm = { "Void Shockwave": { c: 900 }, "Enlighten Support": { c: 200 }, "Ziggurat": { c: 40 } };
+  const r = makeResolver(pm);
+  eqv(r("Void Shockwave Support").chaos, 900, "a gem named with Support finds the version without it");
+  eqv(r("Enlighten Support").chaos, 200, "and one that really is named Support still works");
+  eqv(r("Void Shockwave").chaos, 900, "as does the bare name");
+  eqv(r("Ziggurat Map").chaos, 40, "the same both-ways rule still covers map base types");
+  eqv(r("Nothing Support").chaos, 0, "a name neither spelling can find stays unpriced");
+}
+
+/* Three gems poe.watch files under a name no suffix rule can reach — the
+   game and the market simply disagree about what they are called. The game's
+   name is what the page shows; the market's name is what gets looked up. */
+{
+  const watchNames = { "Summon Hiveborn": { c: 30 }, "Bursting Toad": { c: 45 }, "Kinetic Flux": { c: 60 } };
+  const r = makeResolver(watchNames);
+  const lineFor = (bossId, re) => {
+    const c = computeBoss(BOSSES.find((b) => b.id === bossId), r);
+    return [...c.dropLines, ...c.hiddenLines].find((l) => re.test(l.item));
+  };
+  const hive = lineFor("esh-tul", /Hiveborn/);
+  eqv(hive?.unit, 30, "Summon Hiveborn resolves");
+  const toad = lineFor("king-in-the-mists", /Hextoad/);
+  eqv(toad?.unit, 45, "Hextoad Support resolves through its Bursting Toad alias");
+  eqv(toad?.label, "Hextoad Support", "and keeps the in-game name on the page");
+  const flux = lineFor("uber-cortex", /Kinetic Instability/);
+  eqv(flux?.unit, 60, "Greater Kinetic Instability Support resolves through Kinetic Flux");
+  eqv(flux?.label, "Greater Kinetic Instability Support", "and keeps the in-game name");
+}
+
+/* Every gem the drop tables reference must resolve under one spelling or the
+   other, given a price map that uses poe.watch's convention. */
+{
+  const gems = new Set();
+  for (const b of BOSSES) for (const g of b.groups) for (const d of g.drops) {
+    if (/ support$/i.test(d.item)) gems.add(d.item);
+  }
+  const watchStyle = {};
+  for (const g of gems) watchStyle[g.replace(/ support$/i, "")] = { c: 100 };
+  const r = makeResolver(watchStyle);
+  const unresolved = [...gems].filter((g) => !r(g).found);
+  ok(unresolved.length === 0, `support gems that would not resolve: ${unresolved.join(", ")}`);
+  ok(gems.size > 0, "there should be support gems in the dataset to check");
 }
 
 console.log(fails ? `\n${fails} FAILURES` : "\nAll checks passed.");

@@ -1295,6 +1295,11 @@ const css = `
 .st-foot a { color: #9a8c6a; text-decoration: none; border-bottom: 1px dotted #6f6656; }
 .st-foot a:hover { color: #d9c48a; border-bottom-color: #d9c48a; }
 .st-foot a:focus-visible { outline: 2px solid #d8b355; outline-offset: 2px; }
+.bp-hidden-note {
+  font-size: 11.5px; color: #8d8371; padding: 6px 12px 2px; line-height: 1.5;
+  border-top: 1px dashed #3a332a;
+}
+.bp-hidden-note em { display: block; color: #6f6656; font-style: italic; cursor: help; }
 .st-pct { font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; margin-right: 6px; white-space: nowrap; }
 .st-pct.up { color: #8fd47f; }
 .st-pct.down { color: #d47f7f; }

@@ -600,7 +600,7 @@ export const BOSSES = [
         { item: "Something Dark", chance: 0.10 },
         { item: "Foulgrasp Support", chance: 0.10 },
         { item: "The Escape", chance: 0.06 },
-        { item: "Hiveborn Support", label: "Summon Hiveborn", chance: 0.05 },
+        { item: "Summon Hiveborn", chance: 0.05 },
       ]),
     ],
   },
@@ -617,7 +617,7 @@ export const BOSSES = [
         { item: "Garb of the Ephemeral", share: 0.15 },
         { item: "Bottled Faith", share: 0.05 },
       ]),
-      extra([{ item: "Greater Kinetic Instability Support", chance: 0.02 }]),
+      extra([{ item: "Greater Kinetic Instability Support", aliases: ["Kinetic Flux"], chance: 0.02 }]),
     ],
   },
   {
@@ -634,7 +634,7 @@ export const BOSSES = [
       ]),
       extra([
         { item: "Forgotten Reliquary Key", chance: 0.015 },
-        { item: "Greater Kinetic Instability Support", chance: 0.02 },
+        { item: "Greater Kinetic Instability Support", aliases: ["Kinetic Flux"], chance: 0.02 },
       ]),
     ],
   },
@@ -652,7 +652,10 @@ export const BOSSES = [
         { item: "Abhorrent Interrogation", share: 0.12 },
       ]),
       extra([
-        { item: "Sacred Lifeforce", label: "Sacred Crystallised Lifeforce", chance: 1.00 },
+        // poe.watch files lifeforce under its full name; the short form is the
+        // one the ledger tables use.
+        { item: "Sacred Lifeforce", label: "Sacred Crystallised Lifeforce",
+          aliases: ["Sacred Crystallised Lifeforce", "Sacred Crystalised Lifeforce"], chance: 1.00 },
         { item: "Pacifism Support", chance: 0.12 },
         { item: "The Aspirant", chance: 0.10 },
         { item: "Greater Unleash Support", chance: 0.04 },
@@ -771,17 +774,22 @@ export const BOSSES = [
     entry: [{ item: "Syndicate Medallion" }],
     ttk: 120, overhead: 0,
     groups: [
+      /* One line per item, because that is how the market prices them.
+         The ledger tables split the urn by which veiled mod rolls and the cane
+         by mod count, but poe.watch carries a single unidentified urn and a
+         single cane — its three cane rows differ by LINK COUNT (0/5/6), not by
+         veiling, and a boss drops the unlinked one. So the split shares are
+         summed rather than dropped: 3 x 0.10 urn -> 0.30, 0.07+0.07+0.04 cane
+         -> 0.18. The pool still totals 1.00.
+         "Veiled" stays in each label deliberately — that is what makes the
+         price lookup ask for the unidentified item first. */
       pool([
+        { key: "urn", item: "Cinderswallow Urn", label: "Veiled Cinderswallow Urn", share: 0.30 },
         { key: "spinehail", item: "Spinehail", label: "Veiled Spinehail", share: 0.20 },
+        { key: "kulemak", item: "Cane of Kulemak", label: "Veiled Cane of Kulemak", share: 0.18 },
         { key: "diadem", item: "The Devouring Diadem", label: "Veiled Devouring Diadem", share: 0.16 },
-        { key: "urn-life", item: "Cinderswallow Urn", label: "Veiled Cinderswallow Urn (Life)", share: 0.10 },
-        { key: "urn-es", item: "Cinderswallow Urn", label: "Veiled Cinderswallow Urn (ES)", share: 0.10 },
-        { key: "urn-mana", item: "Cinderswallow Urn", label: "Veiled Cinderswallow Urn (Mana)", share: 0.10 },
         { key: "bitterbind", item: "Bitterbind Point", label: "Veiled Bitterbind Point", share: 0.10 },
-        { key: "kulemak-1p2s", item: "Cane of Kulemak", label: "Veiled Cane of Kulemak (1P2S)", share: 0.07 },
-        { key: "kulemak-2p1s", item: "Cane of Kulemak", label: "Veiled Cane of Kulemak (2P1S)", share: 0.07 },
         { key: "hunger", item: "The Queen's Hunger", label: "Veiled Queen's Hunger", share: 0.06 },
-        { key: "kulemak-4mod", item: "Cane of Kulemak", label: "Veiled Cane of Kulemak (4 mod)", share: 0.04 },
       ]),
       extra([
         { item: "Allflame Ember of Resplendence", chance: 0.60 },
@@ -804,7 +812,9 @@ export const BOSSES = [
         { item: "The Burden of Shadows", share: 0.05 },
       ]),
       extra([
-        { item: "Hextoad Support", label: "Bursting Toad", chance: 0.10 },
+        // poe.watch files this as "Bursting Toad"; the game calls it Hextoad
+        // Support, and the game's name is the one worth showing.
+        { item: "Hextoad Support", aliases: ["Bursting Toad"], chance: 0.10 },
         { item: "Hexpass Support", chance: 0.10 },
       ]),
     ],

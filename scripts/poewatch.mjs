@@ -59,6 +59,25 @@ const HEADERS = { "User-Agent": "scarab-ledger-snapshot/0.3 (github actions; con
 /* Every category the site has a use for. `bases` is ~18k rows of crafting
    bases and `enchantment` is helmet enchants — neither is referenced by any
    tab, and both are large, so they are deliberately not fetched. */
+/* Category names are NOT stable between the query and the response: you ask
+   /get for `flask` and every row comes back tagged `flasks`; `weapon` becomes
+   `weapons`, `currency` rows can come back as `catalysts`. /compact only ever
+   gives you the response form. Matching the two literally silently dropped
+   every unique, flask, jewel and gem from the price map — 2,600 names survived
+   and looked healthy, so nothing announced it.
+   Compare loosely, and never allow-list: skip only what is genuinely unwanted
+   and keep whatever else the API decides to call things. */
+const catKey = (c) => String(c || "").toLowerCase().replace(/[^a-z0-9]/g, "").replace(/s$/, "");
+export function catMatches(rowCat, wanted) {
+  if (!wanted || !wanted.length) return true;
+  const k = catKey(rowCat);
+  return wanted.some((w) => catKey(w) === k);
+}
+
+/* ~18k crafting bases and every helmet enchant. Nothing references either,
+   and both are large enough to be worth not carrying around. */
+const SKIP_CATEGORIES = ["bases", "enchantment"];
+
 export const WATCH_CATEGORIES = [
   "currency",      // orbs, astrolabes, catalysts, lifeforce, the entry costs
   "fragment",      // breachstones, invitations' cousins, boss keys
@@ -136,8 +155,12 @@ export function normaliseRow(r) {
 /* The form a boss actually drops, mirroring the rule the poe.ninja path uses:
    a level-1, zero-quality, uncorrupted gem, and an unlinked item. A corrupted
    21/20 gem and a 6-link are post-drop states, not drops. */
+export function isGemRow(row) {
+  return row.gemLevel != null || row.gemQuality != null || row.gemCorrupted === true;
+}
+
 export function isWatchBaseVariant(row) {
-  if (row.gemLevel != null || row.gemQuality != null || row.gemCorrupted) {
+  if (isGemRow(row)) {
     return !row.gemCorrupted && (row.gemLevel ?? 1) <= 1 && (row.gemQuality ?? 0) === 0;
   }
   if (row.linkCount != null) return row.linkCount === 0;
@@ -243,7 +266,16 @@ export function watchPriceMap(rows, exchange = null) {
     if (!r.lowConfidence) e.thin = false;
   }
   const prices = {};
+  const excluded = new Set();
   for (const [name, e] of Object.entries(acc)) {
+    /* Gems are strict. A boss hands you a level 1, zero quality, uncorrupted
+       gem, and nothing else — so that exact form is the only acceptable price.
+       Falling back to the cheapest of whatever else exists would quote a 20/20
+       or a corrupted 21 as if it dropped that way, which is wrong by a factor
+       that grows with how good the gem is. No base row means no price, and the
+       drop is hidden rather than flattered. */
+    if (e.all.some(isGemRow) && !e.base.length) { excluded.add(name); continue; }
+
     const pick = e.base.length ? e.base : e.all;
     const chaos = pick.map((r) => r.chaos);
     // With base variants the cheapest base is the drop; without them every row
@@ -266,6 +298,9 @@ export function watchPriceMap(rows, exchange = null) {
   let overrode = 0;
   for (const x of (exchange || [])) {
     if (x.lowConfidence || !(x.chaos > 0) || !(x.volume24H > 0)) continue;
+    // A gem excluded above stays excluded: the exchange does not say which
+    // level or quality it traded, so it cannot reinstate a base-form price.
+    if (excluded.has(x.name)) continue;
     const prev = prices[x.name];
     prices[x.name] = {
       ...(prev || { lo: x.chaos, hi: x.chaos, n: 1 }),
@@ -283,12 +318,12 @@ export function watchPriceMap(rows, exchange = null) {
 
 /* ---------- the whole snapshot for one league ---------- */
 
-function collect(list, rows, counts, wanted) {
+function collect(list, rows, counts) {
   for (const raw of list) {
     const row = normaliseRow(raw);
     if (!row) continue;
     const cat = raw.category || null;
-    if (wanted && cat && !wanted.has(cat)) continue;
+    if (cat && catMatches(cat, SKIP_CATEGORIES)) continue;
     row.divineField = Number(raw.divine) || 0;
     row.change = Number(raw.change) || 0;
     row.category = cat;
@@ -301,14 +336,13 @@ export async function fetchWatchLeague(leagueName, { delayMs = 150, categories =
   const rows = [];
   const counts = {};
   const failed = [];
-  const wanted = new Set(categories);
   let source = "compact";
 
   // One request for everything. /compact returns the same ItemData rows the
   // per-category endpoint does, already tagged with their category.
   const compact = await tryWatch(`/compact?league=${encodeURIComponent(leagueName)}`);
   if (Array.isArray(compact?.items)) {
-    collect(compact.items, rows, counts, wanted);
+    collect(compact.items, rows, counts);
   } else {
     // Fall back to the per-category endpoint. Slower, but it is the difference
     // between a stale snapshot and no snapshot.
@@ -316,7 +350,7 @@ export async function fetchWatchLeague(leagueName, { delayMs = 150, categories =
     for (const cat of categories) {
       const j = await tryWatch(`/get?category=${encodeURIComponent(cat)}&league=${encodeURIComponent(leagueName)}`);
       if (!Array.isArray(j)) { failed.push(cat); await sleep(delayMs); continue; }
-      collect(j.map((r) => ({ ...r, category: cat })), rows, counts, wanted);
+      collect(j.map((r) => ({ ...r, category: cat })), rows, counts);
       await sleep(delayMs);
     }
   }
@@ -360,7 +394,7 @@ export function watchCategoryItems(rows, re, divineRate, cats = null, exchange =
   for (const r of rows) {
     // Categories narrow before the name test: a bare /fossil/i or /scarab/i
     // over every row invites a unique with the word in its name.
-    if (cats && !cats.includes(r.category)) continue;
+    if (cats && !catMatches(r.category, cats)) continue;
     if (!re.test(r.name) || seen.has(r.name)) continue;
     if (!isWatchBaseVariant(r)) continue;
     seen.add(r.name);

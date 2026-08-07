@@ -55,6 +55,11 @@ const WATCH = {
   gem: [
     { id: 30, name: "Pacifism Support", mean: 1050, min: 1000, max: 1100, daily: 30, lowConfidence: false, gemLevel: 1, gemQuality: 0, gemIsCorrupted: false, divine: 1050 / EXCHANGE },
     { id: 31, name: "Pacifism Support", mean: 626600, min: 626600, max: 626600, daily: 4, lowConfidence: true, gemLevel: 21, gemQuality: 20, gemIsCorrupted: true, divine: 2823 },
+    // A gem poe.watch only carries in levelled forms. A boss drops level 1, so
+    // there is no price for what it drops — quoting the 20/20 would be wrong by
+    // whatever the levelling is worth, which for a good gem is most of it.
+    { id: 32, name: "Enhance Support", mean: 4000, min: 4000, max: 4000, daily: 60, lowConfidence: false, gemLevel: 3, gemQuality: 0, gemIsCorrupted: false, divine: 4000 / EXCHANGE },
+    { id: 33, name: "Enhance Support", mean: 9000, min: 9000, max: 9000, daily: 12, lowConfidence: false, gemLevel: 4, gemQuality: 20, gemIsCorrupted: false, divine: 9000 / EXCHANGE },
   ],
   armour: [
     { id: 40, name: "Shaper's Touch", mean: 12, min: 12, max: 14, daily: 100, lowConfidence: false, linkCount: 0, divine: 0.05 },
@@ -113,6 +118,12 @@ const EXCHANGE_ROWS = [
   },
 ];
 
+/* How poe.watch renames categories between the query and the response. */
+const DISPLAY_CATEGORY = {
+  flask: "flasks", armour: "armours", weapon: "weapons", gem: "gems",
+  currency: "currency", scarab: "scarab", fossil: "fossil", resonator: "resonator",
+};
+
 let watchDown = process.env.WATCH_DOWN === "1";
 let compactDown = false;
 const hits = [];
@@ -127,10 +138,14 @@ globalThis.fetch = async (url) => {
     if (u.pathname === "/status") return J({ changeID: "1-2-3-4-5", requestedStashes: 100, computedStashes: 99 });
     if (u.pathname === "/compact") {
       if (compactDown) return new Response("nope", { status: 500 });
-      // One flat array, every row tagged with its category — the whole point
-      // of /compact over 22 per-category calls.
+      // One flat array, every row tagged with its category. Crucially the tag
+      // is the DISPLAY name, not the query name — `flask` comes back `flasks`,
+      // `currency` can come back `catalysts` — which is precisely what an
+      // allow-list of query names silently threw away.
       const items = [];
-      for (const [cat, rows] of Object.entries(WATCH)) for (const r of rows) items.push({ ...r, category: cat });
+      for (const [cat, rows] of Object.entries(WATCH)) {
+        for (const r of rows) items.push({ ...r, category: DISPLAY_CATEGORY[cat] || cat });
+      }
       return J({ items });
     }
     if (u.pathname === "/exchange/ratios") return J({ items: EXCHANGE_ROWS });
@@ -200,9 +215,29 @@ ok(P["Horned Scarab of Pandemonium"]?.daily === 400, `daily listing count kept: 
 ok(P["Divine Orb"]?.thin === true, "a low-confidence poe.watch price is marked thin");
 ok(P["Abrasive Catalyst"]?.thin === undefined, "a liquid price is not marked thin");
 
-/* ---- base variants ---- */
+/* ---- categories renamed between request and response ----
+   Every one of these rows arrives under a plural or renamed category. An
+   allow-list keyed on the query name dropped all of them, and because the
+   remaining 2,600 names still looked like a healthy price map, nothing
+   failed — the boss tab just quietly stopped pricing every unique in the
+   game. This is the assertion that would have caught it. */
+for (const [name, cat] of [
+  ["Cinderswallow Urn", "flasks"],
+  ["Unidentified Cinderswallow Urn", "flasks"],
+  ["Shaper's Touch", "armours"],
+  ["Pacifism Support", "gems"],
+]) {
+  ok(P[name]?.c > 0, `${name} arrives tagged "${cat}" and must still be priced: ${JSON.stringify(P[name])}`);
+}
+
+/* ---- base variants ----
+   Bosses drop gems at level 1, zero quality, uncorrupted. That exact form is
+   the only acceptable price for a gem; anything else is a gem someone levelled
+   after it dropped. */
 ok(near(P["Pacifism Support"]?.c, 1050),
    `the level-1 gem is the drop, not the corrupted 21/20: ${P["Pacifism Support"]?.c}`);
+ok(P["Enhance Support"] === undefined,
+   `a gem with no level-1 form must have NO price rather than borrowing a levelled one: ${JSON.stringify(P["Enhance Support"])}`);
 ok(near(P["Shaper's Touch"]?.c, 12), `the unlinked item is the drop, not the 6L: ${P["Shaper's Touch"]?.c}`);
 
 /* ---- unidentified ---- */
