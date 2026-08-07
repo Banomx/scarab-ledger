@@ -6,7 +6,12 @@
 
    GGG does not publish the current hour. The workflow runs after the hourly
    boundary and asks for the previous completed hour, falling back one more
-   hour when that digest has not reached the CDN yet. */
+   hour when that digest has not reached the CDN yet.
+
+   Thin items can have a market row but no completed trades in the latest
+   digest. `fetchGggPriceLookback` can recover only requested, exchange-backed
+   names from recent completed hours; it is deliberately not a full-history
+   download. */
 
 const GGG_BASE = process.env.GGG_EXCHANGE_BASE || "https://web.poecdn.com/api/currency-exchange";
 const REPOE_URL = process.env.REPOE_BASE_ITEMS_URL || "https://repoe-fork.github.io/base_items.min.json";
@@ -62,7 +67,7 @@ function ratioBounds(market, item, quote) {
     : null;
 }
 
-export function buildGggLeagueSnapshot(markets, baseItems, league) {
+export function buildGggLeagueSnapshot(markets, baseItems, league, { hour = null } = {}) {
   const active = (markets || []).filter((market) => {
     if (market?.league !== league || market?.market_pair?.length !== 2) return false;
     return market.market_pair.every((id) => amount(market, "volume_traded", id) > 0);
@@ -124,6 +129,7 @@ export function buildGggLeagueSnapshot(markets, baseItems, league) {
       volume1H,
       gggId: id,
       method,
+      ...(hour ? { marketHour: new Date(hour * 1000).toISOString() } : {}),
     };
     // Different Metadata entries can share a display name. Prefer the one
     // with more completed trades instead of allowing iteration order to win.
@@ -142,6 +148,7 @@ export function buildGggLeagueSnapshot(markets, baseItems, league) {
     exchange: true,
     exchangeSource: "GGG",
     volume1H: entry.volume1H,
+    ...(entry.marketHour ? { marketHour: entry.marketHour } : {}),
     itemClass: selected[name].meta.item_class || null,
     tags: selected[name].meta.tags || [],
   }));
@@ -181,7 +188,7 @@ export async function fetchGggExchange({ now = Date.now() } = {}) {
   const leagues = [...new Set(payload.markets.map((market) => market.league).filter(Boolean))];
   const byLeague = {};
   for (const league of leagues) {
-    byLeague[league] = buildGggLeagueSnapshot(payload.markets, baseItems, league);
+    byLeague[league] = buildGggLeagueSnapshot(payload.markets, baseItems, league, { hour });
   }
   return {
     hour,
@@ -190,5 +197,91 @@ export async function fetchGggExchange({ now = Date.now() } = {}) {
     marketCount: payload.markets.length,
     baseItemCount: Object.keys(baseItems || {}).length,
     byLeague,
+    // Kept in memory for the targeted thin-market lookup below. These are not
+    // written to public/data; only the selected named prices are emitted.
+    _baseItems: baseItems,
+    _markets: payload.markets,
   };
+}
+
+function supportedNameIds(markets, baseItems, league, requested) {
+  const wanted = new Set(requested || []);
+  const byName = new Map();
+  for (const market of markets || []) {
+    if (market?.league !== league) continue;
+    for (const id of market.market_pair || []) {
+      const name = baseItems?.[id]?.name;
+      if (!wanted.has(name)) continue;
+      if (!byName.has(name)) byName.set(name, new Set());
+      byName.get(name).add(id);
+    }
+  }
+  return byName;
+}
+
+/* Search recent completed hours only for requested names which GGG exposes in
+   the current league's Currency Exchange market. This distinction matters:
+   uniques missing from poe.watch/poe.ninja must not trigger 24 large digest
+   downloads when GGG never prices uniques through this feed. */
+export async function fetchGggPriceLookback(exchange, {
+  league,
+  names = [],
+  maxHours = 24,
+} = {}) {
+  if (!exchange?.hour || !league || !exchange._baseItems || !exchange._markets) {
+    return { prices: {}, items: [], supported: [], unresolved: [], hoursChecked: 0 };
+  }
+
+  const current = exchange.byLeague?.[league];
+  const requested = [...new Set(names)].filter((name) => name && !current?.prices?.[name]);
+  const idsByName = supportedNameIds(exchange._markets, exchange._baseItems, league, requested);
+  const unresolved = new Set(idsByName.keys());
+  const prices = {};
+  const items = [];
+  let hoursChecked = 0;
+
+  for (let offset = 1; offset <= maxHours && unresolved.size; offset++) {
+    const hour = exchange.hour - offset * (HOUR_MS / 1000);
+    let payload;
+    try {
+      payload = await getJson(`${GGG_BASE}/${hour}`);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(payload?.markets) || !payload.markets.length) continue;
+    hoursChecked++;
+    const snapshot = buildGggLeagueSnapshot(payload.markets, exchange._baseItems, league, { hour });
+    for (const name of [...unresolved]) {
+      const entry = snapshot.prices[name];
+      if (!entry) continue;
+      prices[name] = { ...entry, staleHours: offset };
+      const item = snapshot.items.find((candidate) => candidate.name === name);
+      if (item) items.push({ ...item, staleHours: offset });
+      unresolved.delete(name);
+    }
+  }
+
+  return {
+    prices,
+    items,
+    supported: [...idsByName.keys()],
+    unresolved: [...unresolved],
+    hoursChecked,
+  };
+}
+
+export function mergeGggLookback(snapshot, lookback) {
+  if (!snapshot || !lookback) return snapshot;
+  const existingItems = new Set((snapshot.items || []).map((item) => item.name));
+  for (const [name, entry] of Object.entries(lookback.prices || {})) {
+    if (!snapshot.prices[name]) snapshot.prices[name] = entry;
+  }
+  for (const item of lookback.items || []) {
+    if (!existingItems.has(item.name)) {
+      snapshot.items.push(item);
+      existingItems.add(item.name);
+    }
+  }
+  snapshot.backfilled = (snapshot.backfilled || 0) + Object.keys(lookback.prices || {}).length;
+  return snapshot;
 }

@@ -11,7 +11,10 @@ Price precedence is:
 1. GGG's public Currency Exchange hourly digest for completed exchange trades.
 2. poe.watch for missing exchange markets and non-exchange listings.
 3. poe.ninja for remaining gaps and roll-variant detail.
-4. Explicit, dated fallback values in the boss/Delve datasets when all market
+4. For configured boss items still unpriced by those sources, the most recent
+   completed GGG trade hour within the preceding 24 hours, but only when the
+   current GGG market data recognizes the item.
+5. Explicit, dated fallback values in the boss/Delve datasets when all market
    sources lack the item.
 
 `scripts/ggg-exchange.mjs` requests the previous completed UTC hour from
@@ -30,21 +33,32 @@ When only a direct item/Divine pair exists, that rate is multiplied by the same
 hour's direct Divine/Chaos rate. Arbitrary multi-hop conversions are not used.
 Zero-volume markets are ignored.
 
+A zero-volume market can still identify a thin supported item. For configured
+boss-price gaps only, the snapshot first retains a still-recent official entry
+from the preceding deployment, then searches up to 24 older completed GGG
+digests for unresolved names. Names absent from the current Currency Exchange
+market do not widen the search. Recovered entries carry their actual
+`marketHour` and `staleHours`; they expire rather than becoming permanent
+hand-set prices.
+
 RePoE's `base_items.min.json` maps GGG Metadata paths to display names and tags.
 It contributes no prices. If either the GGG digest or the name mapping is
 unavailable, the snapshot completes with poe.watch and poe.ninja instead.
 
 Each deployed JSON file records `generatedAt`; files using GGG also record
-`gggHour`, the completed market hour represented by the official prices. The
-existing `selfhistory.json` files accumulate hourly snapshots for charts.
+`gggHour`, the newest completed market hour used by the snapshot. Individual
+GGG entries record `marketHour`, which differs when a thin boss item came from a
+recent earlier hour. The existing `selfhistory.json` files accumulate hourly
+snapshots for charts.
 
 ## Coverage boundary
 
-The GGG feed covers only items that completed trades on the in-game Currency
-Exchange during the selected hour. Uniques, maps, gems, unidentified forms and
-roll variants generally require poe.watch or poe.ninja. Boss drop rates and
-Delve biome rules remain curated project data and are not supplied by any price
-API.
+The GGG feed prices only items with completed trades on the in-game Currency
+Exchange. The normal basis is the selected hour; the bounded boss-gap lookup can
+use a recent earlier completed hour for a currently recognized thin item.
+Uniques, maps, gems, unidentified forms and roll variants generally require
+poe.watch or poe.ninja. Boss drop rates and Delve biome rules remain curated
+project data and are not supplied by any price API.
 
 For unidentified boss uniques, the poe.watch adapter uses the current listing
 floor and preserves separate item-level markets. Boss data names the exact

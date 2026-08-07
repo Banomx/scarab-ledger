@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import {
   CHAOS_ID, DIVINE_ID, tradedRate, buildGggLeagueSnapshot, fetchGggExchange,
+  fetchGggPriceLookback, mergeGggLookback,
 } from "./ggg-exchange.mjs";
 
 const SCARAB = "Metadata/Items/Scarabs/TestScarab";
 const FOSSIL = "Metadata/Items/Currency/Delve/TestFossil";
 const DEAD = "Metadata/Items/Currency/DeadMarket";
+const KEEPER = "Metadata/Items/DivinationCards/DivinationCardKeepersCorruption";
 
 const market = (league, a, b, av, bv, low = [av, bv], high = [av, bv]) => ({
   league,
@@ -31,6 +33,7 @@ const baseItems = {
   [SCARAB]: { name: "Test Scarab", item_class: "MapFragment", tags: ["scarab"] },
   [FOSSIL]: { name: "Test Fossil", item_class: "StackableCurrency", tags: ["fossil"] },
   [DEAD]: { name: "Dead Market", item_class: "StackableCurrency", tags: ["currency"] },
+  [KEEPER]: { name: "Keeper's Corruption", item_class: "DivinationCard", tags: ["divination_card"] },
 };
 
 assert.equal(tradedRate(markets[1], SCARAB, CHAOS_ID), 2.5, "volume quotient is the hourly traded price");
@@ -64,5 +67,34 @@ try {
   globalThis.fetch = originalFetch;
 }
 
-console.log("GGG exchange tests passed");
+// A supported item with no trades in the newest digest may use its most
+// recent completed GGG hour. Unsupported names must not widen the search.
+const latestHour = Date.UTC(2026, 7, 7, 17) / 1000;
+const thinMarkets = [...markets, market("Test League", KEEPER, CHAOS_ID, 0, 0)];
+const thinSnapshot = buildGggLeagueSnapshot(thinMarkets, baseItems, "Test League", { hour: latestHour });
+const exchange = {
+  hour: latestHour,
+  byLeague: { "Test League": thinSnapshot },
+  _baseItems: baseItems,
+  _markets: thinMarkets,
+};
+const oldMarkets = [...markets, market("Test League", KEEPER, CHAOS_ID, 5, 30, [1, 6], [1, 6])];
+globalThis.fetch = async () => new Response(JSON.stringify({ markets: oldMarkets }), { status: 200 });
+try {
+  const lookback = await fetchGggPriceLookback(exchange, {
+    league: "Test League",
+    names: ["Keeper's Corruption", "Unsupported Unique"],
+    maxHours: 2,
+  });
+  assert.deepEqual(lookback.supported, ["Keeper's Corruption"]);
+  assert.equal(lookback.prices["Keeper's Corruption"].c, 6);
+  assert.equal(lookback.prices["Keeper's Corruption"].staleHours, 1);
+  assert.equal(lookback.prices["Unsupported Unique"], undefined);
+  mergeGggLookback(thinSnapshot, lookback);
+  assert.equal(thinSnapshot.prices["Keeper's Corruption"].c, 6);
+  assert.equal(thinSnapshot.backfilled, 1);
+} finally {
+  globalThis.fetch = originalFetch;
+}
 
+console.log("GGG exchange tests passed");

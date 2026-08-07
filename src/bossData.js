@@ -701,7 +701,7 @@ export const BOSSES = [
     id: "t17-abomination", name: "Abomination", group: "T17", rates: "estimate",
     entry: [{ item: "Nightmare Map", label: "Abomination Map", aliases: ["Abomination Map", "Abomination"] }],
     ttk: 240, overhead: 60,
-    note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Unique rates are a 5% community estimate.",
+    note: "Fragment count scales with area quantity: 1-3 below 235% IIQ, 2-3 at 235-250%, 2-4 above 250%. The roll count in the Fragments header is set to 2, the low-IIQ midpoint — raise it to 2.5 or 3 if you run higher quant. Non-fragment drop rates are 5% community estimates.",
     groups: [
       { id: "pool", kind: "pool", label: "Fragments", rolls: 2, drops: [
         { item: "Awakening Fragment", share: 0.5 },
@@ -757,6 +757,7 @@ export const BOSSES = [
       ] },
       extra([
         { item: "Keeper's Corruption", chance: 0.05 },
+        { item: "Nook's Crown", chance: 0.05 },
         { item: "Wraithlord", chance: 0.05 },
         { item: "Communion Support", chance: 0.05 },
       ]),

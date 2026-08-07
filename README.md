@@ -14,6 +14,12 @@ the volume-weighted chaos price from the quantities that actually traded. GGG
 identifies items by internal Metadata paths, so RePoE supplies the display-name
 mapping; it does not supply prices.
 
+For a configured boss drop that GGG recognizes but that did not trade in the
+latest hour, the snapshot keeps a recent official price from the preceding
+deployment or searches up to 24 earlier completed hours. The entry records its
+actual `marketHour`, and the boss-price tooltip shows its age. Unsupported names
+do not trigger this lookback.
+
 **poe.watch** and **poe.ninja** remain fallbacks. They fill exchange items with
 no usable trade in the completed GGG hour and price things the Currency Exchange
 does not cover: uniques, maps, gems, unidentified forms and roll variants.
@@ -88,7 +94,9 @@ minutes the site is live at `https://YOUR_USER.github.io/scarab-ledger/`.
 
 Notes:
 - Prices refresh hourly at 17 minutes past the hour. GGG's previous completed
-  hour is primary; the banner shows when the deployed snapshot was generated.
+  hour is primary; a thin configured boss item may use its most recent official
+  trade hour from the prior 24 hours. The banner shows when the deployed
+  snapshot was generated.
 - poe.ninja restructured their API in 2026 and no longer documents a public
   price-history endpoint. The fetch script still tries the legacy history
   route, but if it's gone, the site **accumulates its own history**: every
@@ -233,7 +241,11 @@ snapshot lists them with their age, separately from genuine misses.
 is public and needs no OAuth client. `scripts/ggg-exchange.mjs` reads the latest
 completed hourly digest, filters it by league and calculates an item's chaos
 price as `chaos volume / item volume`. An item with no direct Chaos pair can use
-its direct Divine pair and that hour's GGG Divine-to-Chaos rate.
+its direct Divine pair and that hour's GGG Divine-to-Chaos rate. If a configured
+boss item has a current market row but no completed trade, a bounded lookup can
+recover its most recent official price from the preceding 24 hours. The normal
+hourly workflow retains that result while it remains within the same age limit,
+so it does not repeatedly download the history.
 
 The feed contains internal Metadata paths rather than display names. The
 snapshot resolves them through RePoE's `base_items.min.json`; RePoE is metadata

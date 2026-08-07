@@ -735,7 +735,7 @@ function PriceCell({ item, chaos, overridden, entry, onSet, money }) {
     ? [
         entry.exchange
           ? entry.exchangeSource === "GGG"
-            ? `GGG exchange · ${Math.round(entry.volume1H || 0).toLocaleString()} traded in the completed hour`
+            ? `GGG exchange · ${Math.round(entry.volume1H || 0).toLocaleString()} traded ${entry.staleHours ? `${entry.staleHours}h before the latest snapshot` : "in the completed hour"}`
             : `exchange · ${Math.round(entry.volume24H || 0).toLocaleString()} traded in 24h`
           : entry.daily > 0 ? `${entry.daily.toLocaleString()} listings/day` : `${entry.n} listings`,
         entry.hi > entry.lo
@@ -744,6 +744,7 @@ function PriceCell({ item, chaos, overridden, entry, onSet, money }) {
             : `${Math.round(entry.lo)}–${Math.round(entry.hi)}c listed`
           : null,
         entry.thin ? "thin market — treat with care" : null,
+        entry.staleHours ? "thin market — using its most recent completed trade hour" : null,
       ].filter(Boolean).join(" · ")
     : null;
   if (editing) {

@@ -18,7 +18,9 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import {
   watchLeagues, matchWatchLeague, fetchWatchLeague, watchCategoryItems, watchStatus,
 } from "./poewatch.mjs";
-import { fetchGggExchange } from "./ggg-exchange.mjs";
+import {
+  fetchGggExchange, fetchGggPriceLookback, mergeGggLookback,
+} from "./ggg-exchange.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -29,6 +31,8 @@ const HISTORY_LEAGUES = 2;   // ninja per-scarab history only for the first N le
 const SELF_HISTORY_CAP = 800; // max accumulated self-history points per league
 const RATE_HISTORY_CAP = 600; // max points in the emitted chaos-per-divine series
 const DELAY_MS = 300;
+const HOUR_MS = 3600_000;
+const GGG_THIN_PRICE_MAX_AGE_HOURS = Math.max(1, Number(process.env.GGG_THIN_PRICE_MAX_AGE_HOURS) || 24);
 
 /* A divine has never been worth less than ~20c or more than a few thousand.
    Every rate that enters the pipeline goes through this, because the shape of
@@ -786,6 +790,26 @@ async function reportUnpricedBossItems(prices, leagueName = "", detailed = true)
   }
 }
 
+let configuredBossPriceNamesPromise = null;
+function configuredBossPriceNames() {
+  if (!configuredBossPriceNamesPromise) {
+    configuredBossPriceNamesPromise = Promise.all([
+      import("../src/bossData.js"),
+      import("../src/delveData.js"),
+    ]).then(([data, delve]) => {
+      const names = new Set();
+      for (const boss of [...data.BOSSES, ...delve.DELVE_BOSSES]) {
+        for (const line of boss.entry || []) if (line.item) names.add(line.item);
+        for (const group of boss.groups || []) {
+          for (const line of group.drops || []) if (line.item && !line.item.startsWith("@")) names.add(line.item);
+        }
+      }
+      return [...names];
+    });
+  }
+  return configuredBossPriceNamesPromise;
+}
+
 /* ---------- divine rate ---------- */
 async function getDivineRate(lgParam, fallback) {
   const urls = [
@@ -831,6 +855,39 @@ function pagesBaseUrl() {
   if (!repo) return null;
   const [owner, name] = repo.split("/");
   return `https://${owner}.github.io/${name}`;
+}
+
+async function previousPriceSnapshot(slug) {
+  const base = pagesBaseUrl();
+  if (!base) return null;
+  return tryJson(`${base}/data/${slug}/prices.json`);
+}
+
+/* Hourly exchange digests contain only that hour's completed trades. Keep a
+   recent official boss-item price from the preceding deployment when the new
+   hour is empty; the original trade hour travels with the entry, so it cannot
+   silently live forever. Returns the number of names restored. */
+function carryRecentGggBossPrices(snapshot, previous, names, latestHourISO) {
+  if (!snapshot || !previous?.prices || !latestHourISO) return 0;
+  const latestMs = Date.parse(latestHourISO);
+  if (!isFinite(latestMs)) return 0;
+  const prices = {};
+  for (const name of names) {
+    if (snapshot.prices?.[name]) continue;
+    const entry = previous.prices[name];
+    if (!(entry?.c > 0) || entry.exchangeSource !== "GGG") continue;
+    const marketHour = entry.marketHour || previous.gggHour;
+    const marketMs = Date.parse(marketHour);
+    const ageHours = (latestMs - marketMs) / HOUR_MS;
+    if (!isFinite(ageHours) || ageHours < 0 || ageHours > GGG_THIN_PRICE_MAX_AGE_HOURS) continue;
+    prices[name] = {
+      ...entry,
+      marketHour: new Date(marketMs).toISOString(),
+      staleHours: Math.max(1, Math.round(ageHours)),
+    };
+  }
+  mergeGggLookback(snapshot, { prices, items: [] });
+  return Object.keys(prices).length;
 }
 
 function normalizePoint(p) {
@@ -1187,7 +1244,39 @@ async function main() {
       await writeFile(path.join(dir, "selfhistory.json"), JSON.stringify(self));
       // broad price map for the boss profitability tab
       try {
-        const pm = mergeGggPriceMap(await getPriceMap(lg.params, ctx, watch), ggg, leagueParam);
+        let pm = mergeGggPriceMap(await getPriceMap(lg.params, ctx, watch), ggg, leagueParam);
+        // The newest GGG digest may know an exchange item but have zero trades
+        // for it in that single hour. Only the primary current league pays the
+        // cost of repairing boss-item gaps: first reuse a still-recent official
+        // price from the prior deployment, then scan bounded older GGG hours
+        // for supported names which remain completely unpriced.
+        if (pm && ggg && li === 0) {
+          const bossNames = await configuredBossPriceNames();
+          const missingBossNames = () => bossNames.filter((name) => !(pm.prices[name]?.c > 0));
+          const carried = carryRecentGggBossPrices(
+            ggg,
+            await previousPriceSnapshot(slug),
+            missingBossNames(),
+            gggExchange.hourISO,
+          );
+          if (carried) {
+            pm = mergeGggPriceMap(pm, ggg, leagueParam);
+            console.log(`  GGG thin markets: retained ${carried} recent official boss price(s) from the prior snapshot`);
+          }
+
+          const lookback = await fetchGggPriceLookback(gggExchange, {
+            league: lg.name,
+            names: missingBossNames(),
+            maxHours: GGG_THIN_PRICE_MAX_AGE_HOURS,
+          });
+          if (Object.keys(lookback.prices).length) {
+            mergeGggLookback(ggg, lookback);
+            pm = mergeGggPriceMap(pm, ggg, leagueParam);
+            console.log(`  GGG thin markets: recovered ${Object.keys(lookback.prices).length}/${lookback.supported.length} supported boss price(s) from ${lookback.hoursChecked} earlier hour(s)`);
+          } else if (lookback.supported.length) {
+            console.log(`  GGG thin markets: no completed trades for ${lookback.supported.join(", ")} in the previous ${GGG_THIN_PRICE_MAX_AGE_HOURS}h`);
+          }
+        }
         if (pm) {
           const priceSource = sourceLabel({
             ggg: pm.counts?.["GGG Currency Exchange"] || 0,
