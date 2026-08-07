@@ -30,7 +30,7 @@ import { fmtChaos, fmtDiv } from "./money.js";
 export function fmtDay(d) { const n = Math.round(d * 10) / 10; return Number.isInteger(n) ? String(n) : n.toFixed(1); }
 
 /* Whole-day hardpoints, always: domain snaps outward to full days (day 0,
-   day 1, ...) and every 4h data point still plots at its true position. */
+   day 1, ...) and every hourly data point still plots at its true position. */
 export function dayAxis(rows) {
   if (!rows || !rows.length) return { domain: [0, 1], ticks: [0, 1] };
   const min = Math.floor(rows[0].day);

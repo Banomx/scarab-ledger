@@ -369,7 +369,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
       )}
       {priceMap && priceMap !== "missing" && (
         <div className="st-banner st-quiet">
-          Prices via {priceSource || "poe.watch and poe.ninja"} · {league}
+          Prices via {priceSource || "GGG Currency Exchange, poe.watch and poe.ninja"} · {league}
           {generatedAt ? ` · updated ${new Date(generatedAt).toLocaleString()}` : ""}
           {" · "}1 Divine ≈ {Math.round(divineRate)} Chaos
         </div>
@@ -733,9 +733,15 @@ function PriceCell({ item, chaos, overridden, entry, onSet, money }) {
   const spread = entry && (entry.exchange || entry.daily > 0 || entry.n > 1)
     ? [
         entry.exchange
-          ? `exchange · ${Math.round(entry.volume24H || 0).toLocaleString()} traded in 24h`
+          ? entry.exchangeSource === "GGG"
+            ? `GGG exchange · ${Math.round(entry.volume1H || 0).toLocaleString()} traded in the completed hour`
+            : `exchange · ${Math.round(entry.volume24H || 0).toLocaleString()} traded in 24h`
           : entry.daily > 0 ? `${entry.daily.toLocaleString()} listings/day` : `${entry.n} listings`,
-        entry.hi > entry.lo ? `${Math.round(entry.lo)}–${Math.round(entry.hi)}c listed` : null,
+        entry.hi > entry.lo
+          ? entry.exchangeSource === "GGG"
+            ? `${Math.round(entry.lo)}–${Math.round(entry.hi)}c hourly ratio range`
+            : `${Math.round(entry.lo)}–${Math.round(entry.hi)}c listed`
+          : null,
         entry.thin ? "thin market — treat with care" : null,
       ].filter(Boolean).join(" · ")
     : null;

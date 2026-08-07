@@ -2,23 +2,23 @@
 
 Path of Exile 1 scarab price tracker, grouped by league mechanic.
 
-Prices come from **poe.watch** first, with **poe.ninja** behind it as a fallback.
-One `/compact` call returns every category with a chaos price, a listing count
-and a low-confidence flag on each row, and `/exchange/ratios` adds the currency
-exchange on top — volume-weighted means of trades that actually closed, which
-override the listing means wherever the two overlap. poe.watch also prices the
-*unidentified* forms of veiled uniques, which is what several bosses drop and
-what poe.ninja has no entry for at all. poe.ninja stays
-wired up because it can be reachable when poe.watch is not, and it still carries
-a few names and the per-roll variant splits that poe.watch does not.
+Exchange-traded prices come from **GGG's public Currency Exchange API** first.
+The scheduled snapshot reads the latest completed hourly digest and calculates
+the volume-weighted chaos price from the quantities that actually traded. GGG
+identifies items by internal Metadata paths, so RePoE supplies the display-name
+mapping; it does not supply prices.
 
-One note for anyone reading `scripts/poewatch.mjs`: poe.watch's `mean`/`min`/`max`
+**poe.watch** and **poe.ninja** remain fallbacks. They fill exchange items with
+no usable trade in the completed GGG hour and price things the Currency Exchange
+does not cover: uniques, maps, gems, unidentified forms and roll variants.
+
+One note for anyone reading the fallback in `scripts/poewatch.mjs`: poe.watch's `mean`/`min`/`max`
 are chaos, but you have to infer that — there is no Chaos Orb row, and Exalted Orb
 reads 1. The per-row `divine` and `exalted` fields are inconsistent with `mean`
 and with each other. The divine rate is the currency-exchange one, recovered as
 `mean / divine` from every row — that ratio is the same constant across unrelated
-items, whereas Divine Orb's own item listing is thin and reads about 25% lower.
-Taking the listing instead would misprice every divine figure on the site.
+items, whereas Divine Orb's own item listing can be thin. These figures are
+only used when the GGG hourly digest is unavailable or has no usable pair.
 
 ## Run locally
 
@@ -56,10 +56,10 @@ time ever bothers you, ask me to subset it to Latin glyphs (~50 KB).
 
 ## Host on GitHub Pages
 
-GitHub Pages is static-only and poe.ninja blocks cross-origin browser requests,
-so the repo includes a workflow (`.github/workflows/deploy.yml`) that fetches
-the data **server-side** every 6 hours, bakes it into the site as JSON under
-`data/`, and redeploys. The app loads those files first, so no proxy is needed.
+GitHub Pages is static-only, so the repo includes a workflow
+(`.github/workflows/deploy.yml`) that fetches the data **server-side** every
+hour, bakes it into the site as JSON under `data/`, and redeploys. The app loads
+those files first, so no browser-side proxy or API credential is needed.
 
 One-time setup:
 
@@ -78,7 +78,8 @@ GitHub Actions**. The first workflow run starts on push (or trigger it under
 minutes the site is live at `https://YOUR_USER.github.io/scarab-ledger/`.
 
 Notes:
-- Prices refresh on the 4-hour cron; the banner shows the snapshot timestamp.
+- Prices refresh hourly at 17 minutes past the hour. GGG's previous completed
+  hour is primary; the banner shows when the deployed snapshot was generated.
 - poe.ninja restructured their API in 2026 and no longer documents a public
   price-history endpoint. The fetch script still tries the legacy history
   route, but if it's gone, the site **accumulates its own history**: every
@@ -177,8 +178,8 @@ between a big average and a reliable one is visible without switching sort.
 - Default kill times match the reference tool's own TTK profile, so the kills-per-hour
   figures line up out of the box.
 - Prices come from `public/data/<league>/prices.json`, written by the same
-  workflow that snapshots scarabs. Items with no poe.ninja listing are flagged
-  `no price` rather than silently counted as zero.
+  workflow that snapshots scarabs. Items missing from GGG and both fallbacks
+  are flagged `no price` rather than silently counted as zero.
 
 Two test scripts and a probe:
 
@@ -214,24 +215,19 @@ last checked: the UI badges these `set`, and `set 45d` once a month has passed,
 so an old hand-typed number announces itself rather than passing as current. The
 snapshot lists them with their age, separately from genuine misses.
 
-### Why not source these from GGG's official API?
+### GGG Currency Exchange coverage
 
-[api.pathofexile.com/currency-exchange](https://www.pathofexile.com/developer/docs/reference#currencyexchange)
-looks like the answer and mostly isn't, for three reasons:
+[GGG's Currency Exchange endpoint](https://www.pathofexile.com/developer/docs/reference#currencyexchange)
+is public and needs no OAuth client. `scripts/ggg-exchange.mjs` reads the latest
+completed hourly digest, filters it by league and calculates an item's chaos
+price as `chaos volume / item volume`. An item with no direct Chaos pair can use
+its direct Divine pair and that hour's GGG Divine-to-Chaos rate.
 
-- It needs a **confidential OAuth client with the `service:cxapi` scope**,
-  registered with GGG, using the `client_credentials` grant. That means real
-  credentials living in CI secrets.
-- It returns **currency-pair market digests** (`market_id: "chaos|divine"`,
-  volumes, lowest/highest ratio) on an hourly lag — not item prices. Deriving a
-  chaos price per item is doable but is a rewrite, not a lookup.
-- It only covers what actually trades **on the in-game Currency Exchange**. The
-  items we need are missing from poe.ninja precisely *because* they barely
-  trade, and reliquary keys may not be exchange-tradable at all — so the odds it
-  carries them are poor.
-
-If those credentials ever exist it's worth revisiting, but the dated fallback
-above solves the maintenance problem for a fraction of the effort.
+The feed contains internal Metadata paths rather than display names. The
+snapshot resolves them through RePoE's `base_items.min.json`; RePoE is metadata
+only and never contributes a price. The hourly feed does not cover the current
+hour or non-exchange items, so poe.watch and poe.ninja remain necessary for
+uniques, maps, gems, roll variants and thin or missing markets.
 
 `test-boss.mjs` checks every pool's shares sum to ~1, that drop keys are unique
 per boss, and that EV reproduces the reference tool's numbers for the same rates
@@ -416,12 +412,12 @@ same day axis as the price history. On top of that it makes one attempt per leag
 at poe.ninja's legacy `currencyhistory` endpoint to backfill the league so far —
 that endpoint has a habit of dying and of quoting the ratio upside down, so the
 result is sanity-checked and silently dropped when it looks wrong. With no
-backfill the curve simply grows from our own snapshots (every 4h).
+backfill the curve simply grows from our own hourly snapshots.
 
 Consequences worth knowing:
 
 - the checkbox is **disabled** until there are two rate points — on a fresh
-  league without backfill that's the first 4-8 hours;
+  league without backfill that normally takes one to two hourly runs;
 - snapshots taken before this feature existed have no rate, so their change
   windows can't be converted; those badges stay in chaos until the windows roll
   past the old points. The status line says so when that's the case;

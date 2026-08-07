@@ -416,7 +416,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
       )}
       {havePrices && (
         <div className="st-banner st-quiet">
-          Prices via {priceSource || "poe.watch and poe.ninja"} · {league}
+          Prices via {priceSource || "GGG Currency Exchange, poe.watch and poe.ninja"} · {league}
           {generatedAt ? ` · updated ${new Date(generatedAt).toLocaleString()}` : ""}
           {" · "}1 Divine ≈ {Math.round(rate)} Chaos
           {fossilData === "missing" && priceMap && priceMap !== "missing" ? " · fossil trends appear after the next refresh" : ""}
@@ -424,7 +424,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             <span className="st-banner-real">
               {rateDrift && <>{" "}· divine {rateDrift.pct >= 0 ? "+" : "−"}{Math.abs(rateDrift.pct).toFixed(1)}% in {chgWindow}</>}
               {!realBadges
-                ? " — no divine-adjusted figures yet. The fossil categories are new, so their history starts at zero; the first one appears about 4h after the second snapshot."
+                ? " — no divine-adjusted figures yet. The fossil categories are new, so their history starts at zero; the first one appears about an hour after the second snapshot."
                 : realWindows.has(chgWindow)
                   ? ", so every % here is divine-adjusted"
                   : ` — but not for ${chgWindow}: that needs a stored rate from ${chgWindow} ago and the history is only ${Math.round(historyHours)}h old.`}

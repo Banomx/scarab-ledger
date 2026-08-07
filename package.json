@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node scripts/test-money.mjs && node scripts/test-boss.mjs && node scripts/test-delve.mjs && node scripts/test-poewatch.mjs && node scripts/test-fetch-shapes.mjs",
+    "test": "node scripts/test-money.mjs && node scripts/test-boss.mjs && node scripts/test-delve.mjs && node scripts/test-ggg-exchange.mjs && node scripts/test-poewatch.mjs && node scripts/test-fetch-shapes.mjs",
     "audit-drops": "node scripts/audit-drops.mjs"
   },
   "dependencies": {

@@ -1122,7 +1122,8 @@ export default function ScarabTracker() {
       )}
 
       <footer className="st-foot">
-        Prices via <a href="https://poe.watch" target="_blank" rel="noopener noreferrer">poe.watch</a>
+        Exchange prices via <a href="https://www.pathofexile.com/developer/docs/reference#currencyexchange" target="_blank" rel="noopener noreferrer">GGG</a>
+        {" · fallbacks via "}<a href="https://poe.watch" target="_blank" rel="noopener noreferrer">poe.watch</a>
         {" and "}<a href="https://poe.ninja" target="_blank" rel="noopener noreferrer">poe.ninja</a>
         {" · "}one of each scarab per set · Scarab Ledger is a fan tool, not affiliated with GGG.
       </footer>

@@ -18,6 +18,7 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import {
   watchLeagues, matchWatchLeague, fetchWatchLeague, watchCategoryItems, watchStatus,
 } from "./poewatch.mjs";
+import { fetchGggExchange } from "./ggg-exchange.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -89,11 +90,60 @@ async function getLeagues() {
 /* What to credit in the UI. The site says where its numbers came from, and
    that claim has to track what actually answered on the day — poe.watch can be
    down, or thin on a category, and saying "poe.watch" then would be a lie. */
-function sourceLabel({ watch = 0, ninja = 0 } = {}) {
-  if (watch && ninja) return "poe.watch and poe.ninja";
-  if (watch) return "poe.watch";
-  if (ninja) return "poe.ninja";
-  return null;
+function sourceLabel({ ggg = 0, watch = 0, ninja = 0 } = {}) {
+  const sources = [];
+  if (ggg) sources.push("GGG Currency Exchange");
+  if (watch) sources.push("poe.watch");
+  if (ninja) sources.push("poe.ninja");
+  if (sources.length < 2) return sources[0] || null;
+  return `${sources.slice(0, -1).join(", ")} and ${sources.at(-1)}`;
+}
+
+function isGggCategory(item, key) {
+  const tags = new Set(item.tags || []);
+  if (key === "scarabs") return tags.has("scarab") || /scarab/i.test(item.name);
+  if (key === "astrolabes") return /astrolabe/i.test(item.name);
+  if (key === "catalysts") return /catalyst/i.test(item.name);
+  if (key === "fossils") return /fossil$/i.test(item.name);
+  if (key === "resonators") return /resonator$/i.test(item.name);
+  return false;
+}
+
+/* GGG supplies prices under internal Metadata ids; the fallback sources still
+   supply useful display/history fields. Merge on the RePoE-resolved name, but
+   let GGG's completed-trade price win wherever both know the item. */
+function mergeGggCategory(fallbackItems, ggg, key, divineRate) {
+  const official = (ggg?.items || []).filter((item) => isGggCategory(item, key));
+  const byName = new Map((fallbackItems || []).map((item) => [item.name, { ...item }]));
+  for (const item of official) {
+    const previous = byName.get(item.name) || {};
+    byName.set(item.name, {
+      ...previous,
+      ...item,
+      divineValue: divineRate > 0 ? item.chaosValue / divineRate : 0,
+    });
+  }
+  return {
+    items: [...byName.values()],
+    officialCount: official.length,
+    fallbackCount: [...byName.keys()].filter((name) => !ggg?.prices?.[name]).length,
+  };
+}
+
+function mergeGggPriceMap(priceMap, ggg, leagueParam) {
+  if (!ggg || !Object.keys(ggg.prices || {}).length) return priceMap;
+  const out = priceMap || { prices: {}, leagueParam, divisor: 1, counts: {}, categories: 0 };
+  for (const [name, entry] of Object.entries(ggg.prices)) {
+    const previous = out.prices[name];
+    out.prices[name] = {
+      ...(previous || {}),
+      ...entry,
+      ...(previous?.v ? { v: previous.v } : {}),
+    };
+  }
+  out.counts = { ...(out.counts || {}), "GGG Currency Exchange": Object.keys(ggg.prices).length };
+  out.categories = Object.keys(out.counts).length;
+  return out;
 }
 
 /* ---------- extra exchange categories (same features as scarabs) ---------- */
@@ -1011,6 +1061,17 @@ async function main() {
   const leagues = await getLeagues();
   console.log("Leagues:", leagues.map((l) => l.name).join(", "));
 
+  // One GGG digest contains every league and every exchange-traded pair for a
+  // completed hour. It is the primary source when available; failure is not
+  // fatal because poe.watch and poe.ninja remain complete fallbacks.
+  let gggExchange = null;
+  try {
+    gggExchange = await fetchGggExchange();
+    console.log(`GGG Currency Exchange: ${gggExchange.marketCount} markets for hour ${gggExchange.hourISO}, ${gggExchange.baseItemCount} base-item names`);
+  } catch (e) {
+    console.log(`GGG Currency Exchange unavailable — fallbacks only (${e.message})`);
+  }
+
   // poe.watch names its leagues independently, so resolve the list once and
   // map each of ours onto it. An empty list here is not fatal: every code path
   // below falls through to poe.ninja.
@@ -1027,6 +1088,10 @@ async function main() {
   const written = [];
   for (const [li, lg] of leagues.entries()) {
     try {
+      const ggg = gggExchange?.byLeague?.[lg.name] || null;
+      if (ggg) {
+        console.log(`  GGG: ${Object.keys(ggg.prices).length} named prices from ${ggg.markets} active markets (${ggg.directChaos} direct chaos, ${ggg.viaDivine} via divine)`);
+      }
       // One poe.watch pull per league covers every tab: scarabs, the extra
       // categories and the boss price map all read from these same rows.
       const watchName = matchWatchLeague(lg.name, watchLgs);
@@ -1045,17 +1110,23 @@ async function main() {
 
       const ctx = await getExchangeContext(lg.params);
       const priced = await getScarabPrices(lg.params, ctx?.divisor, watch);
-      if (!priced || !priced.items.length) { console.log(`- ${lg.name}: no usable scarab data, skipping`); continue; }
-      const { items, source, leagueParam, exchangeDivineRate } = priced;
+      const source = priced?.source || "ggg";
+      const leagueParam = priced?.leagueParam || ctx?.leagueParam || lg.params[0];
+      const exchangeDivineRate = priced?.exchangeDivineRate;
 
       // Divine rate: when prices come from the exchange overview, derive the
       // rate from that same response (live market, consistent with the scarab
       // prices). The stash/legacy currency endpoints can serve stale values.
-      const divineRate = (watch?.rate > 0)
+      const divineRate = (ggg?.divineRate > 0)
+        ? ggg.divineRate
+        : (watch?.rate > 0)
         ? watch.rate
         : (source === "exchange" && exchangeDivineRate)
           ? exchangeDivineRate
           : await getDivineRate(leagueParam, exchangeDivineRate);
+      const mergedScarabs = mergeGggCategory(priced?.items || [], ggg, "scarabs", divineRate);
+      const items = mergedScarabs.items;
+      if (!items.length) { console.log(`- ${lg.name}: no usable scarab data, skipping`); continue; }
       // divineValue may be missing/zero from some sources — recompute
       for (const it of items) if (!it.divineValue) it.divineValue = it.chaosValue / divineRate;
 
@@ -1063,7 +1134,7 @@ async function main() {
       let history = {};
       let ninjaMaxAgo = 0;
       // Only the legacy endpoint serves per-item history. poe.watch has a
-      // seven-point daily series, but the site's own snapshots are 4-hourly
+      // seven-point daily series, but the site's own snapshots are hourly
       // and already deeper than that, so self-history stays the chart source.
       if (source === "legacy" && lg.group === "current" && li < HISTORY_LEAGUES) {
         const nh = await getNinjaHistory(leagueParam, items);
@@ -1106,19 +1177,24 @@ async function main() {
       const dir = path.join(OUT, slug);
       await mkdir(dir, { recursive: true });
       const generatedAt = new Date().toISOString();
-      const scarabSource = sourceLabel(source === "watch" ? { watch: 1 } : { ninja: 1 });
-      await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, priceSource: scarabSource, historySource, historyAxis, rateHistory, rateHistorySource, items }));
+      const scarabSource = sourceLabel({
+        ggg: mergedScarabs.officialCount,
+        watch: source === "watch" ? mergedScarabs.fallbackCount : 0,
+        ninja: source !== "watch" && source !== "ggg" ? mergedScarabs.fallbackCount : 0,
+      });
+      await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, gggHour: ggg ? gggExchange.hourISO : null, divineRate, priceSource: scarabSource, historySource, historyAxis, rateHistory, rateHistorySource, items }));
       await writeFile(path.join(dir, "history.json"), JSON.stringify(history));
       await writeFile(path.join(dir, "selfhistory.json"), JSON.stringify(self));
       // broad price map for the boss profitability tab
       try {
-        const pm = await getPriceMap(lg.params, ctx, watch);
+        const pm = mergeGggPriceMap(await getPriceMap(lg.params, ctx, watch), ggg, leagueParam);
         if (pm) {
           const priceSource = sourceLabel({
+            ggg: pm.counts?.["GGG Currency Exchange"] || 0,
             watch: pm.counts?.["poe.watch"] || 0,
-            ninja: Object.entries(pm.counts || {}).filter(([k]) => k !== "poe.watch").reduce((n, [, v]) => n + v, 0),
+            ninja: Object.entries(pm.counts || {}).filter(([k]) => k !== "poe.watch" && k !== "GGG Currency Exchange").reduce((n, [, v]) => n + v, 0),
           });
-          await writeFile(path.join(dir, "prices.json"), JSON.stringify({ generatedAt, divineRate, priceSource, prices: pm.prices }));
+          await writeFile(path.join(dir, "prices.json"), JSON.stringify({ generatedAt, gggHour: ggg ? gggExchange.hourISO : null, divineRate, priceSource, prices: pm.prices }));
           console.log(`  prices: ${Object.keys(pm.prices).length} names across ${pm.categories} sources (league=${pm.leagueParam})`);
           await reportUnpricedBossItems(pm.prices, lg.name, li === 0);
         } else {
@@ -1137,17 +1213,19 @@ async function main() {
             if (wi.length) r = { items: wi, source: "watch" };
           }
           if (!r) r = await getExchangeCategory(lg.params, cat.type, cat.re, ctx?.divisor);
-          if (!r || !r.items.length) { console.log(`  ${cat.key}: no data for ${lg.name}`); continue; }
-          const rate2 = r.exchangeDivineRate || divineRate;
-          for (const it of r.items) if (!it.divineValue) it.divineValue = it.chaosValue / rate2;
+          const rate2 = ggg?.divineRate || r?.exchangeDivineRate || divineRate;
+          const mergedCat = mergeGggCategory(r?.items || [], ggg, cat.key, rate2);
+          const catItems = mergedCat.items;
+          if (!catItems.length) { console.log(`  ${cat.key}: no data for ${lg.name}`); continue; }
+          for (const it of catItems) if (!it.divineValue) it.divineValue = it.chaosValue / rate2;
           let catHist = {};
           let catSelf = { points: [] };
           let catHistorySource = "none";
           let catHistoryAxis = "days since first snapshot";
           let catRateHistory = [];
           if (lg.group === "current") {
-            catSelf = await updateSelfHistory(slug, r.items, `${cat.key}-`, rate2);
-            applySelfChanges(r.items, catSelf);
+            catSelf = await updateSelfHistory(slug, catItems, `${cat.key}-`, rate2);
+            applySelfChanges(catItems, catSelf);
             const catAlign = alignmentBase(catSelf, lg.start);
             catHist = selfHistoryToSeries(catSelf, catAlign);
             if (Object.keys(catHist).length) {
@@ -1162,10 +1240,15 @@ async function main() {
               axis: { mode: "self", t0Ms: catAlign ?? firstMs },
             });
           }
-          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, divineRate: rate2, priceSource: sourceLabel(r.source === "watch" ? { watch: 1 } : { ninja: 1 }), historySource: catHistorySource, historyAxis: catHistoryAxis, rateHistory: catRateHistory, rateHistorySource: !catRateHistory.length ? "none" : rateBackfill.length ? "ninja+self" : "self", items: r.items }));
+          const catPriceSource = sourceLabel({
+            ggg: mergedCat.officialCount,
+            watch: r?.source === "watch" ? mergedCat.fallbackCount : 0,
+            ninja: r && r.source !== "watch" ? mergedCat.fallbackCount : 0,
+          });
+          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, gggHour: ggg ? gggExchange.hourISO : null, divineRate: rate2, priceSource: catPriceSource, historySource: catHistorySource, historyAxis: catHistoryAxis, rateHistory: catRateHistory, rateHistorySource: !catRateHistory.length ? "none" : rateBackfill.length ? "ninja+self" : "self", items: catItems }));
           await writeFile(path.join(dir, `${cat.key}-history.json`), JSON.stringify(catHist));
           await writeFile(path.join(dir, `${cat.key}-selfhistory.json`), JSON.stringify(catSelf));
-          console.log(`  ${cat.key}: ${r.items.length} items`);
+          console.log(`  ${cat.key}: ${catItems.length} items (${mergedCat.officialCount} priced by GGG)`);
         } catch (e) {
           console.log(`  ${cat.key}: FAILED (${e.message})`);
         }
