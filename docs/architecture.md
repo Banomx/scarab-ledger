@@ -66,10 +66,10 @@ For unidentified boss uniques, the poe.watch adapter uses the current listing
 floor and preserves separate item-level markets. Boss data names the exact
 market for Watcher's Eye, Thread of Hope, Forbidden Flame and Forbidden Flesh;
 the resolver prefers that alias, then a generic unidentified listing, and only
-then the identified item. Aul's Uprising is the current exception: the aggregate
-feeds do not expose its unidentified market, so the Delve dataset carries a
-dated, visibly flagged official-trade floor which wins before the identified
-item value. Current aggregate feeds also do not split Kurgal's one- and
+then the identified item. Aul's Uprising is the current exception: no automated
+source exposes its unidentified market, while poe.watch exposes 17 identified
+aura outcomes. Delve therefore uses a strict arithmetic mean of all 17 and does
+not price the line if any outcome is missing. Current aggregate feeds also do not split Kurgal's one- and
 two-Abyssal-socket uniques; those lines keep the live name-wide quote and are
 badged `shared quote` rather than implying variant-level precision.
 
@@ -80,7 +80,7 @@ badged `shared quote` rather than implying variant-level precision.
 the detailed tools. It calls the pure boss and Delve calculation modules instead
 of maintaining separate estimates. Popular farms remains a dedicated scarab-only
 view, while TTK profiles stay inside Boss profit and Delve sample profiles stay
-inside Delve. Boss signals carry a boss id through `src/App.jsx`, so profitability
+inside the Delve Assumptions panel. Boss signals carry a boss id through `src/App.jsx`, so profitability
 and missing-price links open the relevant boss instead of the first boss in the
 list.
 
@@ -92,6 +92,16 @@ biome share times live target value, normalised to 0–100. It does not convert
 that score to currency per Delve because the depth-dependent reward-tier
 selection curve is not public. City boss EV is calculated separately and never
 enters the fossil ranking.
+
+The assumptions panel states the boundary directly. Community guide evidence
+places the special fossil reward cap around depth 1500, but the app does not
+invent the missing curve or multiply target values by a guessed spawn chance.
+Because all six exclusive targets share tier 4 and weight 100, that unknown
+common depth factor cancels from their relative ranking. City biome shares use
+the exact current PoEDB effect-depth ramps (63/135/200). Community guidance
+places the boss-within-city cap around depth 600, but its tier-selection curve
+remains unknown, so boss results stay per kill. Unpublished
+Delve boss drop rates use an editable, visibly marked 3% default.
 
 Delve boss distributions use one guaranteed roll from each boss's measured
 unique pool. Cards and fragments remain independent rolls. The older 3.25

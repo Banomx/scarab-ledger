@@ -99,13 +99,12 @@ function NumInput({ value, onCommit, step = 1, min = 0, width = 62, suffix, titl
 
 const DEPTH_PRESETS = [
   { depth: 300, label: "sideways" },
-  { depth: 600, label: "cities" },
+  { depth: 600, label: "boss cap" },
   { depth: 1500, label: "fossil cap" },
 ];
 const VIEWS = [
   ["fossils", "Fossils & resonators"],
   ["biomes", "Biome targets"],
-  ["samples", "My samples"],
   ["bosses", "Bosses"],
 ];
 
@@ -121,6 +120,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const [activeSampleName, setActiveSampleName] = useState(initialSamples.current.active);
   const [editingSample, setEditingSample] = useState(null);
   const [showAssumptions, setShowAssumptions] = useState(false);
+  const [showSamples, setShowSamples] = useState(false);
   const [openBiome, setOpenBiome] = useState(null);
   const [openBoss, setOpenBoss] = useState(null);
   const [openBossDrop, setOpenBossDrop] = useState(null);
@@ -379,7 +379,8 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     setSampleProfiles((profiles) => [...profiles, profile]);
     setActiveSampleName(name);
     setEditingSample(name);
-    setView("samples");
+    setShowAssumptions(true);
+    setShowSamples(true);
   };
 
   const renameSampleProfile = (from, next) => {
@@ -400,9 +401,143 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   };
 
   const wallFossils = fossils.filter((f) => f.wall);
+  const samplePanel = (
+    <>
+      <div className="dl-sample-title">
+        <div>
+          <h3>My Delve samples</h3>
+          <p>
+            Log encounters and fossil totals from one farming session. Personal observations replace guide
+            quantities category by category; minutes unlock an hourly projection.
+          </p>
+        </div>
+        <div className="dl-sample-title-actions">
+          <button className="dl-sample-new" onClick={() => setShowSamples(false)}>Hide</button>
+          <button className="dl-sample-new" onClick={() => addSampleProfile()}>+ New profile</button>
+        </div>
+      </div>
+
+      <div className="dl-sample-grid">
+        {sampleProfiles.map((profile) => {
+          const metrics = sampleMetrics(profile);
+          const editing = editingSample === profile.name && !profile.builtIn;
+          const active = profile.name === activeSampleName;
+          return (
+            <article key={profile.name} className={`dl-sample-card${active ? " active" : ""}`}>
+              <div className="dl-sample-card-head">
+                <div>
+                  {editing
+                    ? <input className="dl-sample-name" defaultValue={profile.name}
+                        aria-label="Sample profile name"
+                        onBlur={(e) => renameSampleProfile(profile.name, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+                    : <h4>{profile.name}</h4>}
+                  <span>{profile.builtIn
+                    ? "built-in guide quantities"
+                    : metrics.hasObservations
+                      ? `observed around depth ${metrics.sampleDepth}`
+                      : `sample depth ${metrics.sampleDepth}`}</span>
+                </div>
+                <em className={`dl-src ${profile.builtIn ? "ok" : "personal"}`}>{profile.builtIn ? "guide" : "custom"}</em>
+              </div>
+
+              <div className="dl-sample-yields">
+                {TUNABLES.map((field) => (
+                  <span key={field.key}>
+                    <small>{field.label.replace("Fossils per ", "").replace("Special fossils per ", "Special / ")}</small>
+                    <strong>{metrics.quantities[field.key].toFixed(2).replace(/\.00$/, "")}</strong>
+                    <em className={`dl-src ${SOURCES[metrics.quantitySources[field.key]]?.tone || ""}`}>
+                      {SOURCES[metrics.quantitySources[field.key]]?.tag}
+                    </em>
+                  </span>
+                ))}
+              </div>
+
+              <div className="dl-sample-summary">
+                {metrics.hasTimedSample
+                  ? <><strong>{metrics.totalEncounters}</strong> fossil encounters in <strong>{metrics.observations.minutes}</strong> minutes
+                      {metrics.markerShare != null && <> · <strong>{Math.round(metrics.markerShare * 100)}%</strong> were exclusive nodes</>}</>
+                  : "No timed encounter rate. The profile cannot produce an hourly figure yet."}
+              </div>
+
+              {editing && (
+                <div className="dl-sample-editor">
+                  <label className="dl-assume-row">
+                    <span>Sample depth</span>
+                    <NumInput value={profile.sampleDepth} step={10} min={1}
+                      onCommit={(n) => updateSample(profile.name, (p) => ({ ...p, sampleDepth: n }))} />
+                  </label>
+                  <div className="dl-sample-fields">
+                    {SAMPLE_FIELDS.map((field) => (
+                      <label key={field.key} className="dl-assume-row">
+                        <span>{field.label}</span>
+                        <NumInput value={profile.observations[field.key]} step={field.step} min={0}
+                          onCommit={(n) => updateSample(profile.name, (p) => ({
+                            ...p,
+                            observations: { ...p.observations, [field.key]: n },
+                          }))} />
+                      </label>
+                    ))}
+                  </div>
+                  {!!metrics.warnings.length && <p className="dl-note warn">{metrics.warnings.join(" · ")}</p>}
+                </div>
+              )}
+
+              <div className="dl-sample-actions">
+                {!active && <button onClick={() => setActiveSampleName(profile.name)}>Use profile</button>}
+                {active && <strong>Active</strong>}
+                {!profile.builtIn && <button onClick={() => setEditingSample(editing ? null : profile.name)}>{editing ? "Done" : "Edit sample"}</button>}
+                <button onClick={() => addSampleProfile(profile)}>Duplicate</button>
+                {!profile.builtIn && editing && (
+                  <button onClick={() => updateSample(profile.name, (p) => ({
+                    ...defaultSampleProfile(p.name, false), sampleDepth: p.sampleDepth,
+                  }))}>Clear observations</button>
+                )}
+                {!profile.builtIn && <button className="danger" onClick={() => deleteSampleProfile(profile.name)}>Delete</button>}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <p className="dl-note">
+        A timed projection assumes the encounter pace from that session continues in the selected biome.
+        It is personal evidence, not a claimed global Delve spawn rate.
+      </p>
+    </>
+  );
 
   return (
     <section className="dl-wrap">
+      {!havePrices && (
+        <div className="st-banner">
+          No price snapshot for {league} yet. Fossil and boss values need <code>fossils.json</code> or{" "}
+          <code>prices.json</code>, which the data workflow writes alongside the scarab data — they appear
+          after the next refresh. Biome structure, depth thresholds and drop rates are shown regardless.
+        </div>
+      )}
+      {havePrices && (
+        <div className="st-banner st-quiet dl-price-banner">
+          Prices via {priceSource || "GGG Currency Exchange, poe.watch and poe.ninja"} · {league}
+          {generatedAt ? ` · updated ${new Date(generatedAt).toLocaleString()}` : ""}
+          {" · "}1 Divine ≈ {Math.round(rate)} Chaos
+          {fossilData === "missing" && priceMap && priceMap !== "missing" ? " · fossil trends appear after the next refresh" : ""}
+          {useReal && (
+            <span className="st-banner-real">
+              {rateDrift && <>{" "}· divine {rateDrift.pct >= 0 ? "+" : "−"}{Math.abs(rateDrift.pct).toFixed(1)}% in {chgWindow}</>}
+              {!realBadges
+                ? " — no divine-adjusted figures yet. The fossil categories are new, so their history starts at zero; the first one appears about an hour after the second snapshot."
+                : realWindows.has(chgWindow)
+                  ? ", so every % here is divine-adjusted"
+                  : ` — but not for ${chgWindow}: that needs a stored rate from ${chgWindow} ago and the history is only ${Math.round(historyHours)}h old.`}
+              {realBadges && realWindows.size < 5 && (
+                <> · adjusted windows so far: {[...realWindows].sort((a, b) => parseInt(a, 10) - parseInt(b, 10)).join(", ")} — the rest fill in as snapshots accumulate.</>
+              )}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* ---------- bar ---------- */}
       <div className="dl-bar">
         <label className="dl-field">
@@ -441,37 +576,76 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
 
       {showAssumptions && (
         <div className="dl-assume">
-          <p className="dl-assume-lead">
-            Biome shares and encounter tiers come from current data-mined tables. The missing reward-tier
-            selection curve is why the opportunity score is relative, not currency. Node quantities use the
-            active profile: personal averages replace the guide fallbacks one category at a time.
-          </p>
-          <div className="dl-assume-group">
-            <h4>Active yields</h4>
-            {TUNABLES.map((t) => (
-              <div key={t.key} className="dl-assume-row" title={t.help}>
-                <span>{t.label}<em className={`dl-src ${SOURCES[sample.quantitySources[t.key]]?.tone || ""}`}>
-                  {SOURCES[sample.quantitySources[t.key]]?.tag}
-                </em></span>
-                <strong>{sample.quantities[t.key].toFixed(2).replace(/\.00$/, "")}</strong>
+          <div className="dl-assume-layout">
+            <div className="dl-assume-values">
+              <p className="dl-assume-lead">
+                Biome shares and encounter tiers come from current data-mined tables. Node quantities use the
+                active profile: personal averages replace the guide fallbacks one category at a time.
+              </p>
+              <div className="dl-assume-group">
+                <h4>Active yields</h4>
+                {TUNABLES.map((t) => (
+                  <div key={t.key} className="dl-assume-row" title={t.help}>
+                    <span>{t.label}<em className={`dl-src ${SOURCES[sample.quantitySources[t.key]]?.tone || ""}`}>
+                      {SOURCES[sample.quantitySources[t.key]]?.tag}
+                    </em></span>
+                    <strong>{sample.quantities[t.key].toFixed(2).replace(/\.00$/, "")}</strong>
+                  </div>
+                ))}
+                <p className="dl-assume-note">
+                  <button className="dl-inline-link" onClick={() => setShowSamples(true)}>My samples</button> records
+                  your own node quantities and pace. The Guide baseline invents no node frequency or hourly rate.
+                </p>
               </div>
-            ))}
-            <p className="dl-assume-note">
-              Open <button className="dl-inline-link" onClick={() => setView("samples")}>My samples</button> to
-              log encounters and fossil totals. The Guide baseline contains no invented node frequency or hourly rate.
-            </p>
-          </div>
-          <div className="dl-assume-group">
-            <h4>Fractured walls</h4>
-            <label className="st-check">
-              <input type="checkbox" checked={settings.openWalls !== false}
-                onChange={(e) => patch({ openWalls: e.target.checked })} />
-              <span>Count wall-locked fossils (Gilded, Lucent, Sanctified)</span>
-            </label>
-            <p className="dl-assume-note">
-              Those three sit behind fractured walls. Turning this off removes them from generic-node and
-              cache ranges; it never changes the exclusive fossil target.
-            </p>
+              <div className="dl-assume-group">
+                <h4>Depth guidance</h4>
+                <div className="dl-depth-guide">
+                  <strong>{settings.depth >= 1500 ? "Special-node cap reached" : "Special-node chance still scaling"}</strong>
+                  <span>
+                    Community guide evidence places the rare fossil-node reward cap around depth 1500. The exact
+                    tier-selection curve is not published, so target currency is not multiplied by a guessed chance.
+                    All six special fossil targets are tier 4 with the same weight, so that shared depth factor cancels
+                    out of their relative ranking.
+                  </span>
+                </div>
+                <div className="dl-depth-guide">
+                  <strong>City biome share is depth-adjusted exactly</strong>
+                  <span>
+                    Current data-mined weights reach full strength at depth 63 for Vaal Outpost, 135 for Abyssal City
+                    and 200 for Primeval Ruins. Those ramps already change the city share shown on each boss card.
+                  </span>
+                </div>
+                <div className="dl-depth-guide">
+                  <strong>{settings.depth >= 600 ? "Guide boss-cap depth reached" : "Boss encounter chance still scaling"}</strong>
+                  <span>
+                    Community Delve guidance places the chance for a city to contain its boss at its cap around depth
+                    600. The exact depth-to-tier selection curve is not published, so boss cards stay value per kill
+                    instead of turning that guide observation into a made-up bosses-per-hour figure.
+                  </span>
+                </div>
+              </div>
+              <div className="dl-assume-group">
+                <h4>Fractured walls</h4>
+                <label className="st-check">
+                  <input type="checkbox" checked={settings.openWalls !== false}
+                    onChange={(e) => patch({ openWalls: e.target.checked })} />
+                  <span>Count wall-locked fossils (Gilded, Lucent, Sanctified)</span>
+                </label>
+                <p className="dl-assume-note">
+                  Those three sit behind fractured walls. Turning this off removes them from generic-node and
+                  cache ranges; it never changes the exclusive fossil target.
+                </p>
+              </div>
+            </div>
+            <section className={`dl-assume-samples${showSamples ? " open" : ""}`}>
+              {showSamples ? samplePanel : (
+                <button className="dl-samples-open" onClick={() => setShowSamples(true)}>
+                  <span>My samples</span>
+                  <strong>{sampleProfiles.length - 1} custom profile{sampleProfiles.length === 2 ? "" : "s"}</strong>
+                  <em>Open the observation tracker</em>
+                </button>
+              )}
+            </section>
           </div>
           <div className="dl-source-grid">
             <a href="https://poedb.tw/us/DelveBiomes" target="_blank" rel="noreferrer">
@@ -500,39 +674,14 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
         <strong> your observed pace</strong> after a custom sample contains timed observations.
       </p>
 
-      {!havePrices && (
-        <div className="st-banner">
-          No price snapshot for {league} yet. Fossil and boss values need <code>fossils.json</code> or{" "}
-          <code>prices.json</code>, which the data workflow writes alongside the scarab data — they appear
-          after the next refresh. Biome structure, depth thresholds and drop rates are shown regardless.
-        </div>
-      )}
-      {havePrices && (
-        <div className="st-banner st-quiet">
-          Prices via {priceSource || "GGG Currency Exchange, poe.watch and poe.ninja"} · {league}
-          {generatedAt ? ` · updated ${new Date(generatedAt).toLocaleString()}` : ""}
-          {" · "}1 Divine ≈ {Math.round(rate)} Chaos
-          {fossilData === "missing" && priceMap && priceMap !== "missing" ? " · fossil trends appear after the next refresh" : ""}
-          {useReal && (
-            <span className="st-banner-real">
-              {rateDrift && <>{" "}· divine {rateDrift.pct >= 0 ? "+" : "−"}{Math.abs(rateDrift.pct).toFixed(1)}% in {chgWindow}</>}
-              {!realBadges
-                ? " — no divine-adjusted figures yet. The fossil categories are new, so their history starts at zero; the first one appears about an hour after the second snapshot."
-                : realWindows.has(chgWindow)
-                  ? ", so every % here is divine-adjusted"
-                  : ` — but not for ${chgWindow}: that needs a stored rate from ${chgWindow} ago and the history is only ${Math.round(historyHours)}h old.`}
-              {realBadges && realWindows.size < 5 && (
-                <> · adjusted windows so far: {[...realWindows].sort((a, b) => parseInt(a, 10) - parseInt(b, 10)).join(", ")} — the rest fill in as snapshots accumulate.</>
-              )}
-            </span>
-          )}
-        </div>
-      )}
-
       <div className="dl-views">
         {VIEWS.map(([k, label]) => (
           <button key={k} className={view === k ? "on" : ""}
-            onClick={() => { setView(k); setDragSel(null); }}>{label}</button>
+            onClick={() => {
+              setView(k);
+              if (k === "biomes") setRankBy("target");
+              setDragSel(null);
+            }}>{label}</button>
         ))}
       </div>
 
@@ -915,112 +1064,6 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
         </>
       )}
 
-      {/* ================= SAMPLE PROFILES ================= */}
-      {view === "samples" && (
-        <>
-          <div className="dl-sample-title">
-            <div>
-              <h3>My Delve samples</h3>
-              <p>
-                Log encounters and fossil totals from one farming session. Quantities replace the guide
-                fallbacks category by category; adding minutes also unlocks your personal priced-pool low–high hourly
-                projection. Nothing here changes market prices or boss drop rates.
-              </p>
-            </div>
-            <button className="dl-sample-new" onClick={() => addSampleProfile()}>+ New profile</button>
-          </div>
-
-          <div className="dl-sample-grid">
-            {sampleProfiles.map((profile) => {
-              const metrics = sampleMetrics(profile);
-              const editing = editingSample === profile.name && !profile.builtIn;
-              const active = profile.name === activeSampleName;
-              return (
-                <article key={profile.name} className={`dl-sample-card${active ? " active" : ""}`}>
-                  <div className="dl-sample-card-head">
-                    <div>
-                      {editing
-                        ? <input className="dl-sample-name" defaultValue={profile.name}
-                            aria-label="Sample profile name"
-                            onBlur={(e) => renameSampleProfile(profile.name, e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-                        : <h4>{profile.name}</h4>}
-                      <span>{profile.builtIn
-                        ? "built-in guide quantities"
-                        : metrics.hasObservations
-                          ? `observed around depth ${metrics.sampleDepth}`
-                          : `sample depth ${metrics.sampleDepth}`}</span>
-                    </div>
-                    <em className={`dl-src ${profile.builtIn ? "ok" : "personal"}`}>{profile.builtIn ? "guide" : "custom"}</em>
-                  </div>
-
-                  <div className="dl-sample-yields">
-                    {TUNABLES.map((field) => (
-                      <span key={field.key}>
-                        <small>{field.label.replace("Fossils per ", "").replace("Special fossils per ", "Special / ")}</small>
-                        <strong>{metrics.quantities[field.key].toFixed(2).replace(/\.00$/, "")}</strong>
-                        <em className={`dl-src ${SOURCES[metrics.quantitySources[field.key]]?.tone || ""}`}>
-                          {SOURCES[metrics.quantitySources[field.key]]?.tag}
-                        </em>
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="dl-sample-summary">
-                    {metrics.hasTimedSample
-                      ? <><strong>{metrics.totalEncounters}</strong> fossil encounters in <strong>{metrics.observations.minutes}</strong> minutes
-                          {metrics.markerShare != null && <> · <strong>{Math.round(metrics.markerShare * 100)}%</strong> were exclusive nodes</>}</>
-                      : "No timed encounter rate. The profile cannot produce an hourly figure yet."}
-                  </div>
-
-                  {editing && (
-                    <div className="dl-sample-editor">
-                      <label className="dl-assume-row">
-                        <span>Sample depth</span>
-                        <NumInput value={profile.sampleDepth} step={10} min={1}
-                          onCommit={(n) => updateSample(profile.name, (p) => ({ ...p, sampleDepth: n }))} />
-                      </label>
-                      <div className="dl-sample-fields">
-                        {SAMPLE_FIELDS.map((field) => (
-                          <label key={field.key} className="dl-assume-row">
-                            <span>{field.label}</span>
-                            <NumInput value={profile.observations[field.key]} step={field.step} min={0}
-                              onCommit={(n) => updateSample(profile.name, (p) => ({
-                                ...p,
-                                observations: { ...p.observations, [field.key]: n },
-                              }))} />
-                          </label>
-                        ))}
-                      </div>
-                      {!!metrics.warnings.length && <p className="dl-note warn">{metrics.warnings.join(" · ")}</p>}
-                    </div>
-                  )}
-
-                  <div className="dl-sample-actions">
-                    {!active && <button onClick={() => setActiveSampleName(profile.name)}>Use profile</button>}
-                    {active && <strong>Active</strong>}
-                    {!profile.builtIn && <button onClick={() => setEditingSample(editing ? null : profile.name)}>{editing ? "Done" : "Edit sample"}</button>}
-                    <button onClick={() => addSampleProfile(profile)}>Duplicate</button>
-                    {!profile.builtIn && editing && (
-                      <button onClick={() => updateSample(profile.name, (p) => ({
-                        ...defaultSampleProfile(p.name, false), sampleDepth: p.sampleDepth,
-                      }))}>Clear observations</button>
-                    )}
-                    {!profile.builtIn && <button className="danger" onClick={() => deleteSampleProfile(profile.name)}>Delete</button>}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-
-          <p className="dl-note">
-            A timed projection assumes the encounter pace from that session continues in the selected biome.
-            It is personal evidence, not a claimed global Delve spawn rate. Use separate profiles for different
-            depths, builds or routing styles.
-          </p>
-        </>
-      )}
-
       {/* ================= BOSSES ================= */}
       {view === "bosses" && (
         <>
@@ -1090,10 +1133,18 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                                       onClick={() => setOpenBossDrop(breakdownOpen ? null : breakdownKey)}
                                       aria-expanded={breakdownOpen}>
                                       <span className="dl-drop-chevron" aria-hidden="true">{breakdownOpen ? "▾" : "▸"}</span>
-                                      <span>{l.label}<small>{fmtChaos(l.unit)}c average</small></span>
+                                      <span>
+                                        {l.label}
+                                        <em className="dl-variant-count">{variants.length} variants</em>
+                                        <small>{fmtChaos(l.unit)}c average</small>
+                                      </span>
                                     </button>
                                   ) : l.label}
-                                  {src.unrated && <em className="dl-flag warn" title="Listed as a drop, no published rate">unrated</em>}
+                                  {src.unrated && (
+                                    <em className="dl-flag warn" title={src.estimateNote || "No published rate; using an editable 3% default."}>
+                                      3% default
+                                    </em>
+                                  )}
                                   {src.preliminary && <em className="dl-flag" title={src.preliminaryNote || "Preliminary estimate"}>prelim</em>}
                                   {l.variantUnavailable && (
                                     <em className="dl-flag" title="The live aggregate feeds do not split this socket variant, so this line uses the shared name-wide market quote.">
@@ -1110,24 +1161,6 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                                       title={`The automated feeds do not list this exact market. This price was checked manually${l.fallbackAge != null ? ` ${l.fallbackAge} day${l.fallbackAge === 1 ? "" : "s"} ago` : ""}.`}>
                                       set{l.fallbackAge != null && l.fallbackAge >= 30 ? ` ${l.fallbackAge}d` : ""}
                                     </em>
-                                  )}
-                                  {/* Zero sightings in a sample is a ceiling, not a blank:
-                                      the rule of three puts 95% confidence under 3/n. */}
-                                  {src.unrated && src.sampleZero > 0 && l.rate === 0 && (
-                                    <button className="dl-apply"
-                                      title={`Absent from the ${src.sampleZero}-kill rate list, so it likely dropped 0 times. Rule of three: 95% confident it is under ${(300 / src.sampleZero).toFixed(0)}%. Click to use that ceiling.`}
-                                      onClick={() => setSettings((st) => sanitizeSettings({
-                                        ...st,
-                                        bosses: {
-                                          ...(st.bosses || {}),
-                                          [b.delve.id]: {
-                                            ...((st.bosses || {})[b.delve.id] || {}),
-                                            drops: { ...(((st.bosses || {})[b.delve.id] || {}).drops || {}), [l.key]: { chance: 3 / src.sampleZero } },
-                                          },
-                                        },
-                                      }))}>
-                                      use ≤{(300 / src.sampleZero).toFixed(0)}%
-                                    </button>
                                   )}
                                 </td>
                                 <td className="r">
@@ -1177,6 +1210,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         Rates: poewiki, {b.delve.sample}. The normal unique pool totals 100%; cards and fragments
                         roll separately, so one kill can still hand you several items. Prices use the same
                         GGG-first resolver as Boss profit, with poe.watch and poe.ninja filling unsupported markets.
+                        {b.delve.groups.some((group) => group.drops.some((drop) => drop.unrated)) && " Drops without a published rate use an editable 3% default and are marked in the table."}
                         {b.missingPrices > 0 && ` ${b.missingPrices} line${b.missingPrices > 1 ? "s have" : " has"} no supported market price and contribute nothing.`}
                       </p>
                     </div>

@@ -324,7 +324,7 @@ export function computeBoss(boss, resolve, settings = {}) {
         kind: g.kind, groupId: g.id,
       };
     });
-    lines.sort((a, b) => b.value - a.value);
+    if (g.displayOrder !== "source") lines.sort((a, b) => b.value - a.value);
 
     /* A line the market cannot price is not shown. It contributed nothing to
        the EV anyway — an unpriced drop is worth 0 — so hiding it changes what

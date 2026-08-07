@@ -307,31 +307,41 @@ Two naming wrinkles it also pins:
 
 ## Delve tab
 
-The Delve tool has four views:
+The Delve tool has three views:
 
 - **Fossils & resonators** shows live prices, history, pool value ranges and
   current fractured-wall targets.
 - **Biome targets** compares the six exclusive fossil encounters. Target value
   is currency per encounter; Opportunity is a relative 0–100 routing score from
   biome share and target value. It is not currency per Delve.
-- **My samples** stores a built-in Guide baseline and any number of custom
-  observation profiles. Enter encounter counts, fossil totals and minutes to
-  replace guide quantities and unlock a personal priced-pool low–high hourly projection;
-  a timed route with no fossil encounters remains a valid zero-rate sample.
 - **Bosses** keeps Ahuatotli, Kurgal and Aul separate from fossil routing. Each
   boss has a guaranteed unique pool plus separate card/fragment rolls, with
-  preliminary or unpublished rates visibly flagged for the player to edit. The view shows value
-  and distribution per kill plus city-biome share, but no invented
+  preliminary or unpublished rates visibly flagged for the player to edit.
+  Unpublished rates start at a marked 3% default. The view shows value and
+  distribution per kill plus city-biome share, but no invented
   bosses-per-100-Delves rate. Boss cards/fragments use GGG pricing first; unique
   markets fall back to poe.watch or poe.ninja. Kurgal's preliminary Eye line
   uses the live arithmetic mean of all four variants and expands to show each
-  underlying price.
+  underlying price. Aul's Uprising similarly shows the strict mean and complete
+  breakdown of all 17 identified aura outcomes because no automated source
+  exposes the unidentified market.
+
+**My samples** is inside Assumptions beside the active guide values. It stores a
+built-in Guide baseline and custom observation profiles. Encounter counts,
+fossil totals and minutes can replace guide quantities and unlock a personal
+priced-pool hourly range; a timed route with no encounters remains a valid dry
+sample.
 
 PoEDB supplies biome weights plus exclusive encounter tier, weight and minimum
 depth. All six exclusive encounters are tier 4 with weight 100, which supports
 a relative comparison but not an absolute spawn rate because reward-tier
 selection by depth is not public. Generic nodes and Smuggler's caches therefore
 show low/median/high pool scenarios rather than an equal-weight expected value.
+The current city-biome ramps are exact: Vaal Outpost reaches full weight at
+depth 63, Abyssal City at 135 and Primeval Ruins at 200. Boss selection inside
+those cities is reported by community Delve guidance to keep scaling until
+around depth 600, but the exact reward-tier curve is not published. Boss output
+therefore remains per kill.
 
 The Guide baseline uses three exclusive fossils per target, two fossils per
 generic node and five per cache. Each value is labelled as guide evidence or a

@@ -103,7 +103,7 @@ export const BIOMES = [
   {
     id: "vaal", name: "Vaal Outpost", tone: "#c96a3f", city: true,
     pool: [],
-    weight: { lo: { depth: 32, weight: 0 }, hi: { depth: 200, weight: 23 } },
+    weight: { lo: { depth: 32, weight: 0 }, hi: { depth: 63, weight: 23 } },
     exclusive: null,
     themed: ["Ruined Chamber (multiple loot containers)", "The Grand Architect's Temple (Ahuatotli)"],
     boss: "ahuatotli",
@@ -112,7 +112,7 @@ export const BIOMES = [
   {
     id: "abyssal-city", name: "Abyssal City", tone: "#7f6ad4", city: true,
     pool: [],
-    weight: { lo: { depth: 70, weight: 0 }, hi: { depth: 350, weight: 23 } },
+    weight: { lo: { depth: 70, weight: 0 }, hi: { depth: 135, weight: 23 } },
     exclusive: null,
     themed: ["Abyssal Chamber (multiple loot containers)", "The Lich's Tomb (Kurgal)"],
     boss: "kurgal",
@@ -121,7 +121,7 @@ export const BIOMES = [
   {
     id: "primeval", name: "Primeval Ruins", tone: "#b06ad4", city: true,
     pool: [],
-    weight: { lo: { depth: 110, weight: 0 }, hi: { depth: 500, weight: 17 } },
+    weight: { lo: { depth: 110, weight: 0 }, hi: { depth: 200, weight: 17 } },
     exclusive: null,
     themed: ["Primeval Chamber (multiple loot containers)", "The Crystal King's Throne (Aul)"],
     boss: "aul",
@@ -251,18 +251,17 @@ export const RESONATOR_SOCKETS = { Primitive: 1, Potent: 2, Powerful: 3, Prime: 
    from its normal pool rather than having a fake chance to drop nothing.
 
    Rates are poewiki's "Estimated drop rates in version 3.25.0, n=100"
-   lists. Lines the wiki names as drops but leaves out of the rate list
-   carry `chance: 0` and `unrated: true` — they show up greyed with a
-   prompt to set your own rather than being handed an invented number
-   that would quietly inflate the EV.
+   lists. Lines the wiki names as drops but leaves out of the rate list use
+   an editable 3% default and carry `unrated: true`, so the estimate is visible
+   instead of passing as sampled data.
 
    No `entry` cost: you don't buy your way into a delve boss, you find
    one. `ttk` is only here because computeBoss wants it; the tab reports
    value per kill plus city-biome share. Boss encounters per 100 Delves are
    intentionally absent because the boss-per-city rate is not public. */
 
-const pool = (drops) => ({ id: "unique", kind: "pool", label: "Unique pool", rolls: 1, drops });
-const indep = (drops) => ({ id: "extra", kind: "independent", label: "Additional drops", drops });
+const pool = (drops) => ({ id: "unique", kind: "pool", label: "Unique pool", rolls: 1, displayOrder: "source", drops });
+const indep = (drops) => ({ id: "extra", kind: "independent", label: "Additional drops", displayOrder: "source", drops });
 
 export const DELVE_BOSSES = [
   {
@@ -288,20 +287,20 @@ export const DELVE_BOSSES = [
     ttk: 75, overhead: 0,
     groups: [
       pool([
-        { key: "hale-1", item: "Hale Negator", label: "Hale Negator (1 socket)", share: 0.40 },
         { key: "command-1", item: "Command of the Pit", label: "Command of the Pit (1 socket)", share: 0.15 },
+        { key: "command-2", item: "Command of the Pit", label: "Command of the Pit (2 socket)", share: 0.05 },
+        { key: "hale-1", item: "Hale Negator", label: "Hale Negator (1 socket)", share: 0.40 },
         { key: "hale-2", item: "Hale Negator", label: "Hale Negator (2 socket)", share: 0.10 },
         { key: "ahkeli", item: "Ahkeli's Valley", share: 0.10 },
         { key: "uzaza", item: "Uzaza's Mountain", share: 0.10 },
         { key: "putembo", item: "Putembo's Meadow", share: 0.10 },
-        { key: "command-2", item: "Command of the Pit", label: "Command of the Pit (2 socket)", share: 0.05 },
       ]),
       indep([
         { key: "misery", item: "Misery in Darkness", chance: 0.20 },
         // Preliminary Allflame estimate. The conditional outcome is treated as
         // one of the four Eye variants at equal weight, so the collapsed line
         // uses their live sum divided by four and the UI can reveal each price.
-        { key: "zorath", item: "@zorath-eyes", label: "Zorath's Eye (4-variant average)",
+        { key: "zorath", item: "@zorath-eyes", label: "Zorath's Eye",
           chance: 0.50, preliminary: true,
           preliminaryNote: "Preliminary 50% estimate; edit this rate if you have a better sample." },
       ]),
@@ -313,11 +312,10 @@ export const DELVE_BOSSES = [
     ttk: 90, overhead: 0,
     groups: [
       pool([
-        // The unidentified amulet is the form Aul drops. Neither aggregate
-        // feed currently exposes that market, so use the audited official
-        // trade-site floor until an automated source starts listing it.
-        { item: "Aul's Uprising", label: "Unidentified Aul's Uprising", unidentified: true,
-          fallback: { chaos: 50, asOf: "2026-08-07" }, share: 0.61 },
+        // No aggregate source exposes the unidentified market. poe.watch does
+        // expose all 17 identified aura outcomes separately, so use their
+        // arithmetic mean and show the complete breakdown in the UI.
+        { item: "@auls-uprising", label: "Aul's Uprising", share: 0.61 },
         { item: "Crown of the Tyrant", share: 0.15 },
         { item: "Ahkeli's Meadow", share: 0.08 },
         { item: "Uzaza's Valley", share: 0.08 },
@@ -325,14 +323,11 @@ export const DELVE_BOSSES = [
       ]),
       indep([
         { item: "Luminous Trove", chance: 0.16 },
-        // A divination card, so GGG's exchange feed prices it like the other
-        // exchange-backed drops. What's missing is the RATE: the wiki lists
-        // it in Aul's drop table but leaves it out of
-        // the n=100 rate list, which most likely means it didn't drop once in
-        // that sample. Zero of 100 is not "no information" — by the rule of
-        // three it puts a 95% ceiling of about 3% on it, and the UI offers
-        // that ceiling as a one-click value rather than baking a guess in.
-        { item: "Desecrated Virtue", chance: 0, unrated: true, sampleZero: 100 },
+        // A divination card, so GGG's exchange feed can price it. The wiki
+        // lists the drop but publishes no rate; use the requested 3% default
+        // and keep it visibly marked and editable.
+        { item: "Desecrated Virtue", chance: 0.03, unrated: true,
+          estimateNote: "No published rate; using an editable 3% default." },
       ]),
     ],
   },
@@ -346,6 +341,7 @@ export const DELVE_BOSS_BY_ID = Object.fromEntries(DELVE_BOSSES.map((b) => [b.id
 
    Empty on purpose. Exchange-backed fossils, fragments and cards are priced
    by GGG first; poe.watch and poe.ninja cover the remaining item markets.
-   Aul's unidentified amulet carries its temporary audited fallback directly
-   on the drop line so its age is visible beside that specific price. */
+   Aul's unidentified amulet has no supported automated market. Its drop line
+   instead uses the strict arithmetic mean of all 17 identified aura outcomes
+   supplied by poe.watch, with the complete breakdown visible in the UI. */
 export const FALLBACKS = {};

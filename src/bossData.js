@@ -77,7 +77,7 @@ export const GROUP_TONES = {
    is shown. Regex aggregates keep their existing market-wide behaviour. */
 export const SYNTHETIC = {
   "@zorath-eyes": {
-    label: "Zorath's Eye (average of four variants)",
+    label: "Zorath's Eye",
     items: [
       "Zorath's Eye of Malevolence",
       "Zorath's Eye of Authority",
@@ -85,6 +85,29 @@ export const SYNTHETIC = {
       "Zorath's Eye of the Endless",
     ],
     match: (n) => /^Zorath's Eye of (?:Malevolence|Authority|the Inevitable|the Endless)$/.test(n),
+  },
+  "@auls-uprising": {
+    label: "Aul's Uprising",
+    items: [
+      "Aul's Uprising (Anger)",
+      "Aul's Uprising (Clarity)",
+      "Aul's Uprising (Determination)",
+      "Aul's Uprising (Discipline)",
+      "Aul's Uprising (Envy)",
+      "Aul's Uprising (Grace)",
+      "Aul's Uprising (Haste)",
+      "Aul's Uprising (Hatred)",
+      "Aul's Uprising (Malevolence)",
+      "Aul's Uprising (Pride)",
+      "Aul's Uprising (Purity of Elements)",
+      "Aul's Uprising (Purity of Fire)",
+      "Aul's Uprising (Purity of Ice)",
+      "Aul's Uprising (Purity of Lightning)",
+      "Aul's Uprising (Vitality)",
+      "Aul's Uprising (Wrath)",
+      "Aul's Uprising (Zealotry)",
+    ],
+    match: (n) => /^Aul's Uprising \([^)]+\)$/.test(n),
   },
   "@awakened-common": {
     label: "Awakened support gem (random, non-exceptional)",

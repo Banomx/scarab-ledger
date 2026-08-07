@@ -94,7 +94,7 @@ test("all six exclusive encounters carry the data-mined tier, weight and minimum
   }
 });
 
-test("boss drop rates are the poewiki 3.25 n=100 figures", () => {
+test("boss drop rates keep sampled values and visibly marked estimates separate", () => {
   const rate = (id, key) => {
     const b = DELVE_BOSSES.find((x) => x.id === id);
     const d = b.groups.flatMap((group) => group.drops).find((x) => (x.key || x.item) === key);
@@ -106,9 +106,10 @@ test("boss drop rates are the poewiki 3.25 n=100 figures", () => {
   near(rate("ahuatotli", "Doryani's Machinarium"), 0.16, 1e-9, "Machinarium");
   near(rate("kurgal", "hale-1"), 0.40, 1e-9, "Hale Negator 1s");
   near(rate("kurgal", "misery"), 0.20, 1e-9, "Misery in Darkness");
-  near(rate("aul", "Aul's Uprising"), 0.61, 1e-9, "Aul's Uprising");
+  near(rate("aul", "@auls-uprising"), 0.61, 1e-9, "Aul's Uprising");
   near(rate("aul", "Crown of the Tyrant"), 0.15, 1e-9, "Crown of the Tyrant");
   near(rate("kurgal", "zorath"), 0.50, 1e-9, "Zorath's preliminary rate");
+  near(rate("aul", "Desecrated Virtue"), 0.03, 1e-9, "unpublished-rate default");
 });
 
 test("each boss has a guaranteed 100% unique pool and separate additional rolls", () => {
@@ -122,11 +123,14 @@ test("each boss has a guaranteed 100% unique pool and separate additional rolls"
   }
 });
 
-test("unrated drop lines contribute nothing rather than an invented rate", () => {
+test("unrated drop lines use the requested marked 3% default", () => {
   for (const b of DELVE_BOSSES) {
     for (const d of b.groups.flatMap((group) => group.drops)) {
       const rate = d.share ?? d.chance;
-      if (d.unrated) assert.equal(rate, 0, `${b.name}: ${d.item} is unrated but carries a rate`);
+      if (d.unrated) {
+        assert.equal(rate, 0.03, `${b.name}: ${d.item} does not use the 3% default`);
+        assert.match(d.estimateNote || "", /3% default/i, `${b.name}: ${d.item} needs a visible notice`);
+      }
       assert.ok(rate >= 0 && rate <= 1, `${b.name}: ${d.item} rate out of range`);
     }
   }
@@ -185,6 +189,15 @@ test("shares sum to 1 and the deep-mine city shares match the wiki weights", () 
   near(rows.find((r) => r.biome.id === "vaal").share, 23 / denom, 1e-9, "Vaal Outpost");
   near(rows.find((r) => r.biome.id === "primeval").share, 17 / denom, 1e-9, "Primeval Ruins");
   near(rows.find((r) => r.biome.id === "mines").share, 0, 1e-9, "Mines");
+});
+
+test("current data-mined city biome ramps finish at their effect depths", () => {
+  const caps = { vaal: [63, 23], "abyssal-city": [135, 23], primeval: [200, 17] };
+  for (const [id, [depth, weight]] of Object.entries(caps)) {
+    const biome = BIOMES.find((row) => row.id === id);
+    assert.equal(biome.weight.hi.depth, depth, `${biome.name}: effect depth`);
+    near(weightAt(biome, depth), weight, 1e-9, `${biome.name}: capped weight`);
+  }
 });
 
 console.log("biome value");
@@ -403,6 +416,36 @@ test("the Zorath line prices the four Eyes as a visible arithmetic average", () 
   assert.equal(eye.priceEntry.components.length, 4, "dropdown needs all four components");
   const names = bossItems(DELVE_BOSSES.find((boss) => boss.id === "kurgal"));
   for (const name of Object.keys(prices)) assert.ok(names.has(name), `hourly gap-fill is missing ${name}`);
+});
+
+test("the Aul line prices the complete 17-aura market as a strict arithmetic average", () => {
+  const boss = DELVE_BOSSES.find((row) => row.id === "aul");
+  const names = [...bossItems(boss)].filter((name) => /^Aul's Uprising \([^)]+\)$/.test(name));
+  assert.equal(names.length, 17, "Aul dropdown needs every aura outcome");
+
+  const prices = Object.fromEntries(names.map((name, i) => [name, { c: (i + 1) * 10 }]));
+  const aul = computeDelveBosses(makeResolver(prices), { ...DEFAULTS, depth: 600 })
+    .find((row) => row.delve.id === "aul");
+  const amulet = aul.dropLines.find((line) => line.key === "@auls-uprising");
+  near(amulet.unit, 90, 1e-9, "17-aura average");
+  near(amulet.value, 90 * 0.61, 1e-9, "Aul's Uprising pool EV");
+  assert.equal(amulet.priceEntry.components.length, 17, "dropdown needs all 17 prices");
+
+  const partial = { ...prices };
+  delete partial[names[0]];
+  const missing = computeDelveBosses(makeResolver(partial), { ...DEFAULTS, depth: 600 })
+    .find((row) => row.delve.id === "aul");
+  assert.ok(!missing.dropLines.some((line) => line.key === "@auls-uprising"),
+    "a partial outcome list must not silently change the average");
+});
+
+test("Kurgal keeps same-item socket variants beside each other", () => {
+  const kurgal = computeDelveBosses(makeResolver({
+    "Command of the Pit": { c: 10 },
+    "Hale Negator": { c: 20 },
+  }), { ...DEFAULTS, depth: 600 }).find((row) => row.delve.id === "kurgal");
+  assert.deepEqual(kurgal.dropLines.slice(0, 4).map((line) => line.key),
+    ["command-1", "command-2", "hale-1", "hale-2"]);
 });
 
 test("one-kill simulation rolls the actual synthetic variant, not a fixed average item", () => {
