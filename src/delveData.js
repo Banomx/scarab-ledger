@@ -26,10 +26,10 @@
 
    PoEDB also exposes each encounter's tier, minimum depth and selection
    weight. Every exclusive fossil encounter is tier 4 with weight 100.
-   That supports a relative opportunity ranking at one depth, but not an
-   absolute spawn rate because the reward-tier selection curve is not
-   public. Absolute per-delve and per-hour figures therefore come only
-   from a player's own saved sample profile.
+   The exact reward-tier curve is not public, so the depth model below is
+   explicitly community guidance: a 90% special-node replacement cap at
+   depth 1500 and a 15% boss-within-city cap at depth 600. Personal hourly
+   figures still come only from a player's saved sample profile.
    ================================================================ */
 
 /* ---------------- biomes ----------------
@@ -204,6 +204,15 @@ export const DEFAULTS = {
   openWalls: true,
 };
 
+/* Working depth model from current deep-Delve community guidance. These are
+   kept together so an official curve can replace them without hunting through
+   calculation or UI code. Between unlock and cap the engine uses a visible
+   linear interpolation; it is an estimate, not a data-mined probability. */
+export const COMMUNITY_DEPTH_GUIDE = {
+  specialNode: { capDepth: 1500, capChance: 0.90 },
+  bossInCity: { capDepth: 600, capChance: 0.15 },
+};
+
 export const GUIDE_SAMPLE = {
   exclusiveQty: 3,
   genericQty: 2,
@@ -257,8 +266,9 @@ export const RESONATOR_SOCKETS = { Primitive: 1, Potent: 2, Powerful: 3, Prime: 
 
    No `entry` cost: you don't buy your way into a delve boss, you find
    one. `ttk` is only here because computeBoss wants it; the tab reports
-   value per kill plus city-biome share. Boss encounters per 100 Delves are
-   intentionally absent because the boss-per-city rate is not public. */
+   value per kill plus city-biome share. The separate community depth model
+   estimates the boss component per eligible city node; it never changes the
+   item drop rates declared below. */
 
 const pool = (drops) => ({ id: "unique", kind: "pool", label: "Unique pool", rolls: 1, displayOrder: "source", drops });
 const indep = (drops) => ({ id: "extra", kind: "independent", label: "Additional drops", displayOrder: "source", drops });

@@ -216,8 +216,8 @@ export default function Overview({
             title={delveSummary?.best
               ? `${delveSummary.best.biome.name} leads the current fossil opportunities`
               : snapshots === null ? "Loading Delve prices" : "No priced biome value available"}
-            note="Relative biome opportunity uses the saved depth, live target value and active sample quantities."
-            value={delveSummary?.best ? fmtPrice(delveSummary.best.headline, currency, divineRate) : "—"}
+            note="Relative biome opportunity uses saved depth, live prices and the labelled community special-node curve."
+            value={delveSummary?.best ? fmtPrice(delveSummary.best.depthAdjustedRange.median, currency, divineRate) : "—"}
             onClick={() => onOpenTab("delve")}
           />
           <Signal

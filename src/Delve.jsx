@@ -1,6 +1,7 @@
 import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   BIOMES, NODES, TUNABLES, DEFAULTS, SOURCES, DELVE_BOSSES, RESONATOR_ORDER, RESONATOR_SOCKETS,
+  COMMUNITY_DEPTH_GUIDE,
 } from "./delveData.js";
 import {
   makePriceOf, fossilRows, computeBiomes, computeDelveBosses, killDistribution,
@@ -17,27 +18,25 @@ import { unitForSeries } from "./money.js";
    DELVE
    What a delve level is worth, and where to point it.
 
-   Four views, in the order you actually ask the questions:
+   Three views, in the order you actually ask the questions:
 
      Fossils   what's a fossil worth and what moved. Same shape as the
                astrolabe/catalyst tabs — toolbar, one chart, one grid —
                because it is the same question about different items.
      Biomes    which exclusive fossil target do I want at this depth?
-               Target value stays in currency; biome share and target value
-               combine only into a relative 0-100 opportunity index.
+               Target value stays in currency. A clearly labelled community
+               curve estimates special-vs-generic marker value by depth; biome
+               share and that estimate form the relative opportunity index.
                Opening one gives it the mechanic panel treatment: that node
                charted over the league, the biome's fossils beside it, and
                what every other node there pays.
-     Samples   saved guide/custom observation profiles. Personal quantities
-               replace fallbacks and timed sessions unlock a clearly labelled
-               personal hourly projection.
      Bosses    a delve boss is a handful of kills a league, not a farm.
                So the tab leads with the spread of a SINGLE kill, and
                keeps the mean next to it rather than instead of it.
 
-   The UI separates data-mined values, creator observations, conservative
-   fallbacks and personal samples. It never invents an absolute node or boss
-   frequency. See the header comment in delveData.js.
+   The UI separates data-mined values, community estimates, creator observations,
+   conservative fallbacks and personal samples. See delveData.js for the current
+   working depth caps.
    ================================================================ */
 
 const pctText = (v) => (v >= 0.1 ? `${(v * 100).toFixed(0)}%` : v >= 0.001 ? `${(v * 100).toFixed(1)}%` : v > 0 ? "<0.1%" : "—");
@@ -124,7 +123,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const [openBiome, setOpenBiome] = useState(null);
   const [openBoss, setOpenBoss] = useState(null);
   const [openBossDrop, setOpenBossDrop] = useState(null);
-  const [rankBy, setRankBy] = useState("opportunity"); // target | opportunity | sample
+  const [rankBy, setRankBy] = useState("opportunity"); // target | depth | opportunity | sample
   const [sortDir, setSortDir] = useState("desc");
   const [chgWindow, setChgWindow] = useState("24h");
   const [filter, setFilter] = useState("");
@@ -273,11 +272,17 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
 
   const biomes = useMemo(() => computeBiomes(priceOf, modelSettings, sample), [priceOf, modelSettings, sample]);
   const fossils = useMemo(() => fossilRows(priceOf), [priceOf]);
+  const activeBossChances = bosses.filter((boss) => boss.available).map((boss) => boss.encounterChance);
+  const specialChanceNow = Math.max(0, ...biomes.targets.map((row) => row.specialChance));
+  const bossChanceLow = activeBossChances.length ? Math.min(...activeBossChances) : 0;
+  const bossChanceHigh = activeBossChances.length ? Math.max(...activeBossChances) : 0;
 
   const ranked = useMemo(() => {
     const rows = [...biomes.targets];
     const value = (row) => rankBy === "target"
       ? row.headline
+      : rankBy === "depth"
+        ? row.depthAdjustedRange.median
       : rankBy === "sample"
         ? row.personalRange?.median || 0
         : row.opportunityIndex;
@@ -600,12 +605,12 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
               <div className="dl-assume-group">
                 <h4>Depth guidance</h4>
                 <div className="dl-depth-guide">
-                  <strong>{settings.depth >= 1500 ? "Special-node cap reached" : "Special-node chance still scaling"}</strong>
+                  <strong>{settings.depth >= COMMUNITY_DEPTH_GUIDE.specialNode.capDepth ? "Special-node cap reached" : "Special-node chance still scaling"}</strong>
                   <span>
-                    Community guide evidence places the rare fossil-node reward cap around depth 1500. The exact
-                    tier-selection curve is not published, so target currency is not multiplied by a guessed chance.
-                    All six special fossil targets are tier 4 with the same weight, so that shared depth factor cancels
-                    out of their relative ranking.
+                    Active community estimate: {pctText(specialChanceNow)} of non-cache fossil markers become the
+                    biome's special node at depth {settings.depth}. The working curve rises linearly from each node's
+                    unlock depth to {Math.round(COMMUNITY_DEPTH_GUIDE.specialNode.capChance * 100)}% at depth {COMMUNITY_DEPTH_GUIDE.specialNode.capDepth}.
+                    Biome cards use it for Depth EV and Opportunity.
                   </span>
                 </div>
                 <div className="dl-depth-guide">
@@ -616,11 +621,12 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                   </span>
                 </div>
                 <div className="dl-depth-guide">
-                  <strong>{settings.depth >= 600 ? "Guide boss-cap depth reached" : "Boss encounter chance still scaling"}</strong>
+                  <strong>{settings.depth >= COMMUNITY_DEPTH_GUIDE.bossInCity.capDepth ? "Guide boss-cap depth reached" : "Boss encounter chance still scaling"}</strong>
                   <span>
-                    Community Delve guidance places the chance for a city to contain its boss at its cap around depth
-                    600. The exact depth-to-tier selection curve is not published, so boss cards stay value per kill
-                    instead of turning that guide observation into a made-up bosses-per-hour figure.
+                    Active community estimate: {bossChanceLow === bossChanceHigh ? pctText(bossChanceHigh) : `${pctText(bossChanceLow)}–${pctText(bossChanceHigh)}`}
+                    {" "}per eligible city node at depth {settings.depth}. The working curve rises linearly from each
+                    boss's minimum depth to {Math.round(COMMUNITY_DEPTH_GUIDE.bossInCity.capChance * 100)}% at depth {COMMUNITY_DEPTH_GUIDE.bossInCity.capDepth}.
+                    Boss cards show the resulting boss-value component per city node.
                   </span>
                 </div>
               </div>
@@ -670,7 +676,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
           Said out loud, because a unit you have to infer is the bug. */}
       <p className="dl-define">
         <strong>Target value</strong> prices the exclusive fossil encounter. <strong>Opportunity</strong> is
-        a relative 0–100 routing score using biome share and live target value. Absolute profit only appears as
+        a relative 0–100 routing score using biome share and the labelled community Depth EV. Absolute hourly profit only appears as
         <strong> your observed pace</strong> after a custom sample contains timed observations.
       </p>
 
@@ -859,8 +865,10 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             <div className="st-seg">
               <button className={rankBy === "target" ? "on" : ""} onClick={() => setRankBy("target")}
                 title="Live value of one exclusive fossil encounter">Target value</button>
+              <button className={rankBy === "depth" ? "on" : ""} onClick={() => setRankBy("depth")}
+                title="Community-estimated value of one non-cache fossil marker at this depth">Depth EV</button>
               <button className={rankBy === "opportunity" ? "on" : ""} onClick={() => setRankBy("opportunity")}
-                title="Relative score from biome share and live target value">Opportunity</button>
+                title="Relative score from biome share and community depth-adjusted marker value">Opportunity</button>
               <button className={rankBy === "sample" ? "on" : ""} disabled={!sample.hasTimedSample}
                 onClick={() => sample.hasTimedSample && setRankBy("sample")}
                 title={sample.hasTimedSample ? "Low/median/high projection at your observed encounter pace" : "Add timed observations in My samples first"}>
@@ -869,7 +877,8 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             </div>
             <span className="dl-mode-note">
               {rankBy === "target" && <>One exclusive encounter at the active profile's quantity. <strong>No spawn frequency is included.</strong></>}
-              {rankBy === "opportunity" && <>A <strong>relative routing score</strong>: biome share × target value, normalised so today's leader is 100. It is not chaos per Delve.</>}
+              {rankBy === "depth" && <>Expected value of one non-cache fossil marker using the <strong>community special-node estimate</strong> for depth {settings.depth}.</>}
+              {rankBy === "opportunity" && <>A <strong>relative routing score</strong>: biome share × community Depth EV, normalised so today's leader is 100. It is not chaos per Delve.</>}
               {rankBy === "sample" && <>Low–high <em>priced-pool</em> outcomes at <strong>{activeSampleName}'s observed encounters per hour</strong>. This is personal projection, not a global rate.</>}
             </span>
             {biomes.anyInterpolated && (
@@ -897,9 +906,12 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                   <span className="st-panel-total" title={`One ${openRow.headlineLabel} at the active profile's quantity.`}>
                     {pricedMoney(openRow.headline, openRow.exclusive?.found)} · {openRow.headlineLabel}
                   </span>
+                  <span className="st-panel-total" title="Community depth-adjusted median value of one non-cache fossil marker">
+                    {pricedMoney(openRow.depthAdjustedRange.median, openRow.depthAdjustedFound)} · depth EV
+                  </span>
                   <span className="st-panel-total">{pctText(openRow.share)} of the mine</span>
                   <span className="st-panel-total">
-                    {openRow.exclusive?.found ? openRow.opportunityIndex.toFixed(0) : "—"}/100 opportunity
+                    {openRow.depthAdjustedFound ? openRow.opportunityIndex.toFixed(0) : "—"}/100 opportunity
                   </span>
                 </div>
                 <button className="st-close" onClick={() => { setOpenBiome(null); setFocusFossil(null); setDragSel(null); }}>Close</button>
@@ -942,6 +954,12 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         )}
                         {!!openRow.poolNames.length && <tr><td>Generic fossil node <em className="dl-implied">{sample.quantities.genericQty.toFixed(2).replace(/\.00$/, "")}× pool</em></td><td>{pricedMoney(openRow.genericRange.low, openRow.poolCoverage > 0)}–{pricedMoney(openRow.genericRange.high, openRow.poolCoverage > 0)} <em className="dl-implied">median {pricedMoney(openRow.genericRange.median, openRow.poolCoverage > 0)}</em></td></tr>}
                         {!!openRow.poolNames.length && <tr><td>Smuggler's cache <em className="dl-implied">{sample.quantities.cacheQty.toFixed(2).replace(/\.00$/, "")}× pool</em></td><td>{pricedMoney(openRow.cacheRange.low, openRow.poolCoverage > 0)}–{pricedMoney(openRow.cacheRange.high, openRow.poolCoverage > 0)} <em className="dl-implied">median {pricedMoney(openRow.cacheRange.median, openRow.poolCoverage > 0)}</em></td></tr>}
+                        {openRow.exclusive && (
+                          <tr className="dl-parts-total">
+                            <td>Community Depth EV <em className="dl-implied">{pctText(openRow.specialChance)} special, otherwise generic</em></td>
+                            <td>{pricedMoney(openRow.depthAdjustedRange.low, openRow.depthAdjustedFound)}–{pricedMoney(openRow.depthAdjustedRange.high, openRow.depthAdjustedFound)} <em className="dl-implied">median {pricedMoney(openRow.depthAdjustedRange.median, openRow.depthAdjustedFound)}</em></td>
+                          </tr>
+                        )}
                         {openRow.exclusive?.found && openRow.personalRange && (
                           <tr className="dl-parts-total">
                             <td>At your observed pace <em className="dl-implied">all fossil encounter types</em></td>
@@ -1007,6 +1025,8 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                 ? r.personalRange?.median || 0
                 : rankBy === "target"
                   ? r.headline
+                  : rankBy === "depth"
+                    ? r.depthAdjustedRange.median
                   : r.opportunityIndex;
               return (
                 <article key={b.id} className={`dl-biome${dead ? " dead" : ""}${openBiome === b.id ? " open" : ""}`} style={{ "--tone": b.tone }}>
@@ -1020,16 +1040,20 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                     </span>
                     <span className="dl-biome-val"
                       title={rankBy === "opportunity"
-                        ? `Relative score from ${pctText(r.share)} biome share and ${pricedMoney(r.headline, r.exclusive?.found)} target value. Not currency per Delve.`
+                        ? `Relative score from ${pctText(r.share)} biome share and ${pricedMoney(r.depthAdjustedRange.median, r.depthAdjustedFound)} community Depth EV. Not currency per Delve.`
                         : rankBy === "sample"
                           ? `Median pool scenario at ${activeSampleName}'s observed encounter pace.`
+                          : rankBy === "depth"
+                            ? `${pctText(r.specialChance)} special-node estimate; otherwise the generic fossil-node pool.`
                           : `One ${r.headlineLabel}; no encounter frequency included.`}>
                       {rankBy === "opportunity"
-                        ? (r.exclusive?.found ? headline.toFixed(0) : "—")
+                        ? (r.depthAdjustedFound ? headline.toFixed(0) : "—")
                         : rankBy === "sample"
                           ? observedMoney(headline)
+                          : rankBy === "depth"
+                            ? pricedMoney(headline, r.depthAdjustedFound)
                           : pricedMoney(headline, r.exclusive?.found)}
-                      <em>{rankBy === "opportunity" ? "/100 opportunity" : rankBy === "sample" ? "/h, median" : "/target"}</em>
+                      <em>{rankBy === "opportunity" ? "/100 opportunity" : rankBy === "sample" ? "/h, median" : rankBy === "depth" ? "/marker EV" : "/target"}</em>
                     </span>
                   </button>
 
@@ -1049,6 +1073,13 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         ? <> @ {money(r.exclusive.chaos)} = <b>{observedMoney(r.exclusive.nodeValue)}</b> a node</>
                         : <em className="dl-flag warn">no price</em>}
                       <em className="dl-node-data">tier {r.exclusive.tier} · weight {r.exclusive.weight} · depth {r.exclusive.minDepth}+</em>
+                    </div>
+                  )}
+                  {r.exclusive && (
+                    <div className="dl-community-range">
+                      <em className="dl-src ok">estimate</em>
+                      {pctText(r.specialChance)} special → {pricedMoney(r.depthAdjustedRange.median, r.depthAdjustedFound)} median per non-cache fossil marker
+                      {r.poolCoverage < 1 && <em className="dl-flag warn">partial prices</em>}
                     </div>
                   )}
                   {r.exclusive?.found && r.personalRange && (
@@ -1092,6 +1123,10 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                   <div className="dl-boss-meta">
                     {b.biome.name} · {b.delve.node} · depth {b.delve.minDepth}+
                     {" · "}{pctText(b.share)} of the mine is this city biome at depth {settings.depth}
+                  </div>
+                  <div className="dl-community-boss">
+                    <span><em className="dl-src ok">estimate</em> {pctText(b.encounterChance)} boss chance per eligible city node</span>
+                    <strong>{b.available ? `${money(b.bossComponentPerCityNode)} boss EV / city node` : "unavailable at this depth"}</strong>
                   </div>
 
                   <div className="dl-spread" title="10th to 90th percentile of one kill, with the median marked and the mean as a line">
@@ -1220,9 +1255,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             })}
           </div>
           <p className="dl-note">
-            City-biome share comes from the data-mined depth weights. The game does not publish how often a
-            city contains its boss, so this view deliberately stops at value per kill and does not invent
-            bosses per 100 Delves.
+            City-biome share comes from the data-mined depth weights. Boss chance uses the labelled community
+            working curve—linear from each boss's unlock depth to 15% at depth 600—and contributes only the
+            boss portion of value per eligible city node. Normal city rewards are not included.
           </p>
         </>
       )}

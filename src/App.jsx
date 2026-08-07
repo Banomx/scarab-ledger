@@ -755,7 +755,9 @@ export default function ScarabTracker() {
             // quotes the big numbers in divine, so leave that choice alone.
             setCurrency((c) => (c === "chaos" ? "divine" : c));
           }}>Boss profit</button>
-        <button className={tab === "delve" ? "on" : ""} onClick={() => { setTab("delve"); setDragSel(null); }}>Delve</button>
+        <button className={tab === "delve" ? "on" : ""} onClick={() => { setTab("delve"); setDragSel(null); }}>
+          Delve <em className="st-tab-exp">EXP</em>
+        </button>
       </nav>
 
       {mode === "demo" && (
@@ -1366,6 +1368,11 @@ const css = `
 .st-tabs button.on { color: #ff6828; border-bottom-color: #ef4f19; }
 .st-tabs button:hover { color: #c6aaa0; }
 .st-tabs button:focus-visible { outline: 2px solid #ff6a24; outline-offset: -2px; }
+.st-tab-exp {
+  display: inline-block; margin-left: 4px; padding: 1px 3px; border: 1px solid #7a5c33;
+  border-radius: 3px; color: #d9a86a; font-size: 7.5px; font-style: normal;
+  line-height: 1; letter-spacing: 0.08em; vertical-align: 1px;
+}
 .st-farms-intro { max-width: 720px; font-size: 13.5px; line-height: 1.55; color: #b49c91; margin: 2px 0 18px; }
 .st-farms-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-bottom: 24px; }
 @media (max-width: 760px) { .st-farms-cols { grid-template-columns: 1fr; } }
@@ -1786,6 +1793,8 @@ button.ov-signal:hover { background: #1a100c; }
 .dl-excl b { color: #efcdbd; font-weight: 600; }
 .dl-node-data { display: block; margin-top: 3px; font-style: normal; color: #74625b; font-size: 10.5px; }
 .dl-personal-range { padding: 0 13px 2px; color: #d9a86a; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.dl-community-range { padding: 0 13px 3px; color: #c9a78f; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.dl-community-range .dl-src { margin-left: 0; margin-right: 5px; }
 .dl-biome-body { padding: 4px 13px 0; border-top: 1px solid #2f1f18; margin-top: 6px; }
 .dl-biome-body h5 {
   margin: 12px 0 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #74625b;
@@ -1849,6 +1858,12 @@ button.ov-signal:hover { background: #1a100c; }
 .dl-boss-val { font-variant-numeric: tabular-nums; color: #f4dfd3; white-space: nowrap; }
 .dl-boss-val em { font-style: normal; font-size: 10.5px; color: #9c877e; margin-left: 5px; }
 .dl-boss-meta { font-size: 11.5px; color: #8e7e76; margin-bottom: 10px; line-height: 1.5; }
+.dl-community-boss {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px 12px;
+  margin: 0 0 10px; padding: 6px 8px; border: 1px solid #3e281e; border-radius: 4px;
+  background: #17100d; color: #9c877e; font-size: 10.5px; font-variant-numeric: tabular-nums;
+}
+.dl-community-boss strong { color: #d9a86a; font-weight: 600; }
 .dl-spread { position: relative; height: 10px; background: #281a14; border-radius: 999px; margin-bottom: 6px; }
 .dl-spread i.band { position: absolute; top: 0; height: 100%; border-radius: 999px; background: #7a2a13; min-width: 2px; }
 .dl-spread i.med { position: absolute; top: -2px; width: 2px; height: 14px; background: #f4dfd3; border-radius: 1px; }

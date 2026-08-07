@@ -87,21 +87,20 @@ list.
 ## Delve estimation boundary
 
 The six biome-exclusive fossil encounters share PoEDB tier 4 and encounter
-weight 100. `src/delve.js` uses this to produce a relative Opportunity index:
-biome share times live target value, normalised to 0–100. It does not convert
-that score to currency per Delve because the depth-dependent reward-tier
-selection curve is not public. City boss EV is calculated separately and never
-enters the fossil ranking.
+weight 100. `src/delve.js` calculates Depth EV for one non-cache fossil marker:
+the community special-node chance times the live target-node value, plus the
+remaining generic-node share. Opportunity is biome share times median Depth EV,
+normalised to 0–100. City boss EV is calculated separately and never enters the
+fossil ranking.
 
-The assumptions panel states the boundary directly. Community guide evidence
-places the special fossil reward cap around depth 1500, but the app does not
-invent the missing curve or multiply target values by a guessed spawn chance.
-Because all six exclusive targets share tier 4 and weight 100, that unknown
-common depth factor cancels from their relative ranking. City biome shares use
-the exact current PoEDB effect-depth ramps (63/135/200). Community guidance
-places the boss-within-city cap around depth 600, but its tier-selection curve
-remains unknown, so boss results stay per kill. Unpublished
-Delve boss drop rates use an editable, visibly marked 3% default.
+The assumptions panel labels the working community curves. Special-node
+replacement rises linearly from each encounter's minimum depth to 90% at depth
+1500. Boss-within-city chance rises linearly from each boss's minimum depth to
+15% at depth 600. City biome shares still use the exact current PoEDB
+effect-depth ramps (63/135/200). The constants live together in
+`COMMUNITY_DEPTH_GUIDE` so official or stronger sampled curves can replace them
+without changing the pricing model. Unpublished Delve boss item drop rates use
+an unrelated editable, visibly marked 3% default.
 
 Delve boss distributions use one guaranteed roll from each boss's measured
 unique pool. Cards and fragments remain independent rolls. The older 3.25

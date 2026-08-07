@@ -6,9 +6,10 @@
      target value  what one biome-exclusive fossil encounter is worth.
      biome share   how much of the mine that biome occupies at a given
                    depth, from the data-mined spawn weights.
-     opportunity   a relative 0-100 routing index. It compares the six
-                   equal-tier/equal-weight exclusive encounters without
-                   claiming an absolute spawn rate.
+     depth value   expected value of one non-cache fossil marker using the
+                   explicitly labelled community special-node curve.
+     opportunity   a relative 0-100 routing index from biome share and that
+                   community depth-adjusted marker value.
      sample value  a personal low/median/high hourly projection, shown only
                    when a saved profile contains timed observations.
      boss value    expected chaos per kill, and the SHAPE of that: a
@@ -23,7 +24,7 @@
 import { computeBoss } from "./bossProfit.js";
 import {
   BIOMES, BIOME_BY_ID, DELVE_BOSSES, DELVE_BOSS_BY_ID,
-  DEFAULTS, GUIDE_SAMPLE, FALLBACKS, FOSSILS,
+  DEFAULTS, GUIDE_SAMPLE, FALLBACKS, FOSSILS, COMMUNITY_DEPTH_GUIDE,
 } from "./delveData.js";
 
 export const SETTINGS_KEY = "sl.delve.settings.v1";
@@ -72,6 +73,26 @@ export function biomeShares(depth) {
   for (const r of rows) r.share = total > 0 ? r.weight / total : 0;
   return { rows, total };
 }
+
+/* Community working curves. Only the cap depths/chances are commonly cited;
+   the exact server-side curve is unknown. Linear interpolation from each
+   encounter's unlock depth is deliberately simple, visible in the UI and easy
+   to replace if GGG or a sufficiently large sample publishes a better model. */
+export function communityChanceAt(depth, minDepth, guide) {
+  const d = num(depth, 0);
+  const start = Math.max(1, num(minDepth, 1));
+  if (d < start) return 0;
+  const capDepth = Math.max(start, num(guide?.capDepth, start));
+  const capChance = Math.min(1, Math.max(0, num(guide?.capChance, 0)));
+  if (d >= capDepth || capDepth === start) return capChance;
+  return capChance * ((d - start + 1) / (capDepth - start + 1));
+}
+
+export const communitySpecialChance = (depth, minDepth = 35) =>
+  communityChanceAt(depth, minDepth, COMMUNITY_DEPTH_GUIDE.specialNode);
+
+export const communityBossChance = (depth, minDepth) =>
+  communityChanceAt(depth, minDepth, COMMUNITY_DEPTH_GUIDE.bossInCity);
 
 /* ---------------- prices ----------------
 
@@ -129,10 +150,11 @@ export function fossilRows(priceOf) {
    three Hollow Fossils"), not a frequency nobody can observe.
 
    A normal biome's headline is its exclusive fossil encounter: the active
-   sample profile's quantity times the live fossil price. City bosses live in
-   their own calculation and never enter this ranking. Generic nodes and
-   Smuggler's caches use low/median/high pool scenarios because no public data
-   establishes equal fossil probabilities. */
+   sample profile's quantity times the live fossil price. The community depth
+   value treats a non-cache fossil marker as either that special encounter or
+   a generic fossil node. City bosses live in their own calculation and never
+   enter this ranking. Generic nodes and Smuggler's caches use low/median/high
+   pool scenarios because no public data establishes equal fossil probabilities. */
 
 export function computeBiome(biome, priceOf, settings = {}) {
   const s = { ...DEFAULTS, ...GUIDE_SAMPLE, ...settings };
@@ -167,6 +189,15 @@ export function computeBiome(biome, priceOf, settings = {}) {
   const cacheRange = scale(poolRange, s.cacheQty);
   const headline = exclusive ? exclusive.nodeValue : 0;
   const headlineLabel = exclusive ? exclusive.node : "No exclusive fossil node";
+  const specialChance = exclusive?.available
+    ? communitySpecialChance(s.depth, exclusive.minDepth)
+    : 0;
+  const depthAdjustedRange = exclusive ? {
+    low: specialChance * exclusive.nodeValue + (1 - specialChance) * genericRange.low,
+    median: specialChance * exclusive.nodeValue + (1 - specialChance) * genericRange.median,
+    high: specialChance * exclusive.nodeValue + (1 - specialChance) * genericRange.high,
+  } : { low: 0, median: 0, high: 0 };
+  const depthAdjustedFound = !!(exclusive?.found && poolPrices.some((p) => p.found));
 
   return {
     biome, poolNames, poolPrices, poolRange, poolCoverage,
@@ -176,6 +207,7 @@ export function computeBiome(biome, priceOf, settings = {}) {
     genericNode: genericRange.median,
     cacheNode: cacheRange.median,
     headline, headlineLabel,
+    specialChance, depthAdjustedRange, depthAdjustedFound,
   };
 }
 
@@ -189,9 +221,9 @@ export function personalProjection(row, sample) {
   return { low: point("low"), median: point("median"), high: point("high") };
 }
 
-/* The opportunity index compares relative target availability. All six
-   exclusive encounters have the same PoEDB tier and encounter weight, so the
-   unknown absolute tier-4 selection rate cancels out of this comparison. */
+/* Opportunity combines the community depth-adjusted value of one non-cache
+   fossil marker with the data-mined biome share, then normalises the result.
+   It remains a relative routing score rather than chaos per generated node. */
 export function computeBiomes(priceOf, settings = {}, sample = null) {
   const s = { ...DEFAULTS, ...GUIDE_SAMPLE, ...settings };
   const { rows } = biomeShares(s.depth);
@@ -199,8 +231,8 @@ export function computeBiomes(priceOf, settings = {}, sample = null) {
   let out = BIOMES.map((b) => {
     const c = computeBiome(b, priceOf, s);
     const sh = shareBy[b.id];
-    const opportunityRaw = c.exclusive?.available && c.exclusive.found
-      ? sh.share * c.exclusive.nodeValue
+    const opportunityRaw = c.exclusive?.available && c.depthAdjustedFound
+      ? sh.share * c.depthAdjustedRange.median
       : 0;
     return {
       ...c,
@@ -286,9 +318,14 @@ export function computeDelveBosses(resolve, settings = {}) {
     const biome = BIOME_BY_ID[b.biome];
     const sh = biome ? weightAt(biome, s.depth) : 0;
     const share = rows.find((r) => r.biome.id === b.biome)?.share ?? 0;
+    const available = s.depth >= b.minDepth;
+    const encounterChance = available ? communityBossChance(s.depth, b.minDepth) : 0;
     return {
       ...computed, delve: b, biome, weight: sh, share,
-      available: s.depth >= b.minDepth,
+      available,
+      encounterChance,
+      bossComponentPerCityNode: computed.gross * encounterChance,
+      bossComponentPerMineNode: computed.gross * encounterChance * share,
     };
   });
 }

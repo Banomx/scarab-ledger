@@ -10,11 +10,13 @@
 import assert from "node:assert/strict";
 import {
   BIOMES, FOSSILS, DELVE_BOSSES, DEFAULTS, GUIDE_SAMPLE, TUNABLES, NODES, FALLBACKS, SOURCES,
+  COMMUNITY_DEPTH_GUIDE,
 } from "../src/delveData.js";
 import {
   weightAt, weightExact, biomeShares, makePriceOf, fossilRows, rangeStats,
   computeBiome, computeBiomes, computeDelveBosses, killDistribution, sanitizeSettings,
   biomeValueSeries, defaultSampleProfile, sanitizeSampleProfile, uniqueSampleName, sampleMetrics,
+  communityChanceAt, communitySpecialChance, communityBossChance,
 } from "../src/delve.js";
 import { makeResolver, bossItems } from "../src/bossProfit.js";
 
@@ -200,6 +202,22 @@ test("current data-mined city biome ramps finish at their effect depths", () => 
   }
 });
 
+test("community depth curves start at unlock and reach their declared caps", () => {
+  assert.equal(communitySpecialChance(34, 35), 0);
+  assert.ok(communitySpecialChance(35, 35) > 0);
+  near(communitySpecialChance(1500, 35), 0.90, 1e-9, "special-node cap");
+  near(communitySpecialChance(3000, 35), 0.90, 1e-9, "special-node post-cap");
+
+  assert.equal(communityBossChance(129, 130), 0);
+  assert.ok(communityBossChance(130, 130) > 0);
+  near(communityBossChance(600, 130), 0.15, 1e-9, "boss cap");
+  near(communityChanceAt(10, 1, { capDepth: 10, capChance: 2 }), 1, 1e-9, "chance clamp");
+  assert.deepEqual(COMMUNITY_DEPTH_GUIDE, {
+    specialNode: { capDepth: 1500, capChance: 0.90 },
+    bossInCity: { capDepth: 600, capChance: 0.15 },
+  });
+});
+
 console.log("biome value");
 
 /* A price list simple enough to check the arithmetic by hand: every
@@ -221,6 +239,17 @@ test("pool range and node values use the declared scenarios", () => {
   near(r.cacheNode, 50, 1e-9, "cache");
   near(r.headline, 900, 1e-9, "headline");
   assert.equal(r.headlineLabel, "Crystal Spire");
+});
+
+test("community Depth EV blends special and generic fossil markers", () => {
+  const abyssal = BIOMES.find((b) => b.id === "abyssal");
+  const s = { ...DEFAULTS, depth: 600, exclusiveQty: 3, genericQty: 2, cacheQty: 5 };
+  const r = computeBiome(abyssal, priceOf, s);
+  const chance = communitySpecialChance(600, abyssal.exclusive.minDepth);
+  near(r.specialChance, chance, 1e-9, "special replacement chance");
+  near(r.depthAdjustedRange.median,
+    chance * 900 + (1 - chance) * 20, 1e-9, "depth-adjusted marker EV");
+  assert.equal(r.depthAdjustedFound, true);
 });
 
 test("range median averages the two middle values for an even pool", () => {
@@ -291,7 +320,8 @@ test("opportunity is relative, normalised and excludes cities", () => {
   for (const r of all.targets) {
     assert.ok(Number.isFinite(r.opportunityIndex), `${r.biome.name}: finite index`);
     assert.ok(r.opportunityIndex >= 0 && r.opportunityIndex <= 100, `${r.biome.name}: bounded index`);
-    near(r.opportunityRaw, r.share * r.headline, 1e-9, `${r.biome.name}: relative raw value`);
+    near(r.opportunityRaw, r.depthAdjustedFound ? r.share * r.depthAdjustedRange.median : 0, 1e-9,
+      `${r.biome.name}: community depth-adjusted raw value`);
   }
   for (const r of all.cities) assert.equal(r.opportunityIndex, 0, `${r.biome.name}: city index`);
   for (const r of all.rows) assert.ok(!("expected" in r), `${r.biome.name}: stale expected currency`);
@@ -375,11 +405,14 @@ test("old chance-based pool overrides migrate without changing saved profiles", 
   near(migrated.gross, explicit.gross, 1e-9, "old chance override vs pool share");
 });
 
-test("boss rows expose city share without inventing an encounter rate", () => {
+test("boss rows expose city share and the labelled community encounter model", () => {
   const rows = computeDelveBosses(bossResolve, { ...DEFAULTS, depth: 600 });
   const a = rows.find((r) => r.delve.id === "ahuatotli");
   const denom = 6 * 100 + 23 + 23 + 17;
   near(a.share, 23 / denom, 1e-9, "Vaal city share");
+  near(a.encounterChance, 0.15, 1e-9, "boss chance cap");
+  near(a.bossComponentPerCityNode, a.gross * 0.15, 1e-9, "boss EV per city node");
+  near(a.bossComponentPerMineNode, a.gross * 0.15 * a.share, 1e-9, "mine-weighted boss EV");
   assert.ok(!("encountersPer100" in a));
 });
 

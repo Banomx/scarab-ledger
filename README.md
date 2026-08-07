@@ -312,14 +312,15 @@ The Delve tool has three views:
 - **Fossils & resonators** shows live prices, history, pool value ranges and
   current fractured-wall targets.
 - **Biome targets** compares the six exclusive fossil encounters. Target value
-  is currency per encounter; Opportunity is a relative 0–100 routing score from
-  biome share and target value. It is not currency per Delve.
+  is currency per special encounter. Depth EV blends that value with the generic
+  fossil-node range using the labelled community special-node curve. Opportunity
+  is a relative 0–100 routing score from biome share and Depth EV.
 - **Bosses** keeps Ahuatotli, Kurgal and Aul separate from fossil routing. Each
   boss has a guaranteed unique pool plus separate card/fragment rolls, with
   preliminary or unpublished rates visibly flagged for the player to edit.
   Unpublished rates start at a marked 3% default. The view shows value and
-  distribution per kill plus city-biome share, but no invented
-  bosses-per-100-Delves rate. Boss cards/fragments use GGG pricing first; unique
+  distribution per kill plus city-biome share. A labelled community curve also
+  shows the boss-value component per eligible city node. Boss cards/fragments use GGG pricing first; unique
   markets fall back to poe.watch or poe.ninja. Kurgal's preliminary Eye line
   uses the live arithmetic mean of all four variants and expands to show each
   underlying price. Aul's Uprising similarly shows the strict mean and complete
@@ -334,14 +335,15 @@ sample.
 
 PoEDB supplies biome weights plus exclusive encounter tier, weight and minimum
 depth. All six exclusive encounters are tier 4 with weight 100, which supports
-a relative comparison but not an absolute spawn rate because reward-tier
-selection by depth is not public. Generic nodes and Smuggler's caches therefore
-show low/median/high pool scenarios rather than an equal-weight expected value.
+a relative comparison. Because the server curve is not public, the working
+community model rises linearly from each special node's unlock depth to a 90%
+replacement chance at depth 1500. Generic nodes and Smuggler's caches still use
+low/median/high pool scenarios rather than an equal-weight fossil average.
 The current city-biome ramps are exact: Vaal Outpost reaches full weight at
 depth 63, Abyssal City at 135 and Primeval Ruins at 200. Boss selection inside
-those cities is reported by community Delve guidance to keep scaling until
-around depth 600, but the exact reward-tier curve is not published. Boss output
-therefore remains per kill.
+those cities uses the same explicit working approach: linear from each boss's
+minimum depth to a 15% chance per eligible city node at depth 600. The estimates
+are marked experimental and can be replaced if a better source appears.
 
 The Guide baseline uses three exclusive fossils per target, two fossils per
 generic node and five per cache. Each value is labelled as guide evidence or a
