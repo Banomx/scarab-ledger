@@ -311,16 +311,18 @@ The Delve tool has three views:
 
 - **Fossils & resonators** shows live prices, history, pool value ranges and
   current fractured-wall targets.
-- **Biome targets** compares the six exclusive fossil encounters. Target value
-  is currency per special encounter. Depth EV blends that value with the generic
-  fossil-node range using the labelled community special-node curve. Opportunity
-  is a relative 0–100 routing score from biome share and Depth EV.
+- **Biome targets** opens on Depth EV, the practical per-marker estimate for the
+  selected depth. It blends the live special-target value with the generic
+  fossil-node range using the labelled community special-node curve. Target value
+  isolates the special encounter; Opportunity is a relative 0–100 routing score
+  from biome share and Depth EV.
 - **Bosses** keeps Ahuatotli, Kurgal and Aul separate from fossil routing. Each
   boss has a guaranteed unique pool plus separate card/fragment rolls, with
   preliminary or unpublished rates visibly flagged for the player to edit.
   Unpublished rates start at a marked 3% default. The view shows value and
   distribution per kill plus city-biome share. A labelled community curve also
-  shows the boss-value component per eligible city node. Boss cards/fragments use GGG pricing first; unique
+  leads with the estimated boss-loot value of an eligible city node, then shows
+  value and distribution per kill. Boss cards/fragments use GGG pricing first; unique
   markets fall back to poe.watch or poe.ninja. Kurgal's preliminary Eye line
   uses the live arithmetic mean of all four variants and expands to show each
   underlying price. Aul's Uprising similarly shows the strict mean and complete
@@ -333,7 +335,8 @@ fossil totals and minutes can replace guide quantities and unlock a personal
 priced-pool hourly range; a timed route with no encounters remains a valid dry
 sample.
 
-**How to make money** opens a compact pathing guide sourced from Duddybrainzz's
+**How to make money**, beside the Assumptions control, opens a compact pathing
+guide sourced from Duddybrainzz's
 3.28 depth-5000 test. It separates route priorities and sulphite setup from the
 historical six-hour result, links each point to its video timestamp and never
 feeds the old league prices or reported hourly rate into the live calculator.

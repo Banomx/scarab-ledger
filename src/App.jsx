@@ -1742,10 +1742,7 @@ const css = `
 .dl-headline { margin-left: auto; text-align: right; line-height: 1.35; }
 .dl-headline strong { display: block; font-size: 19px; color: #f4dfd3; font-variant-numeric: tabular-nums; }
 .dl-headline em { font-style: normal; font-size: 11.5px; color: #9c877e; }
-.dl-money-launch {
-  display: flex; justify-content: flex-end; align-items: center; gap: 10px;
-  margin: -7px 0 10px; color: #74625b; font-size: 10.5px;
-}
+.dl-bar-actions { display: flex; align-items: center; gap: 6px; }
 .dl-money-guide {
   border: 1px solid #7a361b; border-left: 3px solid #e65822; border-radius: 8px;
   background: linear-gradient(120deg, #160c09, #120d0b 58%); padding: 15px;
@@ -1835,7 +1832,7 @@ const css = `
 .dl-views { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 2px; }
 .dl-views button { flex: 0 0 auto; }
 .dl-views button.on { background: #7a2a13; color: #fff0e6; border-color: #bd461d; }
-.dl-subbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+.dl-subbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px; }
 .dl-hint { font-size: 12px; color: #9c877e; line-height: 1.55; max-width: 72ch; }
 .dl-lead { font-size: 13px; color: #a98d82; line-height: 1.6; max-width: 78ch; margin: 0 0 14px; }
 .dl-h { margin: 22px 0 8px; font-size: 13px; color: #f0e4de; font-weight: 600; }
@@ -1942,12 +1939,31 @@ const css = `
 .dl-boss-val { font-variant-numeric: tabular-nums; color: #f4dfd3; white-space: nowrap; }
 .dl-boss-val em { font-style: normal; font-size: 10.5px; color: #9c877e; margin-left: 5px; }
 .dl-boss-meta { font-size: 11.5px; color: #8e7e76; margin-bottom: 10px; line-height: 1.5; }
+.dl-boss-estimate {
+  display: grid; grid-template-columns: minmax(280px, 0.85fr) minmax(440px, 1.6fr); gap: 16px;
+  border: 1px solid #7a361b; border-left: 3px solid #e65822; border-radius: 8px;
+  background: linear-gradient(120deg, #1b0d09, #120d0b 58%); padding: 13px 14px; margin-bottom: 12px;
+}
+.dl-boss-estimate header > span {
+  color: #8e7e76; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+}
+.dl-boss-estimate header .dl-src { margin-left: 0; margin-right: 6px; }
+.dl-boss-estimate h3 { margin: 7px 0 4px; color: #f4dfd3; font-size: 17px; }
+.dl-boss-estimate header p { margin: 0; color: #a98d82; font-size: 11.5px; line-height: 1.5; }
+.dl-boss-estimate-grid { display: grid; grid-template-columns: repeat(3, minmax(125px, 1fr)); gap: 7px; }
+.dl-boss-estimate-grid article {
+  display: flex; flex-direction: column; justify-content: center; min-width: 0;
+  border: 1px solid #3e281e; border-radius: 6px; background: #0f0a08; padding: 9px 10px;
+}
+.dl-boss-estimate-grid span { color: #8e7e76; font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
+.dl-boss-estimate-grid strong { color: #f4dfd3; font-size: 18px; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.dl-boss-estimate-grid em { color: #d9a86a; font-size: 10.5px; font-style: normal; line-height: 1.35; }
 .dl-community-boss {
   display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px 12px;
-  margin: 0 0 10px; padding: 6px 8px; border: 1px solid #3e281e; border-radius: 4px;
-  background: #17100d; color: #9c877e; font-size: 10.5px; font-variant-numeric: tabular-nums;
+  margin: 0 0 10px; padding: 8px 9px; border: 1px solid #65351f; border-left: 3px solid #bd461d; border-radius: 4px;
+  background: #1a0f0b; color: #b89c91; font-size: 11px; font-variant-numeric: tabular-nums;
 }
-.dl-community-boss strong { color: #d9a86a; font-weight: 600; }
+.dl-community-boss strong { color: #f1bd8d; font-size: 12.5px; font-weight: 600; }
 .dl-spread { position: relative; height: 10px; background: #281a14; border-radius: 999px; margin-bottom: 6px; }
 .dl-spread i.band { position: absolute; top: 0; height: 100%; border-radius: 999px; background: #7a2a13; min-width: 2px; }
 .dl-spread i.med { position: absolute; top: -2px; width: 2px; height: 14px; background: #f4dfd3; border-radius: 1px; }
@@ -2054,8 +2070,18 @@ const css = `
   font-style: normal; font-size: 11px; text-transform: none; letter-spacing: 0.02em; color: #74625b;
 }
 
-.dl-mode-note { font-size: 12px; color: #9c877e; line-height: 1.55; max-width: 74ch; }
-.dl-mode-note strong { color: #c6aaa0; font-weight: 600; }
+.dl-mode-summary {
+  display: grid; grid-template-columns: auto minmax(180px, auto) minmax(280px, 1fr); gap: 7px 14px; align-items: center;
+  border: 1px solid #3e281e; border-radius: 6px; background: #120d0b; padding: 9px 11px; margin-bottom: 12px;
+}
+.dl-mode-summary.estimate {
+  border-color: #7a361b; border-left: 3px solid #e65822;
+  background: linear-gradient(100deg, #1b0d09, #120d0b 58%);
+}
+.dl-mode-kicker { color: #8e7e76; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+.dl-mode-kicker .dl-src { margin-left: 0; margin-right: 6px; }
+.dl-mode-summary > strong { color: #f4dfd3; font-size: 13px; }
+.dl-mode-summary p { margin: 0; color: #a98d82; font-size: 11.5px; line-height: 1.45; }
 .dl-biome-val em { display: block; text-align: right; margin-left: 0; }
 
 .dl-src {
@@ -2071,10 +2097,14 @@ const css = `
 .st-seg button:disabled { opacity: 0.42; cursor: not-allowed; }
 
 @media (max-width: 720px) {
-  .dl-money-launch { justify-content: space-between; align-items: center; margin-top: -4px; }
-  .dl-money-launch > span { max-width: 45ch; }
+  .dl-headline { width: 100%; margin-left: 0; text-align: left; }
+  .dl-bar-actions { flex-wrap: wrap; }
   .dl-money-head { flex-direction: column; gap: 10px; }
   .dl-money-grid, .dl-money-context { grid-template-columns: 1fr; }
+  .dl-mode-summary { grid-template-columns: 1fr; gap: 4px; }
+  .dl-mode-kicker { white-space: normal; }
+  .dl-boss-estimate { grid-template-columns: 1fr; }
+  .dl-boss-estimate-grid { grid-template-columns: 1fr; }
   .dl-assume-layout { grid-template-columns: 1fr; }
   .dl-assume-samples { border-left: 0; border-top: 1px solid #3e281e; padding: 14px 0 0; }
   .dl-wall-card { grid-template-columns: 1fr; }
@@ -2085,6 +2115,7 @@ const css = `
 @media (min-width: 721px) and (max-width: 1120px) {
   .dl-money-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
   .dl-money-context { grid-template-columns: 1fr; }
+  .dl-boss-estimate { grid-template-columns: 1fr; }
   .dl-assume-layout { grid-template-columns: 1fr; }
   .dl-assume-samples { border-left: 0; border-top: 1px solid #3e281e; padding: 14px 0 0; }
 }

@@ -90,7 +90,8 @@ The Delve toolbar also owns a collapsible money guide. Its route priorities,
 sulphite loop and historical sample are static, timestamped observations from
 Duddybrainzz's 3.28 deep-Delve video. They are presentation-only: the guide does
 not alter price resolution, depth curves, samples or EV. Historical profit is
-explicitly labelled and remains separate from current generated snapshots.
+explicitly labelled and remains separate from current generated snapshots. The
+guide control sits beside Assumptions so both explanatory panels share one place.
 
 ## Delve estimation boundary
 
@@ -99,7 +100,9 @@ weight 100. `src/delve.js` calculates Depth EV for one non-cache fossil marker:
 the community special-node chance times the live target-node value, plus the
 remaining generic-node share. Opportunity is biome share times median Depth EV,
 normalised to 0–100. City boss EV is calculated separately and never enters the
-fossil ranking.
+fossil ranking. Biome targets default to Depth EV. The Bosses view promotes
+`boss chance × current drop-table EV` as the boss-loot value of an eligible city
+node; it does not include normal city rewards or imply a guaranteed payout.
 
 The assumptions panel labels the working community curves. Special-node
 replacement rises linearly from each encounter's minimum depth to 90% at depth
