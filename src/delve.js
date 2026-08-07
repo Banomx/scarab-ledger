@@ -1,13 +1,16 @@
 /* Pure calculation layer for the Delve tab. No React, so the maths is
    testable on its own (scripts/test-delve.mjs).
 
-   Three things are computed here:
+   Four things are computed here:
 
-     biome value   what one NODE of that biome is worth: its exclusive
-                   fossil node, or for a city biome its boss node. Quoted
-                   per node on purpose — see the biomes section below.
+     target value  what one biome-exclusive fossil encounter is worth.
      biome share   how much of the mine that biome occupies at a given
-                   depth, from poewiki's spawn weights.
+                   depth, from the data-mined spawn weights.
+     opportunity   a relative 0-100 routing index. It compares the six
+                   equal-tier/equal-weight exclusive encounters without
+                   claiming an absolute spawn rate.
+     sample value  a personal low/median/high hourly projection, shown only
+                   when a saved profile contains timed observations.
      boss value    expected chaos per kill, and the SHAPE of that: a
                    16% Doryani's Machinarium makes the mean a number you
                    will rarely see on any single kill, and you get a
@@ -18,19 +21,31 @@
    computeBoss(), so there is exactly one drop engine in the codebase. */
 
 import { computeBoss } from "./bossProfit.js";
-import { BIOMES, BIOME_BY_ID, DELVE_BOSSES, DELVE_BOSS_BY_ID, DEFAULTS, FALLBACKS, FOSSILS } from "./delveData.js";
+import {
+  BIOMES, BIOME_BY_ID, DELVE_BOSSES, DELVE_BOSS_BY_ID,
+  DEFAULTS, GUIDE_SAMPLE, FALLBACKS, FOSSILS,
+} from "./delveData.js";
 
 export const SETTINGS_KEY = "sl.delve.settings.v1";
+export const SAMPLE_PROFILES_KEY = "sl.delve.sampleProfiles.v1";
+export const ACTIVE_SAMPLE_PROFILE_KEY = "sl.delve.activeSampleProfile.v1";
 
 const num = (v, d) => (v == null || !isFinite(Number(v)) ? d : Number(v));
 const mean = (a) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
 
+export function rangeStats(values) {
+  const sorted = values.filter((v) => isFinite(v)).sort((a, b) => a - b);
+  if (!sorted.length) return { low: 0, median: 0, high: 0 };
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  return { low: sorted[0], median, high: sorted[sorted.length - 1] };
+}
+
 /* ---------------- depth -> spawn weight ----------------
 
-   poewiki gives two ends of the ramp and says the middle "scales
-   non-linearly" without naming the curve. Smoothstep is the honest
-   stand-in: it matches both endpoints exactly, is monotonic, and eases
-   at each end the way the wiki's own chart looks. Anything between the
+   The documented data gives two ends of the ramp but not the non-linear
+   middle curve. Smoothstep is the honest stand-in: it matches both endpoints
+   exactly, is monotonic, and eases at each end. Anything between the
    thresholds is therefore approximate, and the UI says so rather than
    presenting an interpolated share as fact. */
 export function weightAt(biome, depth) {
@@ -75,8 +90,9 @@ export function makePriceOf(sources = [], { overrides = {}, divineRate = 0 } = {
     }
   }
   return function priceOf(name) {
-    if (overrides[name] != null && isFinite(Number(overrides[name]))) {
-      return { chaos: Number(overrides[name]), found: true, overridden: true, entry: null };
+    const override = Number(overrides[name]);
+    if (overrides[name] != null && isFinite(override) && override > 0) {
+      return { chaos: override, found: true, overridden: true, entry: null };
     }
     const hit = index.get(norm(name));
     if (hit && hit.entry && hit.entry.c > 0) {
@@ -112,19 +128,14 @@ export function fossilRows(priceOf) {
    assumption, but a small, checkable one ("a Crystal Spire drops about
    three Hollow Fossils"), not a frequency nobody can observe.
 
-   Each biome's headline is its OWN node — the thing you steer toward:
+   A normal biome's headline is its exclusive fossil encounter: the active
+   sample profile's quantity times the live fossil price. City bosses live in
+   their own calculation and never enter this ranking. Generic nodes and
+   Smuggler's caches use low/median/high pool scenarios because no public data
+   establishes equal fossil probabilities. */
 
-     normal biome   its exclusive fossil node (Crystal Spire, Humid
-                    Fissure...): exclusiveQty of its own fossil, plus
-                    exclusiveExtra draws from the common pool
-     city biome     its boss node, worth one kill of that boss
-
-   The generic fossil node and smuggler's cache are quoted alongside,
-   priced off the biome's pool average, because they are what you get
-   when the biome hands you an ordinary node instead. */
-
-export function computeBiome(biome, priceOf, settings = {}, bossValue = null) {
-  const s = { ...DEFAULTS, ...settings };
+export function computeBiome(biome, priceOf, settings = {}) {
+  const s = { ...DEFAULTS, ...GUIDE_SAMPLE, ...settings };
   const poolNames = biome.pool.filter((n) => {
     if (s.openWalls) return true;
     const f = FOSSILS.find((x) => x.name === n);
@@ -132,76 +143,110 @@ export function computeBiome(biome, priceOf, settings = {}, bossValue = null) {
   });
   const poolPrices = poolNames.map((n) => ({ name: n, ...priceOf(n) }));
   const priced = poolPrices.filter((p) => p.found).map((p) => p.chaos);
-  const poolAvg = mean(priced);
+  const poolRange = rangeStats(priced);
   const poolCoverage = poolNames.length ? priced.length / poolNames.length : 1;
 
   let exclusive = null;
   if (biome.exclusive) {
     const p = priceOf(biome.exclusive.fossil);
+    const available = weightAt(biome, s.depth) > 0 && s.depth >= biome.exclusive.minDepth;
     exclusive = {
       ...biome.exclusive, chaos: p.chaos, found: p.found,
-      nodeValue: s.exclusiveQty * p.chaos + s.exclusiveExtra * poolAvg,
+      available,
+      qty: s.exclusiveQty,
+      nodeValue: s.exclusiveQty * p.chaos,
     };
   }
 
-  const genericNode = s.genericQty * poolAvg;
-  const cacheNode = s.cacheQty * poolAvg;
-
-  // A city biome's node is its boss. No frequency assumption in here — that
-  // question ("how often does a city carry one") belongs to the boss view,
-  // which is where bossPerCity still lives.
-  const bossNode = biome.city && biome.boss && bossValue != null
-    ? { name: DELVE_BOSS_BY_ID[biome.boss]?.node || "Boss node", value: bossValue }
-    : null;
-
-  const headline = exclusive ? exclusive.nodeValue : bossNode ? bossNode.value : genericNode;
-  const headlineLabel = exclusive ? exclusive.node : bossNode ? bossNode.name : "fossil node";
+  const scale = (range, qty) => ({
+    low: range.low * qty,
+    median: range.median * qty,
+    high: range.high * qty,
+  });
+  const genericRange = scale(poolRange, s.genericQty);
+  const cacheRange = scale(poolRange, s.cacheQty);
+  const headline = exclusive ? exclusive.nodeValue : 0;
+  const headlineLabel = exclusive ? exclusive.node : "No exclusive fossil node";
 
   return {
-    biome, poolNames, poolPrices, poolAvg, poolCoverage,
-    exclusive, genericNode, cacheNode, bossNode,
+    biome, poolNames, poolPrices, poolRange, poolCoverage,
+    exclusive, genericRange, cacheRange,
+    // Median aliases keep price-history and older callers on one clear
+    // scenario while the UI exposes the complete low/median/high range.
+    genericNode: genericRange.median,
+    cacheNode: cacheRange.median,
     headline, headlineLabel,
   };
 }
 
-/* Every biome, ranked, plus what an ordinary fossil node is worth at this
-   depth once you account for which biomes you are actually standing in.
-   That last figure is as close to assumption-free as this tab gets: the
-   shares are the wiki's own spawn weights and the only input of mine is
-   how many fossils a node drops. */
-export function computeBiomes(priceOf, settings = {}, bossValues = {}) {
-  const s = { ...DEFAULTS, ...settings };
+export function personalProjection(row, sample) {
+  if (!sample?.hasTimedSample || !row.exclusive?.found) return null;
+  const point = (key) => (
+    sample.exclusivePerHour * row.exclusive.nodeValue
+    + sample.genericPerHour * row.genericRange[key]
+    + sample.cachePerHour * row.cacheRange[key]
+  );
+  return { low: point("low"), median: point("median"), high: point("high") };
+}
+
+/* The opportunity index compares relative target availability. All six
+   exclusive encounters have the same PoEDB tier and encounter weight, so the
+   unknown absolute tier-4 selection rate cancels out of this comparison. */
+export function computeBiomes(priceOf, settings = {}, sample = null) {
+  const s = { ...DEFAULTS, ...GUIDE_SAMPLE, ...settings };
   const { rows } = biomeShares(s.depth);
   const shareBy = Object.fromEntries(rows.map((r) => [r.biome.id, r]));
-  const out = BIOMES.map((b) => {
-    const c = computeBiome(b, priceOf, s, b.boss ? bossValues[b.boss] ?? null : null);
+  let out = BIOMES.map((b) => {
+    const c = computeBiome(b, priceOf, s);
     const sh = shareBy[b.id];
-    return { ...c, weight: sh.weight, share: sh.share, exact: sh.exact, expected: sh.share * c.headline };
+    const opportunityRaw = c.exclusive?.available && c.exclusive.found
+      ? sh.share * c.exclusive.nodeValue
+      : 0;
+    return {
+      ...c,
+      weight: sh.weight,
+      share: sh.share,
+      exact: sh.exact,
+      opportunityRaw,
+      personalRange: personalProjection(c, sample),
+    };
   });
-  // Averaged over the biomes that actually have a fossil pool, reweighted so
-  // the city biomes' share doesn't silently drag it toward zero.
-  const withPool = out.filter((r) => r.poolNames.length && r.share > 0);
+  const topOpportunity = Math.max(0, ...out.map((r) => r.opportunityRaw));
+  out = out.map((r) => ({
+    ...r,
+    opportunityIndex: topOpportunity > 0 ? (r.opportunityRaw / topOpportunity) * 100 : 0,
+  }));
+
+  const withPool = out.filter((r) => !r.biome.city && r.poolNames.length && r.share > 0);
   const poolShare = withPool.reduce((t, r) => t + r.share, 0);
-  const avgFossilNode = poolShare > 0
-    ? withPool.reduce((t, r) => t + r.share * r.genericNode, 0) / poolShare
+  const weighted = (key) => poolShare > 0
+    ? withPool.reduce((t, r) => t + r.share * r.genericRange[key], 0) / poolShare
     : 0;
+  const avgGenericRange = { low: weighted("low"), median: weighted("median"), high: weighted("high") };
   const anyInterpolated = out.some((r) => !r.exact && r.weight > 0);
-  return { rows: out, avgFossilNode, anyInterpolated, depth: s.depth };
+  return {
+    rows: out,
+    targets: out.filter((r) => !r.biome.city && r.exclusive),
+    cities: out.filter((r) => r.biome.city),
+    avgGenericRange,
+    avgFossilNode: avgGenericRange.median,
+    anyInterpolated,
+    depth: s.depth,
+  };
 }
 
 /* A biome's node value, day by day, from the fossil price history.
 
    Same question the mechanic panel's "set total across the league" answers,
-   asked of a biome instead of a scarab set: is this biome's node getting
-   better, or did everything just go up? Every point re-runs computeBiome()
-   against that day's prices, so the curve moves for exactly the reasons the
-   current number does.
+   asked of a biome instead of a scarab set: is this biome's exclusive target
+   getting better, or did everything just go up? The day axis comes only from
+   that target fossil; common-pool history cannot manufacture extra points.
 
    City biomes have no fossil pool, so they get no curve — their value is
    their boss, and a boss drop table has no price history of its own. An
    empty array is the honest answer there, not a flat line. */
 export function biomeValueSeries(biome, histories, settings = {}, bossValue = null) {
-  const names = [...biome.pool, ...(biome.exclusive ? [biome.exclusive.fossil] : [])];
+  const names = biome.exclusive ? [biome.exclusive.fossil] : [];
   const daySet = new Set();
   for (const n of names) for (const p of (histories?.[n] || [])) daySet.add(p.day);
   const days = [...daySet].sort((a, b) => a - b);
@@ -229,14 +274,9 @@ export function computeDelveBosses(resolve, settings = {}) {
     const biome = BIOME_BY_ID[b.biome];
     const sh = biome ? weightAt(biome, s.depth) : 0;
     const share = rows.find((r) => r.biome.id === b.biome)?.share ?? 0;
-    // Encounters per 100 delve levels: how much of the mine is that city,
-    // times how often a city carries its boss node.
-    const per100 = share * s.bossPerCity * 100;
     return {
       ...computed, delve: b, biome, weight: sh, share,
-      encountersPer100: per100,
       available: s.depth >= b.minDepth,
-      perCityContribution: share * s.bossPerCity * computed.gross,
     };
   });
 }
@@ -312,6 +352,121 @@ export function killDistribution(computed, trials = 4000, seed = 0xd317e) {
   };
 }
 
+/* ---------------- observation profiles ---------------- */
+
+export const SAMPLE_FIELDS = [
+  { key: "minutes", label: "Minutes observed", step: 1 },
+  { key: "exclusiveNodes", label: "Exclusive fossil nodes", step: 1 },
+  { key: "exclusiveFossils", label: "Exclusive fossils dropped", step: 1 },
+  { key: "genericNodes", label: "Generic fossil nodes", step: 1 },
+  { key: "genericFossils", label: "Generic fossils dropped", step: 1 },
+  { key: "cacheNodes", label: "Smuggler's caches", step: 1 },
+  { key: "cacheFossils", label: "Cache fossils dropped", step: 1 },
+];
+
+const emptyObservations = () => Object.fromEntries(SAMPLE_FIELDS.map((f) => [f.key, 0]));
+
+export function defaultSampleProfile(name = "Guide baseline", builtIn = name === "Guide baseline") {
+  return {
+    name,
+    builtIn,
+    sampleDepth: 300,
+    observations: emptyObservations(),
+  };
+}
+
+export function sanitizeSampleProfile(raw, fallbackName = "My sample") {
+  const cleanName = typeof raw?.name === "string" && raw.name.trim() ? raw.name.trim() : fallbackName;
+  const out = defaultSampleProfile(cleanName, false);
+  const depth = Number(raw?.sampleDepth);
+  if (isFinite(depth)) out.sampleDepth = Math.min(65535, Math.max(1, Math.round(depth)));
+  for (const f of SAMPLE_FIELDS) {
+    const n = Number(raw?.observations?.[f.key]);
+    if (isFinite(n)) out.observations[f.key] = f.key === "minutes" ? Math.max(0, n) : Math.max(0, Math.round(n));
+  }
+  return out;
+}
+
+export function loadSampleProfiles() {
+  const guide = defaultSampleProfile();
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SAMPLE_PROFILES_KEY) || "[]");
+    if (!Array.isArray(parsed)) return [guide];
+    const customs = parsed
+      .map((p, i) => sanitizeSampleProfile(p, `My sample ${i + 1}`))
+      .filter((p) => p.name !== guide.name);
+    return [guide, ...customs];
+  } catch {
+    return [guide];
+  }
+}
+
+export function saveSampleProfiles(profiles) {
+  try {
+    const customs = profiles.filter((p) => !p.builtIn).map((p) => sanitizeSampleProfile(p));
+    localStorage.setItem(SAMPLE_PROFILES_KEY, JSON.stringify(customs));
+  } catch { /* quota / private mode */ }
+}
+
+export function loadActiveSampleProfile(profiles) {
+  try {
+    const name = localStorage.getItem(ACTIVE_SAMPLE_PROFILE_KEY);
+    if (name && profiles.some((p) => p.name === name)) return name;
+  } catch { /* private mode */ }
+  return profiles[0]?.name || "Guide baseline";
+}
+
+export function saveActiveSampleProfile(name) {
+  try { localStorage.setItem(ACTIVE_SAMPLE_PROFILE_KEY, name); } catch { /* private mode */ }
+}
+
+export function uniqueSampleName(profiles, base) {
+  if (!profiles.some((p) => p.name === base)) return base;
+  let i = 2;
+  while (profiles.some((p) => p.name === `${base} ${i}`)) i++;
+  return `${base} ${i}`;
+}
+
+export function sampleMetrics(profile) {
+  const p = profile?.builtIn ? profile : sanitizeSampleProfile(profile || {});
+  const o = { ...emptyObservations(), ...(p.observations || {}) };
+  const average = (nodes, fossils, fallback) => nodes > 0 ? fossils / nodes : fallback;
+  const exclusiveQty = average(o.exclusiveNodes, o.exclusiveFossils, GUIDE_SAMPLE.exclusiveQty);
+  const genericQty = average(o.genericNodes, o.genericFossils, GUIDE_SAMPLE.genericQty);
+  const cacheQty = average(o.cacheNodes, o.cacheFossils, GUIDE_SAMPLE.cacheQty);
+  const totalEncounters = o.exclusiveNodes + o.genericNodes + o.cacheNodes;
+  // A timed route with zero fossil encounters is still real evidence. Keeping
+  // it as a zero-rate sample avoids biasing profiles toward successful runs.
+  const hasTimedSample = o.minutes > 0;
+  const perHour = (count) => hasTimedSample ? count * 60 / o.minutes : 0;
+  const markerTotal = totalEncounters;
+  const warnings = [];
+  for (const [nodes, fossils, label] of [
+    [o.exclusiveNodes, o.exclusiveFossils, "exclusive"],
+    [o.genericNodes, o.genericFossils, "generic"],
+    [o.cacheNodes, o.cacheFossils, "cache"],
+  ]) if (nodes === 0 && fossils > 0) warnings.push(`${label} fossils need at least one matching node`);
+  return {
+    profile: p,
+    sampleDepth: p.sampleDepth,
+    observations: o,
+    quantities: { exclusiveQty, genericQty, cacheQty },
+    quantitySources: {
+      exclusiveQty: o.exclusiveNodes > 0 ? "personal" : "observed",
+      genericQty: o.genericNodes > 0 ? "personal" : "placeholder",
+      cacheQty: o.cacheNodes > 0 ? "personal" : "observed",
+    },
+    exclusivePerHour: perHour(o.exclusiveNodes),
+    genericPerHour: perHour(o.genericNodes),
+    cachePerHour: perHour(o.cacheNodes),
+    markerShare: markerTotal > 0 ? o.exclusiveNodes / markerTotal : null,
+    totalEncounters,
+    hasTimedSample,
+    hasObservations: Object.values(o).some((v) => v > 0),
+    warnings,
+  };
+}
+
 /* ---------------- settings persistence ---------------- */
 
 export function loadSettings() {
@@ -335,7 +490,10 @@ export function sanitizeSettings(raw) {
     }
     if (raw.priceOverrides && typeof raw.priceOverrides === "object") {
       out.priceOverrides = {};
-      for (const [k, v] of Object.entries(raw.priceOverrides)) if (isFinite(Number(v))) out.priceOverrides[k] = Number(v);
+      for (const [k, v] of Object.entries(raw.priceOverrides)) {
+        const price = Number(v);
+        if (isFinite(price) && price > 0) out.priceOverrides[k] = price;
+      }
     }
     if (raw.bosses && typeof raw.bosses === "object") {
       out.bosses = {};

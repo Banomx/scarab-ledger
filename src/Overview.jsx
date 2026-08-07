@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { computeAll, loadActive, loadProfiles, makeResolver } from "./bossProfit.js";
-import { computeBiomes, computeDelveBosses, loadSettings, makePriceOf } from "./delve.js";
+import {
+  computeBiomes, loadSettings, makePriceOf, loadSampleProfiles,
+  loadActiveSampleProfile, sampleMetrics,
+} from "./delve.js";
 
 const CATEGORY_FILES = [
   ["catalysts", "Catalysts"],
@@ -84,6 +87,12 @@ export default function Overview({
     return profiles.find((item) => item.name === active) || profiles[0];
   }, []);
   const delveSettings = useMemo(() => loadSettings(), []);
+  const delveSample = useMemo(() => {
+    const profiles = loadSampleProfiles();
+    const active = loadActiveSampleProfile(profiles);
+    const selected = profiles.find((item) => item.name === active) || profiles[0];
+    return sampleMetrics(selected);
+  }, []);
 
   const bossSummary = useMemo(() => {
     const priceMap = snapshots?.prices?.prices;
@@ -123,17 +132,12 @@ export default function Overview({
       overrides: delveSettings.priceOverrides || {},
       divineRate: rate,
     });
-    const resolve = makeResolver(priceMap, {
-      priceOverrides: delveSettings.priceOverrides || {},
-      divineRate: rate,
-    });
-    const bosses = computeDelveBosses(resolve, delveSettings);
-    const bossValues = Object.fromEntries(bosses.map((row) => [row.delve.id, row.gross]));
-    const best = computeBiomes(priceOf, delveSettings, bossValues).rows
-      .filter((row) => row.headline > 0)
-      .sort((a, b) => b.headline - a.headline)[0] || null;
+    const modelSettings = { ...delveSettings, ...delveSample.quantities };
+    const best = computeBiomes(priceOf, modelSettings, delveSample).targets
+      .filter((row) => row.opportunityIndex > 0)
+      .sort((a, b) => b.opportunityIndex - a.opportunityIndex)[0] || null;
     return { best };
-  }, [snapshots, delveSettings, divineRate]);
+  }, [snapshots, delveSettings, delveSample, divineRate]);
 
   const categorySummary = useMemo(() => {
     if (!snapshots) return null;
@@ -210,9 +214,9 @@ export default function Overview({
           <Signal
             kind="Delve"
             title={delveSummary?.best
-              ? `${delveSummary.best.biome.name} leads the current biome node values`
+              ? `${delveSummary.best.biome.name} leads the current fossil opportunities`
               : snapshots === null ? "Loading Delve prices" : "No priced biome value available"}
-            note="Uses the existing biome-value calculation at your saved depth and assumptions."
+            note="Relative biome opportunity uses the saved depth, live target value and active sample quantities."
             value={delveSummary?.best ? fmtPrice(delveSummary.best.headline, currency, divineRate) : "—"}
             onClick={() => onOpenTab("delve")}
           />

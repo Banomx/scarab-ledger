@@ -4,8 +4,8 @@
    Three questions the Delve tab answers, and the data each needs:
 
      "what are fossils worth?"     -> FOSSILS (names + which biome
-                                      pool they sit in). Prices come
-                                      from poe.ninja at runtime.
+                                      pool they sit in). Prices come from
+                                      the shared GGG/watch/ninja snapshots.
      "which biome do I want?"      -> BIOMES: the common fossil pool,
                                       the exclusive fossil node, and
                                       the depth thresholds that decide
@@ -17,34 +17,28 @@
 
    Sources
    -------
-   Biome fossil pools, depth/weight thresholds, biome-specific nodes and
-   the boss minimum depths are poewiki's Delve page (the Biomes, Nodes
-   and Major Bosses tables). Boss drop rates are poewiki's per-monster
+   Biome fossil pools and boss minimum depths come from poewiki. Current
+   biome weights plus encounter tier, weight and minimum depth come from
+   PoEDB's data-mined Delve table. Boss drop rates are poewiki's per-monster
    "Estimated drop rates in version 3.25.0, n=100" lists — real sampled
    numbers, not guesses, which is why `rates: "wiki"` here means the same
    confidence `rates: "ledger"` means in bossData.js.
 
-   What is NOT published anywhere, and is therefore a knob in the UI
-   rather than a number in this file:
-     - how many fossils a node actually drops
-     - how often a city biome carries its boss node
-
-   There used to be a third: how many fossil nodes a delve level contains.
-   That one was unknowable AND load-bearing — it multiplied every biome
-   figure — so the tab stopped quoting biomes per delve and now quotes them
-   per node, and the knob is gone with the unit.
-   Every one of those lives in DEFAULTS below, is editable, and is
-   badged in the UI as an assumption. Nothing here silently invents a
-   drop rate.
+   PoEDB also exposes each encounter's tier, minimum depth and selection
+   weight. Every exclusive fossil encounter is tier 4 with weight 100.
+   That supports a relative opportunity ranking at one depth, but not an
+   absolute spawn rate because the reward-tier selection curve is not
+   public. Absolute per-delve and per-hour figures therefore come only
+   from a player's own saved sample profile.
    ================================================================ */
 
 /* ---------------- biomes ----------------
 
-   `weight` is poewiki's spawn weight for the biome, expressed as the two
-   ends of its depth ramp: at `lo.depth` and shallower the weight is
-   `lo.weight`, at `hi.depth` and deeper it is `hi.weight`. The wiki says
-   depths between the two "scale non-linearly" without giving the curve,
-   so the engine smoothsteps it and the UI says so.
+   `weight` is the data-mined spawn weight surfaced by PoEDB, expressed as
+   the two ends of its depth ramp: at `lo.depth` and shallower the weight is
+   `lo.weight`, at `hi.depth` and deeper it is `hi.weight`. The documented
+   middle is non-linear but its curve is not published, so the engine
+   smoothsteps it and the UI says so.
 
    Mines is the one biome that ramps DOWN (100 early, 0 by depth 52).
 
@@ -68,42 +62,42 @@ export const BIOMES = [
     id: "fungal", name: "Fungal Caverns", tone: "#7fa650", city: false,
     pool: ["Dense Fossil", "Aberrant Fossil", "Opulent Fossil", "Corroded Fossil", "Gilded Fossil"],
     weight: { lo: { depth: 4, weight: 0 }, hi: { depth: 20, weight: 100 } },
-    exclusive: { node: "Haunted Tomb", fossil: "Tangled Fossil" },
+    exclusive: { node: "Haunted Tomb", fossil: "Tangled Fossil", minDepth: 35, tier: 4, weight: 100 },
     themed: ["Echoing Lair (beasts)", "Renegade Camp (chaos)", "Restless Rubble (chaos)", "Beast Burrow (minion/aura)", "Necromancer's Excavation (minion/aura)"],
   },
   {
     id: "petrified", name: "Petrified Forest", tone: "#a67f4a", city: false,
     pool: ["Bound Fossil", "Jagged Fossil", "Corroded Fossil", "Sanctified Fossil"],
     weight: { lo: { depth: 4, weight: 0 }, hi: { depth: 20, weight: 100 } },
-    exclusive: { node: "Stonewood Hollow", fossil: "Bloodstained Fossil" },
+    exclusive: { node: "Stonewood Hollow", fossil: "Bloodstained Fossil", minDepth: 35, tier: 4, weight: 100 },
     themed: ["Ritual Grounds (talismans)", "Nesting Grounds (physical)", "Grim Copse (minion/aura)"],
   },
   {
     id: "abyssal", name: "Abyssal Depths", tone: "#5f7fb0", city: false,
     pool: ["Aberrant Fossil", "Bound Fossil", "Gilded Fossil", "Lucent Fossil"],
     weight: { lo: { depth: 10, weight: 0 }, hi: { depth: 25, weight: 100 } },
-    exclusive: { node: "Crystal Spire", fossil: "Hollow Fossil" },
+    exclusive: { node: "Crystal Spire", fossil: "Hollow Fossil", minDepth: 35, tier: 4, weight: 100 },
     themed: ["Haunted Remains (abyss)", "Unspeakable Shrine (abyss)", "Haunted Remains (mana/curse)", "Necromancer's Excavation (minion/aura)"],
   },
   {
     id: "frozen", name: "Frozen Hollow", tone: "#6fb4c9", city: false,
     pool: ["Frigid Fossil", "Serrated Fossil", "Prismatic Fossil", "Sanctified Fossil", "Shuddering Fossil"],
     weight: { lo: { depth: 15, weight: 0 }, hi: { depth: 30, weight: 100 } },
-    exclusive: { node: "Time-Lost Cavern", fossil: "Glyphic Fossil" },
+    exclusive: { node: "Time-Lost Cavern", fossil: "Glyphic Fossil", minDepth: 35, tier: 4, weight: 100 },
     themed: ["Frigid Recess (essences)", "Mutewind Base (cold)", "Restless Rubble (cold)"],
   },
   {
     id: "magma", name: "Magma Fissure", tone: "#c25f3f", city: false,
     pool: ["Scorched Fossil", "Prismatic Fossil", "Pristine Fossil", "Deft Fossil", "Fundamental Fossil"],
     weight: { lo: { depth: 20, weight: 0 }, hi: { depth: 40, weight: 100 } },
-    exclusive: { node: "Molten Cavity", fossil: "Faceted Fossil" },
+    exclusive: { node: "Molten Cavity", fossil: "Faceted Fossil", minDepth: 35, tier: 4, weight: 100 },
     themed: ["Redblade Base (fire)", "Sweltering Burrow (fire)", "Restless Rubble (fire)"],
   },
   {
     id: "sulphur", name: "Sulphur Vents", tone: "#c9a24b", city: false,
     pool: ["Metallic Fossil", "Opulent Fossil", "Aetheric Fossil", "Fundamental Fossil"],
     weight: { lo: { depth: 35, weight: 0 }, hi: { depth: 55, weight: 100 } },
-    exclusive: { node: "Humid Fissure", fossil: "Fractured Fossil" },
+    exclusive: { node: "Humid Fissure", fossil: "Fractured Fossil", minDepth: 36, tier: 4, weight: 100 },
     themed: ["Brinerot Base (lightning)", "Restless Rubble (lightning)"],
   },
   {
@@ -174,11 +168,10 @@ export const UNPLACED_NOTE = "not in any biome pool on the wiki's Delve page";
 
 /* ---------------- nodes ----------------
 
-   `yields` is what the node hands you, in one of two forms:
-     { fossil, qty }  a named fossil
-     { pool: true, qty } that many draws from the biome's common pool,
-                         priced at the pool average
-   Quantities reference DEFAULTS so one knob moves every node of a kind. */
+   The six exclusive entries map a named encounter to its biome-only fossil.
+   Generic nodes and caches are priced from low/median/high outcomes in the
+   active biome's priced pool. Their quantities come from the active sample
+   profile, falling back to GUIDE_SAMPLE category by category. */
 
 export const NODE_KINDS = {
   exclusive: { label: "Biome fossil node", tone: "#c9a24b" },
@@ -200,60 +193,48 @@ export const NODES = [
     note: "Drops a cluster rather than a single fossil, which is what makes it worth the detour." },
 ];
 
-/* ---------------- tunables ----------------
+/* ---------------- sample defaults ----------------
 
-   Everything the wiki does not publish. Defaults are deliberately
-   conservative and every one is editable in the UI. */
+   These are fallbacks for a profile with no observations yet. They are
+   deliberately separate from persisted Delve settings: once a player logs
+   nodes and fossil totals, the observed averages replace them. */
 
 export const DEFAULTS = {
   depth: 300,
-  /* Fossils per node. Two of these have a source; the rest do not, and the
-     ones that don't are set low on purpose — see TUNABLES below, which
-     carries the provenance the UI badges. Erring low means the tab
-     understates a biome rather than talking you into one. */
-  exclusiveQty: 3,        // observed
-  exclusiveExtra: 1,      // no source — deliberately low
-  genericQty: 2,          // no source — deliberately low
-  cacheQty: 5,            // observed, one run
-  /* How often a city biome actually carries its boss node. Only the Bosses
-     view uses this — it converts "this city is 3.5% of the mine" into "you
-     will meet Ahuatotli about twice per 100 delves". The biome ranking is
-     quoted per node and does not touch it. Nothing published, so it is set
-     low: overstating it would inflate how often you expect a boss. */
-  bossPerCity: 0.25,
-  /* wall-locked fossils only count if you blast for them */
   openWalls: true,
+};
+
+export const GUIDE_SAMPLE = {
+  exclusiveQty: 3,
+  genericQty: 2,
+  cacheQty: 5,
 };
 
 /* Where each assumption comes from, badged in the UI so a number with a
    source doesn't sit next to one I picked and look equally solid.
 
-     observed  someone counted it and said so out loud. Thin evidence —
-               one delver, no sample size — but evidence.
-     guess     nothing published and nothing observed. Set low so the
-               error runs toward "this biome is worth less than the tab
-               says" rather than the other way. */
+     observed   someone counted it and said so out loud. Thin evidence,
+                but still evidence.
+     placeholder no published count. Kept conservative until a profile has
+                 a personal sample.
+     personal   calculated from the active profile's logged observations. */
 export const SOURCES = {
-  observed: { tag: "seen", tone: "ok" },
-  guess: { tag: "guess", tone: "warn" },
+  datamined: { tag: "data", tone: "ok" },
+  observed: { tag: "guide", tone: "ok" },
+  placeholder: { tag: "fallback", tone: "warn" },
+  personal: { tag: "my sample", tone: "personal" },
 };
 
 export const TUNABLES = [
   { key: "exclusiveQty", label: "Special fossils per biome node", group: "Per node", step: 0.5,
     source: "observed",
-    help: "Crystal Spire, Humid Fissure and friends. A delve guide puts it at about three on average — one person's experience, no sample size, but it is the only figure anyone states." },
-  { key: "exclusiveExtra", label: "Common fossils alongside", group: "Per node", step: 0.5,
-    source: "guess",
-    help: "Whether a biome node also drops ordinary pool fossils, and how many, is not documented anywhere. Set to 1 so it barely moves the node value." },
+    help: "Jorgen's 3.28 guide puts targeted fossil nodes at about three fossils on average." },
   { key: "genericQty", label: "Fossils per generic fossil node", group: "Per node", step: 0.5,
-    source: "guess",
-    help: "Unnamed 'Contains Fossils' nodes. No published count. Set to 2 — low, so an ordinary node is not flattered." },
+    source: "placeholder",
+    help: "No published count. Two is a conservative fallback until the active profile has observations." },
   { key: "cacheQty", label: "Fossils per smuggler's cache", group: "Per node", step: 0.5,
     source: "observed",
     help: "A delve guide counted a cache out on camera at roughly five fossils for about 100 chaos. One node, one run — treat it as a data point, not a rate." },
-  { key: "bossPerCity", label: "Boss node per city biome", group: "Bosses", step: 0.05,
-    source: "guess",
-    help: "How often a city biome carries its boss node. Nothing published. Set to 0.25 so the encounter rate errs low. Affects the Bosses view only — the biome ranking is per node and does not use it." },
 ];
 
 /* ---------------- resonators ---------------- */
@@ -276,8 +257,8 @@ export const RESONATOR_SOCKETS = { Primitive: 1, Potent: 2, Powerful: 3, Prime: 
 
    No `entry` cost: you don't buy your way into a delve boss, you find
    one. `ttk` is only here because computeBoss wants it; the tab reports
-   value per kill and per 100 delves, not profit/hour, because you cannot
-   queue these back to back. */
+   value per kill plus city-biome share. Boss encounters per 100 Delves are
+   intentionally absent because the boss-per-city rate is not public. */
 
 const indep = (drops) => ({ id: "drops", kind: "independent", label: "Drop table", drops });
 

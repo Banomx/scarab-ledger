@@ -9,12 +9,12 @@
 
 import assert from "node:assert/strict";
 import {
-  BIOMES, FOSSILS, DELVE_BOSSES, DEFAULTS, TUNABLES, NODES, FALLBACKS, SOURCES,
+  BIOMES, FOSSILS, DELVE_BOSSES, DEFAULTS, GUIDE_SAMPLE, TUNABLES, NODES, FALLBACKS, SOURCES,
 } from "../src/delveData.js";
 import {
-  weightAt, weightExact, biomeShares, makePriceOf, fossilRows,
+  weightAt, weightExact, biomeShares, makePriceOf, fossilRows, rangeStats,
   computeBiome, computeBiomes, computeDelveBosses, killDistribution, sanitizeSettings,
-  biomeValueSeries,
+  biomeValueSeries, defaultSampleProfile, sanitizeSampleProfile, uniqueSampleName, sampleMetrics,
 } from "../src/delve.js";
 import { makeResolver } from "../src/bossProfit.js";
 
@@ -67,26 +67,31 @@ test("every exclusive node in NODES matches its biome's declared node", () => {
   }
 });
 
-test("every tunable names a real default and declares where its number came from", () => {
+test("every guide yield names a real fallback and declares where it came from", () => {
   for (const t of TUNABLES) {
-    assert.ok(t.key in DEFAULTS, `tunable ${t.key} has no default`);
+    assert.ok(t.key in GUIDE_SAMPLE, `yield ${t.key} has no guide fallback`);
     assert.ok(t.source in SOURCES, `tunable ${t.key} has no source tag`);
     assert.ok(t.help, `tunable ${t.key} has no explanation`);
   }
 });
 
-test("unsourced assumptions are the low ones", () => {
-  // The rule is: a number nobody counted errs toward understating a biome.
-  // If a "guess" ever ends up above its sourced neighbour, that rule broke.
+test("the guide baseline has no hidden extra fossil or boss-frequency knob", () => {
   const by = Object.fromEntries(TUNABLES.map((t) => [t.key, t]));
   assert.equal(by.exclusiveQty.source, "observed");
   assert.equal(by.cacheQty.source, "observed");
-  assert.equal(by.exclusiveExtra.source, "guess");
-  assert.equal(by.genericQty.source, "guess");
-  assert.ok(DEFAULTS.exclusiveExtra < DEFAULTS.exclusiveQty,
-    "the guessed extra should not outweigh the counted special drop");
-  assert.ok(DEFAULTS.genericQty < DEFAULTS.cacheQty,
+  assert.equal(by.genericQty.source, "placeholder");
+  assert.ok(!("exclusiveExtra" in GUIDE_SAMPLE));
+  assert.ok(!("bossPerCity" in DEFAULTS));
+  assert.ok(GUIDE_SAMPLE.genericQty < GUIDE_SAMPLE.cacheQty,
     "a generic node should not be assumed richer than an observed cache");
+});
+
+test("all six exclusive encounters carry the data-mined tier, weight and minimum depth", () => {
+  for (const b of BIOMES.filter((x) => x.exclusive)) {
+    assert.equal(b.exclusive.tier, 4, `${b.name}: tier`);
+    assert.equal(b.exclusive.weight, 100, `${b.name}: weight`);
+    assert.ok(b.exclusive.minDepth >= 35, `${b.name}: minimum depth`);
+  }
 });
 
 test("boss drop rates are the poewiki 3.25 n=100 figures", () => {
@@ -175,18 +180,22 @@ const PRICES = {
 };
 const priceOf = makePriceOf([PRICES]);
 
-test("pool average and node values are the declared formula", () => {
+test("pool range and node values use the declared scenarios", () => {
   const abyssal = BIOMES.find((b) => b.id === "abyssal");
-  const s = { ...DEFAULTS, exclusiveQty: 3, exclusiveExtra: 2, genericQty: 3, cacheQty: 5 };
+  const s = { ...DEFAULTS, exclusiveQty: 3, genericQty: 3, cacheQty: 5 };
   const r = computeBiome(abyssal, priceOf, s);
-  near(r.poolAvg, 10, 1e-9, "pool average");
-  //  3 x 300 + 2 x 10
-  near(r.exclusive.nodeValue, 920, 1e-9, "Crystal Spire");
+  assert.deepEqual(r.poolRange, { low: 10, median: 10, high: 10 });
+  near(r.exclusive.nodeValue, 900, 1e-9, "Crystal Spire");
   near(r.genericNode, 30, 1e-9, "generic node");
   near(r.cacheNode, 50, 1e-9, "cache");
-  // the headline is the biome's own node, nothing multiplied by a frequency
-  near(r.headline, 920, 1e-9, "headline");
+  near(r.headline, 900, 1e-9, "headline");
   assert.equal(r.headlineLabel, "Crystal Spire");
+});
+
+test("range median averages the two middle values for an even pool", () => {
+  assert.deepEqual(rangeStats([40, 10, 30, 20]), { low: 10, median: 25, high: 40 });
+  assert.deepEqual(rangeStats([12]), { low: 12, median: 12, high: 12 });
+  assert.deepEqual(rangeStats([]), { low: 0, median: 0, high: 0 });
 });
 
 test("nothing in the biome maths depends on a node frequency any more", () => {
@@ -202,21 +211,21 @@ test("nothing in the biome maths depends on a node frequency any more", () => {
   assert.ok(!("perDelve" in plain), "perDelve should be gone from the result");
 });
 
-test("a city biome's node is its boss, priced at one kill", () => {
+test("city bosses are not mixed into the fossil-target model", () => {
   const vaal = BIOMES.find((b) => b.id === "vaal");
   const r = computeBiome(vaal, priceOf, DEFAULTS, 500);
-  near(r.headline, 500, 1e-9, "headline is the boss");
-  assert.equal(r.headlineLabel, "The Grand Architect's Temple");
-  near(r.bossNode.value, 500, 1e-9, "boss node value");
+  near(r.headline, 0, 1e-9, "city fossil headline");
+  assert.equal(r.exclusive, null);
 });
 
 test("turning off fractured walls drops the wall-locked fossils from the pool", () => {
   const abyssal = BIOMES.find((b) => b.id === "abyssal");
   const withWalls = computeBiome(abyssal, makePriceOf([{ ...PRICES, "Lucent Fossil": { c: 100 } }]), DEFAULTS);
   const without = computeBiome(abyssal, makePriceOf([{ ...PRICES, "Lucent Fossil": { c: 100 } }]), { ...DEFAULTS, openWalls: false });
-  assert.ok(without.poolAvg < withWalls.poolAvg, "dropping a dear wall-locked fossil should lower the average");
+  assert.ok(without.poolRange.high < withWalls.poolRange.high, "dropping a dear wall-locked fossil should lower the high scenario");
   assert.ok(!without.poolNames.includes("Lucent Fossil"), "Lucent should be gone");
   assert.ok(!without.poolNames.includes("Gilded Fossil"), "Gilded should be gone");
+  near(without.exclusive.nodeValue, withWalls.exclusive.nodeValue, 1e-9, "walls must not move the target");
 });
 
 test("the exclusive node is worth far more than an ordinary one, which is the point of the tab", () => {
@@ -226,32 +235,43 @@ test("the exclusive node is worth far more than an ordinary one, which is the po
     "with a 300c exclusive fossil the biome node should dominate the pool nodes");
 });
 
-test("an unpriced fossil is excluded from the average, not counted as zero", () => {
+test("an unpriced fossil is excluded from the range, not counted as zero", () => {
   const abyssal = BIOMES.find((b) => b.id === "abyssal");
   const partial = makePriceOf([{ "Aberrant Fossil": { c: 10 }, "Bound Fossil": { c: 30 } }]);
   const r = computeBiome(abyssal, partial, DEFAULTS);
-  near(r.poolAvg, 20, 1e-9, "average over what is priced");
+  assert.deepEqual(r.poolRange, { low: 10, median: 20, high: 30 });
   near(r.poolCoverage, 0.5, 1e-9, "coverage");
 });
 
-test("the ordinary-fossil-node average covers only biomes with a pool", () => {
+test("the generic-node scenario covers only non-city biomes with a pool", () => {
   const all = computeBiomes(priceOf, { ...DEFAULTS, depth: 600 });
-  const withPool = all.rows.filter((r) => r.poolNames.length && r.share > 0);
+  const withPool = all.rows.filter((r) => !r.biome.city && r.poolNames.length && r.share > 0);
   const poolShare = withPool.reduce((t, r) => t + r.share, 0);
   const manual = withPool.reduce((t, r) => t + r.share * r.genericNode, 0) / poolShare;
-  near(all.avgFossilNode, manual, 1e-9, "average fossil node");
-  // the cities contribute no fossil pool, so they must not drag it down
-  assert.ok(all.avgFossilNode > 0, "should be positive with priced fossils");
-  const cityShare = all.rows.filter((r) => r.biome.city).reduce((t, r) => t + r.share, 0);
-  assert.ok(cityShare > 0, "cities do occupy part of the mine at depth 600");
+  near(all.avgGenericRange.median, manual, 1e-9, "median generic scenario");
+  assert.equal(all.cities.length, 3);
+  assert.equal(all.targets.length, 6);
 });
 
-test("each row's weighted figure is its own node times its share", () => {
+test("opportunity is relative, normalised and excludes cities", () => {
   const all = computeBiomes(priceOf, { ...DEFAULTS, depth: 600 });
-  for (const r of all.rows) near(r.expected, r.share * r.headline, 1e-9, r.biome.name);
+  const best = Math.max(...all.targets.map((r) => r.opportunityIndex));
+  near(best, 100, 1e-9, "best index");
+  for (const r of all.targets) {
+    assert.ok(Number.isFinite(r.opportunityIndex), `${r.biome.name}: finite index`);
+    assert.ok(r.opportunityIndex >= 0 && r.opportunityIndex <= 100, `${r.biome.name}: bounded index`);
+    near(r.opportunityRaw, r.share * r.headline, 1e-9, `${r.biome.name}: relative raw value`);
+  }
+  for (const r of all.cities) assert.equal(r.opportunityIndex, 0, `${r.biome.name}: city index`);
+  for (const r of all.rows) assert.ok(!("expected" in r), `${r.biome.name}: stale expected currency`);
 });
 
-test("a biome's node curve re-prices the whole formula on each day", () => {
+test("missing target prices produce zero indices instead of NaN", () => {
+  const all = computeBiomes(makePriceOf([]), { ...DEFAULTS, depth: 600 });
+  for (const r of all.targets) assert.equal(r.opportunityIndex, 0);
+});
+
+test("a biome's node curve re-prices its exclusive target on each day", () => {
   const abyssal = BIOMES.find((b) => b.id === "abyssal");
   const hist = {
     "Hollow Fossil": [{ day: 0, value: 150 }, { day: 1, value: 300 }],
@@ -262,7 +282,7 @@ test("a biome's node curve re-prices the whole formula on each day", () => {
   };
   const s = biomeValueSeries(abyssal, hist, DEFAULTS);
   assert.equal(s.length, 2);
-  // every price doubled, so the node value doubles too
+  // the target price doubled, so the target node value doubles too
   near(s[1].value, s[0].value * 2, 1e-6, "doubling every price");
   // and day 1 must equal what computeBiome says about day 1's prices
   const direct = computeBiome(abyssal, makePriceOf([{
@@ -279,7 +299,11 @@ test("a city biome gets no curve rather than a flat lie", () => {
 
 test("one data point is not a curve", () => {
   const abyssal = BIOMES.find((b) => b.id === "abyssal");
-  assert.deepEqual(biomeValueSeries(abyssal, { "Hollow Fossil": [{ day: 0, value: 100 }] }, DEFAULTS), []);
+  const histories = {
+    "Hollow Fossil": [{ day: 0, value: 100 }],
+    "Aberrant Fossil": [{ day: 0, value: 4 }, { day: 1, value: 8 }],
+  };
+  assert.deepEqual(biomeValueSeries(abyssal, histories, DEFAULTS), []);
 });
 
 console.log("bosses");
@@ -308,11 +332,12 @@ test("a per-line rate override moves the EV", () => {
   near(bumped - base, 0.16 * 1000, 1e-6, "doubling the Machinarium rate");
 });
 
-test("encounter rate is the city's share times the boss-node assumption", () => {
-  const rows = computeDelveBosses(bossResolve, { ...DEFAULTS, depth: 600, bossPerCity: 0.5 });
+test("boss rows expose city share without inventing an encounter rate", () => {
+  const rows = computeDelveBosses(bossResolve, { ...DEFAULTS, depth: 600 });
   const a = rows.find((r) => r.delve.id === "ahuatotli");
   const denom = 6 * 100 + 23 + 23 + 17;
-  near(a.encountersPer100, (23 / denom) * 0.5 * 100, 1e-9, "per 100 delves");
+  near(a.share, 23 / denom, 1e-9, "Vaal city share");
+  assert.ok(!("encountersPer100" in a));
 });
 
 test("minimum depth gates availability", () => {
@@ -358,20 +383,92 @@ test("sanitize clamps depth and drops junk", () => {
   assert.equal(sanitizeSettings({ depth: 1e9 }).depth, 65535);
   assert.equal(sanitizeSettings({ depth: "abc" }).depth, DEFAULTS.depth);
   assert.equal(sanitizeSettings({ openWalls: "yes" }).openWalls, DEFAULTS.openWalls);
-  assert.equal(sanitizeSettings({ exclusiveQty: -3 }).exclusiveQty, 0);
-  // the per-delve knobs are gone with the unit; stored ones must not survive
-  assert.ok(!("exclusivePerDelve" in sanitizeSettings({ exclusivePerDelve: 0.35 })),
-    "a stale per-delve setting should be dropped, not carried forward");
+  const stale = sanitizeSettings({ exclusiveQty: 4, exclusiveExtra: 2, bossPerCity: 0.5, exclusivePerDelve: 0.35 });
+  for (const key of ["exclusiveQty", "exclusiveExtra", "bossPerCity", "exclusivePerDelve"])
+    assert.ok(!(key in stale), `${key} should move out of global settings`);
   assert.deepEqual(sanitizeSettings({ bosses: { nope: {} } }).bosses, {});
 });
 
-test("price overrides survive a round trip and win over the snapshot", () => {
-  const s = sanitizeSettings({ priceOverrides: { "Hollow Fossil": 500, junk: "x" } });
+console.log("sample profiles");
+
+test("the guide profile carries no fake observations or timed rate", () => {
+  const profile = defaultSampleProfile();
+  const metrics = sampleMetrics(profile);
+  assert.equal(profile.name, "Guide baseline");
+  assert.equal(profile.builtIn, true);
+  assert.equal(metrics.hasObservations, false);
+  assert.equal(metrics.hasTimedSample, false);
+  assert.deepEqual(metrics.quantities, GUIDE_SAMPLE);
+});
+
+test("custom observations replace guide quantities and produce a finite personal pace", () => {
+  const profile = sanitizeSampleProfile({
+    name: "Depth 600",
+    sampleDepth: 600,
+    observations: {
+      minutes: 120,
+      exclusiveNodes: 4, exclusiveFossils: 16,
+      genericNodes: 2, genericFossils: 6,
+      cacheNodes: 1, cacheFossils: 8,
+    },
+  });
+  const metrics = sampleMetrics(profile);
+  assert.deepEqual(metrics.quantities, { exclusiveQty: 4, genericQty: 3, cacheQty: 8 });
+  near(metrics.exclusivePerHour, 2, 1e-9, "exclusive encounters/hour");
+  near(metrics.genericPerHour, 1, 1e-9, "generic encounters/hour");
+  near(metrics.cachePerHour, 0.5, 1e-9, "cache encounters/hour");
+  near(metrics.markerShare, 4 / 7, 1e-9, "exclusive share of recorded fossil encounters");
+
+  const all = computeBiomes(priceOf, { ...DEFAULTS, depth: 600, ...metrics.quantities }, metrics);
+  const abyssal = all.targets.find((r) => r.biome.id === "abyssal");
+  near(abyssal.personalRange.median, 2470, 1e-9, "personal median/hour");
+  assert.ok(Number.isFinite(abyssal.personalRange.high));
+});
+
+test("zero-count categories fall back independently and zero-fossil nodes are valid", () => {
+  const fallback = sampleMetrics(sanitizeSampleProfile({
+    observations: { exclusiveFossils: 9, genericNodes: 2, genericFossils: 0 },
+  }));
+  assert.equal(fallback.quantities.exclusiveQty, GUIDE_SAMPLE.exclusiveQty);
+  assert.equal(fallback.quantities.genericQty, 0);
+  assert.equal(fallback.quantities.cacheQty, GUIDE_SAMPLE.cacheQty);
+  assert.equal(fallback.warnings.length, 1);
+  assert.equal(fallback.hasTimedSample, false);
+});
+
+test("a timed dry route remains a valid zero-rate personal sample", () => {
+  const dry = sampleMetrics(sanitizeSampleProfile({ observations: { minutes: 90 } }));
+  assert.equal(dry.hasTimedSample, true);
+  assert.equal(dry.totalEncounters, 0);
+  assert.equal(dry.exclusivePerHour, 0);
+  const abyssal = computeBiomes(priceOf, { ...DEFAULTS, ...dry.quantities }, dry).targets
+    .find((r) => r.biome.id === "abyssal");
+  assert.deepEqual(abyssal.personalRange, { low: 0, median: 0, high: 0 });
+});
+
+test("sample sanitising clamps depths and observations", () => {
+  const p = sanitizeSampleProfile({
+    name: "  ", sampleDepth: 1e9,
+    observations: { minutes: -5, exclusiveNodes: -2, cacheFossils: "7" },
+  }, "Imported");
+  assert.equal(p.name, "Imported");
+  assert.equal(p.sampleDepth, 65535);
+  assert.equal(p.observations.minutes, 0);
+  assert.equal(p.observations.exclusiveNodes, 0);
+  assert.equal(p.observations.cacheFossils, 7);
+  assert.equal(uniqueSampleName([{ name: "Run" }, { name: "Run 2" }], "Run"), "Run 3");
+});
+
+test("price overrides survive a round trip, stay positive and win over the snapshot", () => {
+  const s = sanitizeSettings({ priceOverrides: { "Hollow Fossil": 500, zero: 0, negative: -5, junk: "x" } });
   assert.equal(s.priceOverrides["Hollow Fossil"], 500);
+  assert.ok(!("zero" in s.priceOverrides));
+  assert.ok(!("negative" in s.priceOverrides));
   assert.ok(!("junk" in s.priceOverrides));
   const p = makePriceOf([PRICES], { overrides: s.priceOverrides });
   assert.equal(p("Hollow Fossil").chaos, 500);
   assert.equal(p("Hollow Fossil").overridden, true);
+  assert.equal(makePriceOf([], { overrides: { "Hollow Fossil": -1 } })("Hollow Fossil").found, false);
 });
 
 test("fossil rows come back priced and sorted", () => {

@@ -5,6 +5,9 @@ import {
 import {
   makePriceOf, fossilRows, computeBiomes, computeDelveBosses, killDistribution,
   biomeValueSeries, loadSettings, saveSettings, sanitizeSettings,
+  SAMPLE_FIELDS, defaultSampleProfile, loadSampleProfiles, saveSampleProfiles,
+  loadActiveSampleProfile, saveActiveSampleProfile, sanitizeSampleProfile,
+  uniqueSampleName, sampleMetrics,
 } from "./delve.js";
 import { makeResolver } from "./bossProfit.js";
 import PriceChart, { PctBadge, rateAt } from "./PriceChart.jsx";
@@ -14,34 +17,34 @@ import { unitForSeries } from "./money.js";
    DELVE
    What a delve level is worth, and where to point it.
 
-   Three views, in the order you actually ask the questions:
+   Four views, in the order you actually ask the questions:
 
      Fossils   what's a fossil worth and what moved. Same shape as the
                astrolabe/catalyst tabs — toolbar, one chart, one grid —
                because it is the same question about different items.
-     Biomes    which biome do I want at this depth? A biome is quoted at
-               the value of the node you steer into it for — its Crystal
-               Spire, its Humid Fissure, its boss — never per delve or per
-               hour, because that needs a node frequency nobody publishes.
+     Biomes    which exclusive fossil target do I want at this depth?
+               Target value stays in currency; biome share and target value
+               combine only into a relative 0-100 opportunity index.
                Opening one gives it the mechanic panel treatment: that node
                charted over the league, the biome's fossils beside it, and
                what every other node there pays.
+     Samples   saved guide/custom observation profiles. Personal quantities
+               replace fallbacks and timed sessions unlock a clearly labelled
+               personal hourly projection.
      Bosses    a delve boss is a handful of kills a league, not a farm.
                So the tab leads with the spread of a SINGLE kill, and
                keeps the mean next to it rather than instead of it.
 
-   Everything the wiki does not publish — fossils per node, nodes per
-   delve, how often a city carries its boss — is an editable assumption,
-   badged as one. See the header comment in delveData.js.
+   The UI separates data-mined values, creator observations, conservative
+   fallbacks and personal samples. It never invents an absolute node or boss
+   frequency. See the header comment in delveData.js.
    ================================================================ */
 
-const num = (v, d) => (v == null || !isFinite(Number(v)) ? d : Number(v));
 const pctText = (v) => (v >= 0.1 ? `${(v * 100).toFixed(0)}%` : v >= 0.001 ? `${(v * 100).toFixed(1)}%` : v > 0 ? "<0.1%" : "—");
 
 const CHG_KEYS = { "4h": "change4", "8h": "change8", "12h": "change12", "24h": "change24", "48h": "change48" };
 const BIOME_NAME = Object.fromEntries(BIOMES.map((b) => [b.id, b.name]));
 const BIOME_TONE = Object.fromEntries(BIOMES.map((b) => [b.id, b.tone]));
-const BOSS_NAME = Object.fromEntries(DELVE_BOSSES.map((b) => [b.id, b.name]));
 
 /* A fossil reads as a shard: hexagonal, tinted by the biome it comes from,
    with a brighter core for the six that only drop from their own node. */
@@ -94,16 +97,33 @@ function NumInput({ value, onCommit, step = 1, min = 0, width = 62, suffix, titl
   );
 }
 
-const DEPTH_PRESETS = [100, 250, 500, 1000];
-const VIEWS = [["fossils", "Fossils & resonators"], ["biomes", "Biomes"], ["bosses", "Bosses"]];
+const DEPTH_PRESETS = [
+  { depth: 300, label: "sideways" },
+  { depth: 600, label: "cities" },
+  { depth: 1500, label: "fossil cap" },
+];
+const VIEWS = [
+  ["fossils", "Fossils & resonators"],
+  ["biomes", "Biome targets"],
+  ["samples", "My samples"],
+  ["bosses", "Bosses"],
+];
 
 export default function Delve({ league, staticBase, currency, divineRate, fmtPrice, fmtChaos, unitFor }) {
   const [view, setView] = useState("fossils");
   const [settings, setSettings] = useState(() => loadSettings());
+  const initialSamples = useRef(null);
+  if (!initialSamples.current) {
+    const profiles = loadSampleProfiles();
+    initialSamples.current = { profiles, active: loadActiveSampleProfile(profiles) };
+  }
+  const [sampleProfiles, setSampleProfiles] = useState(initialSamples.current.profiles);
+  const [activeSampleName, setActiveSampleName] = useState(initialSamples.current.active);
+  const [editingSample, setEditingSample] = useState(null);
   const [showAssumptions, setShowAssumptions] = useState(false);
   const [openBiome, setOpenBiome] = useState(null);
   const [openBoss, setOpenBoss] = useState(DELVE_BOSSES[0].id);
-  const [rankBy, setRankBy] = useState("value");        // value | expected
+  const [rankBy, setRankBy] = useState("opportunity"); // target | opportunity | sample
   const [sortDir, setSortDir] = useState("desc");
   const [chgWindow, setChgWindow] = useState("24h");
   const [filter, setFilter] = useState("");
@@ -120,8 +140,17 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const [priceSource, setPriceSource] = useState(null);
 
   useEffect(() => { saveSettings(settings); }, [settings]);
+  useEffect(() => { saveSampleProfiles(sampleProfiles); }, [sampleProfiles]);
+  useEffect(() => { saveActiveSampleProfile(activeSampleName); }, [activeSampleName]);
 
   const patch = useCallback((p) => setSettings((s) => sanitizeSettings({ ...s, ...p })), []);
+  const activeSampleProfile = sampleProfiles.find((p) => p.name === activeSampleName) || sampleProfiles[0];
+  const sample = useMemo(() => sampleMetrics(activeSampleProfile), [activeSampleProfile]);
+  const modelSettings = useMemo(() => ({ ...settings, ...sample.quantities }), [settings, sample]);
+
+  useEffect(() => {
+    if (rankBy === "sample" && !sample.hasTimedSample) setRankBy("opportunity");
+  }, [rankBy, sample.hasTimedSample]);
 
   /* ---- data ----
      Four snapshots, all optional in different ways:
@@ -235,19 +264,23 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   );
 
   const bosses = useMemo(() => computeDelveBosses(resolve, settings), [resolve, settings]);
-  const bossValues = useMemo(() => Object.fromEntries(bosses.map((b) => [b.delve.id, b.gross])), [bosses]);
   const dists = useMemo(() => {
     const out = {};
     for (const b of bosses) out[b.delve.id] = killDistribution(b, 4000);
     return out;
   }, [bosses]);
 
-  const biomes = useMemo(() => computeBiomes(priceOf, settings, bossValues), [priceOf, settings, bossValues]);
+  const biomes = useMemo(() => computeBiomes(priceOf, modelSettings, sample), [priceOf, modelSettings, sample]);
   const fossils = useMemo(() => fossilRows(priceOf), [priceOf]);
 
   const ranked = useMemo(() => {
-    const rows = [...biomes.rows];
-    rows.sort((a, b) => (rankBy === "expected" ? b.expected - a.expected : b.headline - a.headline));
+    const rows = [...biomes.targets];
+    const value = (row) => rankBy === "target"
+      ? row.headline
+      : rankBy === "sample"
+        ? row.personalRange?.median || 0
+        : row.opportunityIndex;
+    rows.sort((a, b) => value(b) - value(a));
     return rows;
   }, [biomes, rankBy]);
 
@@ -265,6 +298,8 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   }, [rateHistory, rateReady, chgWindow]);
 
   const money = (c) => (c > 0 ? fmtPrice(c, currency, rate) : "—");
+  const observedMoney = (c) => (Number.isFinite(c) && c >= 0 ? fmtPrice(c, currency, rate) : "—");
+  const pricedMoney = (c, found) => (found ? observedMoney(c) : "—");
   const chgKey = CHG_KEYS[chgWindow] || "change24";
   const chgOf = (name) => {
     const it = trendBy[name];
@@ -272,7 +307,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     return realHere ? it[`${chgKey}R`] : it[chgKey];
   };
 
-  const reset = () => setSettings(sanitizeSettings({ ...DEFAULTS, depth: settings.depth }));
+  const reset = () => setSettings(sanitizeSettings(DEFAULTS));
 
   /* ---- fossils view: list + chart ---- */
   const fossilList = useMemo(() => {
@@ -312,7 +347,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const openRow = openBiome ? biomes.rows.find((r) => r.biome.id === openBiome) : null;
   const biomeChart = useMemo(() => {
     if (!openRow) return { rows: [], cur: "chaos" };
-    const base = biomeValueSeries(openRow.biome, hist, settings, bossValues[openRow.biome.boss] ?? null);
+    const base = biomeValueSeries(openRow.biome, hist, modelSettings);
     const cur = unitForSeries(base.map((p) => p.value), currency, rate);
     const div = cur === "divine" ? rate : 1;
     const overlay = focusFossil ? (hist[focusFossil] || []) : null;
@@ -326,7 +361,44 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
         overlay: overlay && overlay.length ? Math.round((at(overlay, p.day).value / div) * 100) / 100 : null,
       })),
     };
-  }, [openRow, hist, settings, bossValues, currency, rate, focusFossil, rateHistory]);
+  }, [openRow, hist, modelSettings, currency, rate, focusFossil, rateHistory]);
+
+  const updateSample = (name, fn) => {
+    setSampleProfiles((profiles) => profiles.map((p) => {
+      if (p.name !== name || p.builtIn) return p;
+      return sanitizeSampleProfile(fn({ ...p, observations: { ...p.observations } }), p.name);
+    }));
+  };
+
+  const addSampleProfile = (seed = null) => {
+    const name = uniqueSampleName(sampleProfiles, seed ? `${seed.name} copy` : "My sample");
+    const profile = seed && !seed.builtIn
+      ? { ...sanitizeSampleProfile(seed), name }
+      : { ...defaultSampleProfile(name, false), sampleDepth: settings.depth };
+    setSampleProfiles((profiles) => [...profiles, profile]);
+    setActiveSampleName(name);
+    setEditingSample(name);
+    setView("samples");
+  };
+
+  const renameSampleProfile = (from, next) => {
+    const clean = next.trim();
+    if (!clean) return;
+    const name = uniqueSampleName(sampleProfiles.filter((p) => p.name !== from), clean);
+    setSampleProfiles((profiles) => profiles.map((p) => p.name === from && !p.builtIn ? { ...p, name } : p));
+    if (activeSampleName === from) setActiveSampleName(name);
+    if (editingSample === from) setEditingSample(name);
+  };
+
+  const deleteSampleProfile = (name) => {
+    const profile = sampleProfiles.find((p) => p.name === name);
+    if (!profile || profile.builtIn) return;
+    setSampleProfiles((profiles) => profiles.filter((p) => p.name !== name));
+    if (activeSampleName === name) setActiveSampleName("Guide baseline");
+    if (editingSample === name) setEditingSample(null);
+  };
+
+  const wallFossils = fossils.filter((f) => f.wall);
 
   return (
     <section className="dl-wrap">
@@ -338,48 +410,56 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             onCommit={(n) => patch({ depth: n })} title="Biome spawn weights, and which bosses exist, both key off depth" />
         </label>
         <div className="dl-presets">
-          {DEPTH_PRESETS.map((d) => (
-            <button key={d} className={settings.depth === d ? "on" : ""} onClick={() => patch({ depth: d })}>{d}</button>
+          {DEPTH_PRESETS.map((preset) => (
+            <button key={preset.depth} className={settings.depth === preset.depth ? "on" : ""}
+              title={`Depth ${preset.depth}: ${preset.label}`}
+              onClick={() => patch({ depth: preset.depth })}>
+              {preset.depth}<em>{preset.label}</em>
+            </button>
           ))}
         </div>
-        <div className="dl-headline"
-          title="What an ordinary 'Contains Fossils' node pays at this depth, averaged over the biomes that spawn here and weighted by how common each is. A biome's own node — Crystal Spire and friends — is worth much more; see the Biomes view.">
-          <strong>{money(biomes.avgFossilNode)}</strong>
-          <em>an ordinary fossil node at depth {settings.depth}</em>
+        <label className="dl-field dl-profile-field">
+          <span>Sample profile</span>
+          <select value={activeSampleName} onChange={(e) => setActiveSampleName(e.target.value)}>
+            {sampleProfiles.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+          </select>
+        </label>
+        <div className="dl-headline" title="The active profile supplies fossil quantities and, when timed observations exist, your personal encounter pace.">
+          <strong>{activeSampleName}</strong>
+          <em>{sample.hasTimedSample
+            ? `${sample.totalEncounters} encounters in ${sample.observations.minutes} minutes`
+            : Object.values(sample.quantitySources).includes("personal")
+              ? "sample quantities · no timed encounter rate"
+              : "guide quantities · no timed encounter rate"}</em>
         </div>
         <button className="dl-assume-btn" onClick={() => setShowAssumptions((v) => !v)}>
           {showAssumptions ? "Hide" : "Assumptions"}
         </button>
-        <button className="dl-reset" onClick={reset}>Reset</button>
+        <button className="dl-reset" onClick={reset}>Reset settings</button>
       </div>
 
       {showAssumptions && (
         <div className="dl-assume">
           <p className="dl-assume-lead">
-            The wiki publishes biome pools, spawn weights and boss drop rates. It does not publish how many
-            fossils a node drops, so that is yours to set. Two of these have someone's counted figure behind
-            them and are badged <em className="dl-src ok">seen</em>; the rest are badged{" "}
-            <em className="dl-src warn">guess</em> and are set low on purpose, so the tab understates a biome
-            rather than talking you into one. Hover any row for where its number came from. Fossil prices and
-            boss drop rates depend on none of it.
+            Biome shares and encounter tiers come from current data-mined tables. The missing reward-tier
+            selection curve is why the opportunity score is relative, not currency. Node quantities use the
+            active profile: personal averages replace the guide fallbacks one category at a time.
           </p>
-          {[...new Set(TUNABLES.map((t) => t.group))].map((group) => (
-            <div key={group} className="dl-assume-group">
-              <h4>{group}</h4>
-              {TUNABLES.filter((t) => t.group === group).map((t) => (
-                <label key={t.key} className="dl-assume-row" title={t.help}>
-                  <span>
-                    {t.label}
-                    {/* A number somebody counted should not sit next to one I
-                        picked out of the air looking equally solid. */}
-                    <em className={`dl-src ${SOURCES[t.source]?.tone || ""}`}>{SOURCES[t.source]?.tag}</em>
-                  </span>
-                  <NumInput value={num(settings[t.key], DEFAULTS[t.key])} step={t.step}
-                    onCommit={(n) => patch({ [t.key]: n })} />
-                </label>
-              ))}
-            </div>
-          ))}
+          <div className="dl-assume-group">
+            <h4>Active yields</h4>
+            {TUNABLES.map((t) => (
+              <div key={t.key} className="dl-assume-row" title={t.help}>
+                <span>{t.label}<em className={`dl-src ${SOURCES[sample.quantitySources[t.key]]?.tone || ""}`}>
+                  {SOURCES[sample.quantitySources[t.key]]?.tag}
+                </em></span>
+                <strong>{sample.quantities[t.key].toFixed(2).replace(/\.00$/, "")}</strong>
+              </div>
+            ))}
+            <p className="dl-assume-note">
+              Open <button className="dl-inline-link" onClick={() => setView("samples")}>My samples</button> to
+              log encounters and fossil totals. The Guide baseline contains no invented node frequency or hourly rate.
+            </p>
+          </div>
           <div className="dl-assume-group">
             <h4>Fractured walls</h4>
             <label className="st-check">
@@ -388,9 +468,23 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
               <span>Count wall-locked fossils (Gilded, Lucent, Sanctified)</span>
             </label>
             <p className="dl-assume-note">
-              Those three sit behind fractured walls. If you don't carry the dynamite budget to open them,
-              turn this off and the pool averages drop them.
+              Those three sit behind fractured walls. Turning this off removes them from generic-node and
+              cache ranges; it never changes the exclusive fossil target.
             </p>
+          </div>
+          <div className="dl-source-grid">
+            <a href="https://poedb.tw/us/DelveBiomes" target="_blank" rel="noreferrer">
+              <em className="dl-src ok">data</em><strong>PoEDB</strong><span>biome shares, tiers, weights and minimum depths</span>
+            </a>
+            <a href="https://www.pathofexile.com/forum/view-thread/3913392" target="_blank" rel="noreferrer">
+              <em className="dl-src ok">official</em><strong>GGG 3.28</strong><span>more fossils off-path and behind fractured walls</span>
+            </a>
+            <a href="https://youtu.be/2gS1FE-nQJ8" target="_blank" rel="noreferrer">
+              <em className="dl-src ok">guide</em><strong>Jorgen 3.28</strong><span>target quantities, routes and current method</span>
+            </a>
+            <a href="https://youtu.be/nC_En939Ing?t=2853" target="_blank" rel="noreferrer">
+              <em className="dl-src ok">guide</em><strong>Conner Converse</strong><span>deep reward behaviour and the 1500 cap observation</span>
+            </a>
           </div>
         </div>
       )}
@@ -400,11 +494,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
           too high. The unit is one NODE now: price x count, both checkable.
           Said out loud, because a unit you have to infer is the bug. */}
       <p className="dl-define">
-        A biome is quoted at <strong>the value of the node you steer into it for</strong> — its Crystal
-        Spire, its Humid Fissure, its boss — in <strong>fossils only</strong>. Per node, never per delve or
-        per hour: those need how often a node turns up, which is published nowhere. How many fossils a node
-        drops is still an{" "}
-        <button className="dl-inline-link" onClick={() => setShowAssumptions(true)}>assumption you set</button>.
+        <strong>Target value</strong> prices the exclusive fossil encounter. <strong>Opportunity</strong> is
+        a relative 0–100 routing score using biome share and live target value. Absolute profit only appears as
+        <strong> your observed pace</strong> after a custom sample contains timed observations.
       </p>
 
       {!havePrices && (
@@ -550,15 +642,15 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             )}
           </section>
 
-          <h4 className="dl-h">What a node is worth</h4>
+          <h4 className="dl-h">Node value scenarios</h4>
           <p className="dl-note">
-            One node, not one delve — priced against the biome you are standing in. A biome node is worth
-            its own fossil; everything else is worth that biome's pool average. Multiply by how often you
-            actually find one to get a per-delve figure, which is what the Biomes view does.
+            Exclusive targets use the active profile's observed or guide quantity. Generic nodes and caches
+            show the cheapest, median and dearest <em>priced</em> pool outcomes because their fossil distribution
+            is not published; an equal-weight average would be false precision. Missing-price coverage is shown per biome.
           </p>
           <div className="dl-table-wrap">
             <table className="dl-table">
-              <thead><tr><th>Node</th><th>Biome</th><th className="r">Value</th></tr></thead>
+              <thead><tr><th>Node</th><th>Biome</th><th className="r">Low</th><th className="r">Median</th><th className="r">High</th></tr></thead>
               <tbody>
                 {NODES.filter((n) => n.kind === "exclusive").map((n) => {
                   const row = biomes.rows.find((r) => r.biome.id === n.biome);
@@ -566,21 +658,47 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                     <tr key={n.id}>
                       <td>{n.name}<em className="dl-flag">{n.fossil.replace(/ Fossil$/, "")}</em></td>
                       <td>{BIOME_NAME[n.biome]}</td>
-                      <td className="r num">{money(row?.exclusive?.nodeValue || 0)}</td>
+                      <td className="r num" colSpan={3}>{pricedMoney(row?.exclusive?.nodeValue, row?.exclusive?.found)}</td>
                     </tr>
                   );
                 })}
-                <tr className="dl-sep"><td colSpan={3}>Generic, priced per biome</td></tr>
+                <tr className="dl-sep"><td colSpan={5}>Generic node / Smuggler's cache, priced per biome</td></tr>
                 {biomes.rows.filter((r) => r.poolNames.length).map((r) => (
                   <tr key={`g-${r.biome.id}`}>
                     <td>Fossil node / smuggler's cache</td>
-                    <td>{r.biome.name}</td>
-                    <td className="r num">{money(r.genericNode)} / {money(r.cacheNode)}</td>
+                    <td>
+                      {r.biome.name}
+                      {r.poolCoverage < 1 && (
+                        <em className="dl-flag warn">
+                          {r.poolPrices.filter((p) => p.found).length}/{r.poolNames.length} priced
+                        </em>
+                      )}
+                    </td>
+                    <td className="r num">{pricedMoney(r.genericRange.low, r.poolCoverage > 0)} / {pricedMoney(r.cacheRange.low, r.poolCoverage > 0)}</td>
+                    <td className="r num">{pricedMoney(r.genericRange.median, r.poolCoverage > 0)} / {pricedMoney(r.cacheRange.median, r.poolCoverage > 0)}</td>
+                    <td className="r num">{pricedMoney(r.genericRange.high, r.poolCoverage > 0)} / {pricedMoney(r.cacheRange.high, r.poolCoverage > 0)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          <section className="dl-wall-card">
+            <div>
+              <span className="ov-kind">3.28 route change</span>
+              <h4>Darkness and fractured walls matter more</h4>
+              <p>
+                GGG greatly increased fossil frequency behind fractured walls and off the main path. The game
+                still exposes no route-length rate, so these stay as live per-drop targets rather than a made-up
+                amount per Delve.
+              </p>
+            </div>
+            <div className="dl-wall-values">
+              {wallFossils.map((f) => (
+                <span key={f.name}><strong>{f.name}</strong><b>{money(f.chaos)}</b><em>{f.biomes.map((id) => BIOME_NAME[id]).join(" · ")}</em></span>
+              ))}
+            </div>
+          </section>
         </>
       )}
 
@@ -589,24 +707,35 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
         <>
           <div className="dl-subbar">
             <div className="st-seg">
-              <button className={rankBy === "value" ? "on" : ""} onClick={() => setRankBy("value")}
-                title="What a delve level of this biome is worth if you steer into it">Worth steering to</button>
-              <button className={rankBy === "expected" ? "on" : ""} onClick={() => setRankBy("expected")}
-                title="That value times how much of the mine the biome occupies at this depth">Weighted by how common</button>
+              <button className={rankBy === "target" ? "on" : ""} onClick={() => setRankBy("target")}
+                title="Live value of one exclusive fossil encounter">Target value</button>
+              <button className={rankBy === "opportunity" ? "on" : ""} onClick={() => setRankBy("opportunity")}
+                title="Relative score from biome share and live target value">Opportunity</button>
+              <button className={rankBy === "sample" ? "on" : ""} disabled={!sample.hasTimedSample}
+                onClick={() => sample.hasTimedSample && setRankBy("sample")}
+                title={sample.hasTimedSample ? "Low/median/high projection at your observed encounter pace" : "Add timed observations in My samples first"}>
+                My pace
+              </button>
             </div>
             <span className="dl-mode-note">
-              {rankBy === "expected"
-                ? <>Each biome's worth <strong>thinned by how rarely it spawns</strong> at depth {settings.depth}. Answers "which biome am I likely to actually get value out of", not "which is best".</>
-                : <>What a biome is worth is <strong>the node you steer into it for</strong> — its Crystal Spire, its Humid Fissure, its boss. Rarity is not in these numbers: Primeval Ruins tops the list on Aul alone and still shows up in about 1 biome in 40.</>}
+              {rankBy === "target" && <>One exclusive encounter at the active profile's quantity. <strong>No spawn frequency is included.</strong></>}
+              {rankBy === "opportunity" && <>A <strong>relative routing score</strong>: biome share × target value, normalised so today's leader is 100. It is not chaos per Delve.</>}
+              {rankBy === "sample" && <>Low–high <em>priced-pool</em> outcomes at <strong>{activeSampleName}'s observed encounters per hour</strong>. This is personal projection, not a global rate.</>}
             </span>
             {biomes.anyInterpolated && (
               <span className="dl-hint">
-                Depth {settings.depth} sits inside at least one biome's weight ramp — the wiki gives both ends
-                and says the middle scales non-linearly without giving the curve, so those shares are
-                eased between the two and are approximate.
+                Depth {settings.depth} sits inside at least one biome's weight ramp. The documented endpoints
+                do not include the non-linear middle curve, so those shares are eased between the two and are approximate.
               </span>
             )}
           </div>
+
+          {!activeSampleProfile.builtIn && sample.sampleDepth !== settings.depth && (
+            <div className="st-banner st-quiet">
+              {activeSampleName} was recorded at depth {sample.sampleDepth}; you are viewing depth {settings.depth}.
+              Quantities remain useful, but encounter pace may not transfer between depths.
+            </div>
+          )}
 
           {/* expanded biome — same shape as the mechanic panel on Scarabs */}
           {openRow && (
@@ -615,11 +744,13 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                 <div className="st-panel-title">
                   <FossilIcon size={26} tone={openRow.biome.tone} exclusive />
                   <h2>{openRow.biome.name}</h2>
-                  <span className="st-panel-total" title={`One ${openRow.headlineLabel}. Not a per-delve or per-hour figure — this tab does not claim to know how often you find one.`}>
-                    {money(openRow.headline)} · {openRow.headlineLabel}
+                  <span className="st-panel-total" title={`One ${openRow.headlineLabel} at the active profile's quantity.`}>
+                    {pricedMoney(openRow.headline, openRow.exclusive?.found)} · {openRow.headlineLabel}
                   </span>
                   <span className="st-panel-total">{pctText(openRow.share)} of the mine</span>
-                  {openRow.biome.city && <em className="st-tag st-tag-panel">city biome</em>}
+                  <span className="st-panel-total">
+                    {openRow.exclusive?.found ? openRow.opportunityIndex.toFixed(0) : "—"}/100 opportunity
+                  </span>
                 </div>
                 <button className="st-close" onClick={() => { setOpenBiome(null); setFocusFossil(null); setDragSel(null); }}>Close</button>
               </div>
@@ -636,24 +767,18 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                     overlayName={focusFossil}
                     overlayTone={openRow.biome.tone}
                     dragSel={dragSel} setDragSel={setDragSel}
-                    empty={openRow.biome.city
-                      ? "City biomes have no fossil pool — their value is their boss, and a drop table has no price history."
-                      : "History builds up with each data refresh — check back after a couple of runs."}
+                    empty="History builds up with each data refresh — check back after a couple of runs."
                   />
                   <div className="dl-panel-detail">
                     {openRow.exclusive && (
                       <p className="dl-excl">
-                        <strong>{openRow.exclusive.node}</strong> → {settings.exclusiveQty}× {openRow.exclusive.fossil}
+                        <strong>{openRow.exclusive.node}</strong> → {sample.quantities.exclusiveQty.toFixed(2).replace(/\.00$/, "")}× {openRow.exclusive.fossil}
+                        <em className={`dl-src ${SOURCES[sample.quantitySources.exclusiveQty]?.tone || ""}`}>
+                          {SOURCES[sample.quantitySources.exclusiveQty]?.tag}
+                        </em>
                         {openRow.exclusive.found
-                          ? <> @ {money(openRow.exclusive.chaos)} = <b>{money(openRow.exclusive.nodeValue)}</b> a node</>
+                          ? <> @ {money(openRow.exclusive.chaos)} = <b>{observedMoney(openRow.exclusive.nodeValue)}</b> a node</>
                           : <em className="dl-flag warn">no price</em>}
-                      </p>
-                    )}
-                    {openRow.biome.city && openRow.biome.boss && (
-                      <p className="dl-excl">
-                        <strong>{BOSS_NAME[openRow.biome.boss]}</strong> from depth{" "}
-                        {DELVE_BOSSES.find((x) => x.id === openRow.biome.boss).minDepth} ·{" "}
-                        {money(bossValues[openRow.biome.boss] || 0)} a kill
                       </p>
                     )}
                     <h5>What each node here pays</h5>
@@ -661,18 +786,18 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                       <tbody>
                         {openRow.exclusive && (
                           <tr className="dl-parts-total">
-                            <td>{openRow.exclusive.node} <em className="dl-implied">{settings.exclusiveQty}× {openRow.exclusive.fossil.replace(/ Fossil$/, "")} + {openRow.exclusiveExtra ?? settings.exclusiveExtra} pool</em></td>
-                            <td>{money(openRow.exclusive.nodeValue)}</td>
+                            <td>{openRow.exclusive.node} <em className="dl-implied">{sample.quantities.exclusiveQty.toFixed(2).replace(/\.00$/, "")}× {openRow.exclusive.fossil.replace(/ Fossil$/, "")}</em></td>
+                            <td>{pricedMoney(openRow.exclusive.nodeValue, openRow.exclusive.found)}</td>
                           </tr>
                         )}
-                        {openRow.bossNode && (
+                        {!!openRow.poolNames.length && <tr><td>Generic fossil node <em className="dl-implied">{sample.quantities.genericQty.toFixed(2).replace(/\.00$/, "")}× pool</em></td><td>{pricedMoney(openRow.genericRange.low, openRow.poolCoverage > 0)}–{pricedMoney(openRow.genericRange.high, openRow.poolCoverage > 0)} <em className="dl-implied">median {pricedMoney(openRow.genericRange.median, openRow.poolCoverage > 0)}</em></td></tr>}
+                        {!!openRow.poolNames.length && <tr><td>Smuggler's cache <em className="dl-implied">{sample.quantities.cacheQty.toFixed(2).replace(/\.00$/, "")}× pool</em></td><td>{pricedMoney(openRow.cacheRange.low, openRow.poolCoverage > 0)}–{pricedMoney(openRow.cacheRange.high, openRow.poolCoverage > 0)} <em className="dl-implied">median {pricedMoney(openRow.cacheRange.median, openRow.poolCoverage > 0)}</em></td></tr>}
+                        {openRow.exclusive?.found && openRow.personalRange && (
                           <tr className="dl-parts-total">
-                            <td>{openRow.bossNode.name} <em className="dl-implied">one kill</em></td>
-                            <td>{money(openRow.bossNode.value)}</td>
+                            <td>At your observed pace <em className="dl-implied">all fossil encounter types</em></td>
+                            <td>{observedMoney(openRow.personalRange.low)}–{observedMoney(openRow.personalRange.high)}/h</td>
                           </tr>
                         )}
-                        {!!openRow.poolNames.length && <tr><td>Generic fossil node <em className="dl-implied">{settings.genericQty}× pool</em></td><td>{money(openRow.genericNode)}</td></tr>}
-                        {!!openRow.poolNames.length && <tr><td>Smuggler's cache <em className="dl-implied">{settings.cacheQty}× pool</em></td><td>{money(openRow.cacheNode)}</td></tr>}
                       </tbody>
                     </table>
                     {!!openRow.biome.themed.length && (
@@ -682,10 +807,10 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                       </>
                     )}
                     <p className="dl-note">
-                      Spawn weight {openRow.biome.weight.lo.weight} at depth ≤{openRow.biome.weight.lo.depth},{" "}
+                      Tier {openRow.exclusive?.tier}, encounter weight {openRow.exclusive?.weight}, minimum depth {openRow.exclusive?.minDepth}. Spawn weight {openRow.biome.weight.lo.weight} at depth ≤{openRow.biome.weight.lo.depth},{" "}
                       {openRow.biome.weight.hi.weight} at depth ≥{openRow.biome.weight.hi.depth}.
                       {openRow.biome.note ? ` ${openRow.biome.note}` : ""}
-                      {openRow.poolCoverage < 1 && ` ${Math.round((1 - openRow.poolCoverage) * 100)}% of the pool has no price, so the average is over what is priced.`}
+                      {openRow.poolCoverage < 1 && ` ${Math.round((1 - openRow.poolCoverage) * 100)}% of the pool has no price, so the range only covers priced fossils.`}
                     </p>
                   </div>
                 </div>
@@ -714,14 +839,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                       <span className="st-row-price"><PctBadge v={chgOf(p.name)} real={realHere} /> {money(p.chaos)}</span>
                     </button>
                   ))}
-                  {!openRow.poolNames.length && !openRow.exclusive && (
-                    <div className="dl-note" style={{ padding: "12px 14px" }}>
-                      No fossil pool — a city biome's value is its boss.
-                    </div>
-                  )}
                   {!!openRow.poolNames.length && (
                     <div className="st-breakdown-hint">
-                      Pool average {money(openRow.poolAvg)} · tap a fossil to overlay it on the graph.
+                      Priced-pool range {pricedMoney(openRow.poolRange.low, openRow.poolCoverage > 0)}–{pricedMoney(openRow.poolRange.high, openRow.poolCoverage > 0)} · median {pricedMoney(openRow.poolRange.median, openRow.poolCoverage > 0)} · tap a fossil to overlay it.
                     </div>
                   )}
                 </div>
@@ -732,8 +852,12 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
           <div className="dl-biomes">
             {ranked.map((r) => {
               const b = r.biome;
-              const dead = r.weight <= 0;
-              const headline = rankBy === "expected" ? r.expected : r.headline;
+              const dead = !r.exclusive?.available;
+              const headline = rankBy === "sample"
+                ? r.personalRange?.median || 0
+                : rankBy === "target"
+                  ? r.headline
+                  : r.opportunityIndex;
               return (
                 <article key={b.id} className={`dl-biome${dead ? " dead" : ""}${openBiome === b.id ? " open" : ""}`} style={{ "--tone": b.tone }}>
                   <button className="dl-biome-head"
@@ -742,15 +866,20 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                     <span className="dl-dot" />
                     <span className="dl-biome-name">
                       {b.name}
-                      {b.city && <em className="dl-flag">city</em>}
                       {dead && <em className="dl-flag warn">not at this depth</em>}
                     </span>
                     <span className="dl-biome-val"
-                      title={rankBy === "expected"
-                        ? `What this biome is worth — its ${r.headlineLabel} — thinned by the ${pctText(r.share)} of the mine it occupies at depth ${settings.depth}.`
-                        : `What this biome is worth: one ${r.headlineLabel}, the node you steer into it for. Says nothing about how often you find one.`}>
-                      {money(headline)}
-                      <em>{rankBy === "expected" ? "/biome, weighted" : "/biome"}</em>
+                      title={rankBy === "opportunity"
+                        ? `Relative score from ${pctText(r.share)} biome share and ${pricedMoney(r.headline, r.exclusive?.found)} target value. Not currency per Delve.`
+                        : rankBy === "sample"
+                          ? `Median pool scenario at ${activeSampleName}'s observed encounter pace.`
+                          : `One ${r.headlineLabel}; no encounter frequency included.`}>
+                      {rankBy === "opportunity"
+                        ? (r.exclusive?.found ? headline.toFixed(0) : "—")
+                        : rankBy === "sample"
+                          ? observedMoney(headline)
+                          : pricedMoney(headline, r.exclusive?.found)}
+                      <em>{rankBy === "opportunity" ? "/100 opportunity" : rankBy === "sample" ? "/h, median" : "/target"}</em>
                     </span>
                   </button>
 
@@ -758,29 +887,136 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                     {!dead && <i style={{ width: `${Math.min(100, r.share * 100 * 3)}%` }} />}
                     <span>
                       {dead
-                        ? `Doesn't spawn at depth ${settings.depth}`
+                        ? `Target unavailable at depth ${settings.depth}`
                         : `${pctText(r.share)} of the mine${!r.exact ? " (approx)" : ""}`}
                     </span>
                   </div>
 
                   {r.exclusive && (
                     <div className="dl-excl">
-                      <strong>{r.exclusive.node}</strong> → {settings.exclusiveQty}× {r.exclusive.fossil}
+                      <strong>{r.exclusive.node}</strong> → {sample.quantities.exclusiveQty.toFixed(2).replace(/\.00$/, "")}× {r.exclusive.fossil}
                       {r.exclusive.found
-                        ? <> @ {money(r.exclusive.chaos)} = <b>{money(r.exclusive.nodeValue)}</b> a node</>
+                        ? <> @ {money(r.exclusive.chaos)} = <b>{observedMoney(r.exclusive.nodeValue)}</b> a node</>
                         : <em className="dl-flag warn">no price</em>}
+                      <em className="dl-node-data">tier {r.exclusive.tier} · weight {r.exclusive.weight} · depth {r.exclusive.minDepth}+</em>
                     </div>
                   )}
-                  {b.city && b.boss && (
-                    <div className="dl-excl">
-                      <strong>{BOSS_NAME[b.boss]}</strong> from depth {DELVE_BOSSES.find((x) => x.id === b.boss).minDepth} ·{" "}
-                      {money(bossValues[b.boss] || 0)} a kill
+                  {r.exclusive?.found && r.personalRange && (
+                    <div className="dl-personal-range">
+                      My pace: {observedMoney(r.personalRange.low)}–{observedMoney(r.personalRange.high)}/h
+                      {r.poolCoverage < 1 && <em className="dl-flag warn">partial prices</em>}
                     </div>
                   )}
                 </article>
               );
             })}
           </div>
+        </>
+      )}
+
+      {/* ================= SAMPLE PROFILES ================= */}
+      {view === "samples" && (
+        <>
+          <div className="dl-sample-title">
+            <div>
+              <h3>My Delve samples</h3>
+              <p>
+                Log encounters and fossil totals from one farming session. Quantities replace the guide
+                fallbacks category by category; adding minutes also unlocks your personal priced-pool low–high hourly
+                projection. Nothing here changes market prices or boss drop rates.
+              </p>
+            </div>
+            <button className="dl-sample-new" onClick={() => addSampleProfile()}>+ New profile</button>
+          </div>
+
+          <div className="dl-sample-grid">
+            {sampleProfiles.map((profile) => {
+              const metrics = sampleMetrics(profile);
+              const editing = editingSample === profile.name && !profile.builtIn;
+              const active = profile.name === activeSampleName;
+              return (
+                <article key={profile.name} className={`dl-sample-card${active ? " active" : ""}`}>
+                  <div className="dl-sample-card-head">
+                    <div>
+                      {editing
+                        ? <input className="dl-sample-name" defaultValue={profile.name}
+                            aria-label="Sample profile name"
+                            onBlur={(e) => renameSampleProfile(profile.name, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+                        : <h4>{profile.name}</h4>}
+                      <span>{profile.builtIn
+                        ? "built-in guide quantities"
+                        : metrics.hasObservations
+                          ? `observed around depth ${metrics.sampleDepth}`
+                          : `sample depth ${metrics.sampleDepth}`}</span>
+                    </div>
+                    <em className={`dl-src ${profile.builtIn ? "ok" : "personal"}`}>{profile.builtIn ? "guide" : "custom"}</em>
+                  </div>
+
+                  <div className="dl-sample-yields">
+                    {TUNABLES.map((field) => (
+                      <span key={field.key}>
+                        <small>{field.label.replace("Fossils per ", "").replace("Special fossils per ", "Special / ")}</small>
+                        <strong>{metrics.quantities[field.key].toFixed(2).replace(/\.00$/, "")}</strong>
+                        <em className={`dl-src ${SOURCES[metrics.quantitySources[field.key]]?.tone || ""}`}>
+                          {SOURCES[metrics.quantitySources[field.key]]?.tag}
+                        </em>
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="dl-sample-summary">
+                    {metrics.hasTimedSample
+                      ? <><strong>{metrics.totalEncounters}</strong> fossil encounters in <strong>{metrics.observations.minutes}</strong> minutes
+                          {metrics.markerShare != null && <> · <strong>{Math.round(metrics.markerShare * 100)}%</strong> were exclusive nodes</>}</>
+                      : "No timed encounter rate. The profile cannot produce an hourly figure yet."}
+                  </div>
+
+                  {editing && (
+                    <div className="dl-sample-editor">
+                      <label className="dl-assume-row">
+                        <span>Sample depth</span>
+                        <NumInput value={profile.sampleDepth} step={10} min={1}
+                          onCommit={(n) => updateSample(profile.name, (p) => ({ ...p, sampleDepth: n }))} />
+                      </label>
+                      <div className="dl-sample-fields">
+                        {SAMPLE_FIELDS.map((field) => (
+                          <label key={field.key} className="dl-assume-row">
+                            <span>{field.label}</span>
+                            <NumInput value={profile.observations[field.key]} step={field.step} min={0}
+                              onCommit={(n) => updateSample(profile.name, (p) => ({
+                                ...p,
+                                observations: { ...p.observations, [field.key]: n },
+                              }))} />
+                          </label>
+                        ))}
+                      </div>
+                      {!!metrics.warnings.length && <p className="dl-note warn">{metrics.warnings.join(" · ")}</p>}
+                    </div>
+                  )}
+
+                  <div className="dl-sample-actions">
+                    {!active && <button onClick={() => setActiveSampleName(profile.name)}>Use profile</button>}
+                    {active && <strong>Active</strong>}
+                    {!profile.builtIn && <button onClick={() => setEditingSample(editing ? null : profile.name)}>{editing ? "Done" : "Edit sample"}</button>}
+                    <button onClick={() => addSampleProfile(profile)}>Duplicate</button>
+                    {!profile.builtIn && editing && (
+                      <button onClick={() => updateSample(profile.name, (p) => ({
+                        ...defaultSampleProfile(p.name, false), sampleDepth: p.sampleDepth,
+                      }))}>Clear observations</button>
+                    )}
+                    {!profile.builtIn && <button className="danger" onClick={() => deleteSampleProfile(profile.name)}>Delete</button>}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <p className="dl-note">
+            A timed projection assumes the encounter pace from that session continues in the selected biome.
+            It is personal evidence, not a claimed global Delve spawn rate. Use separate profiles for different
+            depths, builds or routing styles.
+          </p>
         </>
       )}
 
@@ -808,7 +1044,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                   </button>
                   <div className="dl-boss-meta">
                     {b.biome.name} · {b.delve.node} · depth {b.delve.minDepth}+
-                    {" · "}about {b.encountersPer100.toFixed(1)} per 100 delves at depth {settings.depth}
+                    {" · "}{pctText(b.share)} of the mine is this city biome at depth {settings.depth}
                   </div>
 
                   <div className="dl-spread" title="10th to 90th percentile of one kill, with the median marked and the mean as a line">
@@ -887,7 +1123,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         Rates: poewiki, {b.delve.sample}. Lines roll independently — Ahuatotli's six sum past
                         100% because a kill can hand you several. Prices are the market's, including the
                         divination cards.
-                        {b.missingPrices > 0 && ` ${b.missingPrices} line${b.missingPrices > 1 ? "s have" : " has"} no poe.ninja price and contribute nothing.`}
+                        {b.missingPrices > 0 && ` ${b.missingPrices} line${b.missingPrices > 1 ? "s have" : " has"} no supported market price and contribute nothing.`}
                       </p>
                     </div>
                   )}
@@ -896,9 +1132,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             })}
           </div>
           <p className="dl-note">
-            Encounter rate rides on one unpublished number — how often a city biome carries its boss node,
-            set to {settings.bossPerCity} in the assumptions. The city's share of the mine is the wiki's own
-            spawn weight, so that half is solid.
+            City-biome share comes from the data-mined depth weights. The game does not publish how often a
+            city contains its boss, so this view deliberately stops at value per kill and does not invent
+            bosses per 100 Delves.
           </p>
         </>
       )}

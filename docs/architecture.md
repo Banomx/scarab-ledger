@@ -58,7 +58,9 @@ Exchange. The normal basis is the selected hour; the bounded boss-gap lookup can
 use a recent earlier completed hour for a currently recognized thin item.
 Uniques, maps, gems, unidentified forms and roll variants generally require
 poe.watch or poe.ninja. Boss drop rates and Delve biome rules remain curated
-project data and are not supplied by any price API.
+project data and are not supplied by any price API. Delve biome weights and
+encounter tier/weight/minimum-depth fields are transcribed from current PoEDB
+data-mined tables; creator observations are labelled separately.
 
 For unidentified boss uniques, the poe.watch adapter uses the current listing
 floor and preserves separate item-level markets. Boss data names the exact
@@ -72,6 +74,24 @@ then the identified item.
 `src/Overview.jsx` is the default view and reads the same generated snapshots as
 the detailed tools. It calls the pure boss and Delve calculation modules instead
 of maintaining separate estimates. Popular farms remains a dedicated scarab-only
-view, while TTK profiles stay inside Boss profit. Boss signals carry a boss id
-through `src/App.jsx`, so profitability and missing-price links open the relevant
-boss instead of the first boss in the list.
+view, while TTK profiles stay inside Boss profit and Delve sample profiles stay
+inside Delve. Boss signals carry a boss id through `src/App.jsx`, so profitability
+and missing-price links open the relevant boss instead of the first boss in the
+list.
+
+## Delve estimation boundary
+
+The six biome-exclusive fossil encounters share PoEDB tier 4 and encounter
+weight 100. `src/delve.js` uses this to produce a relative Opportunity index:
+biome share times live target value, normalised to 0–100. It does not convert
+that score to currency per Delve because the depth-dependent reward-tier
+selection curve is not public. City boss EV is calculated separately and never
+enters the fossil ranking.
+
+Generic fossil nodes and Smuggler's caches use low/median/high outcomes from the
+priced biome pool instead of assuming equal fossil probabilities. The active
+Delve sample profile supplies per-encounter quantities. A custom profile gets a
+personal hourly projection when it contains elapsed minutes; a timed route with
+zero recorded encounters remains valid zero-rate evidence. Profiles and active selection use the versioned
+`sl.delve.sampleProfiles.v1` and `sl.delve.activeSampleProfile.v1` localStorage
+keys; global Delve settings keep depth, wall preference and price/boss overrides.
