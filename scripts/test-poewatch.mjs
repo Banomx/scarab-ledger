@@ -12,8 +12,8 @@
         Divine Orb's own price and NOT from the per-row `divine` field, which
         implies a different rate.
      3. Base variants. A corrupted 21/20 gem and a 6-link are not what drops.
-     4. Unidentified items. "Unidentified Cinderswallow Urn" is a distinct,
-        far dearer item, and veiled drop lines must find it.
+     4. Unidentified items. Their current listing floor and item-level market
+        must survive, and veiled/unidentified boss lines must prefer them.
      5. Falling back. If poe.watch is down the run must still produce a
         snapshot rather than an empty one.
 
@@ -51,6 +51,17 @@ const WATCH = {
   flask: [
     { id: 20, name: "Cinderswallow Urn", mean: 120, min: 120, max: 120, daily: 6623, lowConfidence: false, divine: 0.54 },
     { id: 21, name: "Unidentified Cinderswallow Urn", mean: 1110, min: 840, max: 1175.75, daily: 992, lowConfidence: false, divine: 1110 / EXCHANGE },
+  ],
+  jewel: [
+    { id: 22, name: "Watcher's Eye", mean: 1, min: 1, max: 4, daily: 100000, lowConfidence: false },
+    { id: 23, name: "Unidentified Watcher's Eye 85", mean: 159, min: 120, max: 227, itemLevel: 85, daily: 5009, lowConfidence: false },
+    { id: 24, name: "Unidentified Watcher's Eye 86+", mean: 495, min: 460, max: 600, itemLevel: 86, daily: 8259, lowConfidence: false },
+    { id: 25, name: "Unidentified Thread of Hope", mean: 445, min: 300, max: 475, itemLevel: 86, daily: 42, lowConfidence: false },
+    { id: 26, name: "Unidentified Thread of Hope", mean: 20, min: 13, max: 28, itemLevel: 87, daily: 511, lowConfidence: false },
+    { id: 27, name: "Unidentified Forbidden Flame", mean: 2668, min: 2638, max: 2852, itemLevel: 86, daily: 4108, lowConfidence: false },
+    { id: 28, name: "Unidentified Forbidden Flame", mean: 2445, min: 2400, max: 3327, itemLevel: 87, daily: 502, lowConfidence: false },
+    { id: 29, name: "Unidentified Forbidden Flesh", mean: 2100, min: 1800, max: 2614, itemLevel: 86, daily: 5109, lowConfidence: false },
+    { id: 34, name: "Unidentified Forbidden Flesh", mean: 2800, min: 2650, max: 3327, itemLevel: 87, daily: 291, lowConfidence: false },
   ],
   gem: [
     { id: 30, name: "Pacifism Support", mean: 1050, min: 1000, max: 1100, daily: 30, lowConfidence: false, gemLevel: 1, gemQuality: 0, gemIsCorrupted: false, divine: 1050 / EXCHANGE },
@@ -120,7 +131,7 @@ const EXCHANGE_ROWS = [
 
 /* How poe.watch renames categories between the query and the response. */
 const DISPLAY_CATEGORY = {
-  flask: "flasks", armour: "armours", weapon: "weapons", gem: "gems",
+  flask: "flasks", armour: "armours", weapon: "weapons", jewel: "jewels", gem: "gems",
   currency: "currency", scarab: "scarab", fossil: "fossil", resonator: "resonator",
 };
 
@@ -241,15 +252,25 @@ ok(P["Enhance Support"] === undefined,
 ok(near(P["Shaper's Touch"]?.c, 12), `the unlinked item is the drop, not the 6L: ${P["Shaper's Touch"]?.c}`);
 
 /* ---- unidentified ---- */
-ok(near(P["Unidentified Cinderswallow Urn"]?.c, 1110), "the unidentified item is in the map at its own price");
+ok(near(P["Unidentified Cinderswallow Urn"]?.c, 840), "the unidentified item uses its current listing floor");
 ok(near(P["Cinderswallow Urn"]?.c, 120), "and does not overwrite the identified one");
+ok(near(P["Unidentified Watcher's Eye 85"]?.c, 120), "the Elder Watcher's Eye keeps its ilvl 85 market");
+ok(near(P["Unidentified Watcher's Eye 86+"]?.c, 460), "the Uber Elder Watcher's Eye keeps its ilvl 86+ market");
+ok(near(P["Unidentified Thread of Hope (ilvl 86)"]?.c, 300), "normal Sirus gets an ilvl 86 Thread of Hope price");
+ok(near(P["Unidentified Thread of Hope (ilvl 87)"]?.c, 13), "Uber Sirus gets an ilvl 87 Thread of Hope price");
+ok(near(P["Unidentified Forbidden Flame (ilvl 86)"]?.c, 2638), "normal Exarch gets an ilvl 86 Forbidden Flame price");
+ok(near(P["Unidentified Forbidden Flame (ilvl 87)"]?.c, 2400), "Uber Exarch gets an ilvl 87 Forbidden Flame price");
+ok(near(P["Unidentified Forbidden Flesh (ilvl 86)"]?.c, 1800), "normal Eater gets an ilvl 86 Forbidden Flesh price");
+ok(near(P["Unidentified Forbidden Flesh (ilvl 87)"]?.c, 2650), "Uber Eater gets an ilvl 87 Forbidden Flesh price");
 {
   const { makeResolver, isUnidentified } = await import("../src/bossProfit.js");
   const r = makeResolver(P);
-  ok(near(r("Cinderswallow Urn", [], null, "Life", isUnidentified({ label: "Veiled Cinderswallow Urn (Life)" })).chaos, 1110),
+  ok(near(r("Cinderswallow Urn", [], null, "Life", isUnidentified({ label: "Veiled Cinderswallow Urn (Life)" })).chaos, 840),
      "a veiled drop line resolves to the unidentified price");
   ok(near(r("Cinderswallow Urn", [], null, null, false).chaos, 120),
      "a plain line still gets the identified price");
+  ok(near(r("Watcher's Eye", ["Unidentified Watcher's Eye 85"], null, null, true).chaos, 120),
+     "an exact unidentified item-level alias wins before the 1c identified item");
 }
 
 /* ---- every tab ---- */

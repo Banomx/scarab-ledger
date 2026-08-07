@@ -191,7 +191,8 @@ export const BOSSES = [
         { item: "Fragment of Emptiness", share: 0.5 },
       ]),
       extra([
-        { item: "Watcher's Eye", label: "Unid Watcher's Eye (2-mod)", chance: 0.40 },
+        { item: "Watcher's Eye", label: "Unid Watcher's Eye (2-mod, ilvl 85)",
+          aliases: ["Unidentified Watcher's Eye 85"], chance: 0.40 },
         { item: "Elder's Exalted Orb", chance: 0.10 },
         { item: "Orb of Dominance", chance: 0.02 },
         { item: "Eldritch Blasphemy Support", chance: 0.02 },
@@ -214,7 +215,8 @@ export const BOSSES = [
         { item: "Disintegrator", share: 0.03 },
       ]),
       extra([
-        { item: "Watcher's Eye", label: "Unid Watcher's Eye (3-mod)", chance: 0.30 },
+        { item: "Watcher's Eye", label: "Unid Watcher's Eye (3-mod, ilvl 86)",
+          aliases: ["Unidentified Watcher's Eye 86+"], chance: 0.30 },
         { item: "Shaper's Exalted Orb", chance: 0.15 },
         { item: "Elder's Exalted Orb", chance: 0.10 },
         { item: "Void Shockwave Support", label: "Void Shockwave", chance: 0.10 },
@@ -237,7 +239,8 @@ export const BOSSES = [
         { item: "Voidforge", share: 0.04 },
       ]),
       extra([
-        { item: "Watcher's Eye", label: "Unid Watcher's Eye (3-mod)", chance: 0.30 },
+        { item: "Watcher's Eye", label: "Unid Watcher's Eye (3-mod, ilvl 86)",
+          aliases: ["Unidentified Watcher's Eye 86+"], chance: 0.30 },
         { item: "Shaper's Exalted Orb", chance: 0.20 },
         { item: "Elder's Exalted Orb", chance: 0.15 },
         { item: "Void Shockwave Support", label: "Void Shockwave", chance: 0.10 },
@@ -261,7 +264,8 @@ export const BOSSES = [
         { item: "Hands of the High Templar", share: 0.40 },
         { item: "Crown of the Inward Eye", share: 0.35 },
         { item: "The Burden of Truth", share: 0.20 },
-        { item: "Thread of Hope", label: "Unid Thread of Hope", share: 0.05 },
+        { item: "Thread of Hope", label: "Unid Thread of Hope (ilvl 86)",
+          aliases: ["Unidentified Thread of Hope (ilvl 86)"], share: 0.05 },
       ]),
       extra(SIRUS_EXTRA),
     ],
@@ -272,7 +276,8 @@ export const BOSSES = [
     ttk: 270, overhead: 0,
     groups: [
       pool([
-        { item: "Thread of Hope", label: "Unid Thread of Hope (Massive)", share: 0.55 },
+        { item: "Thread of Hope", label: "Unid Thread of Hope (Massive, ilvl 87)",
+          aliases: ["Unidentified Thread of Hope (ilvl 87)"], share: 0.55 },
         { item: "The Tempest Rising", share: 0.37 },
         { item: "Oriath's End", share: 0.075 },
         { item: "The Saviour", share: 0.005 },
@@ -337,7 +342,8 @@ export const BOSSES = [
         { item: "Dissolution of the Flesh", share: 0.02 },
       ]),
       extra([
-        { item: "Forbidden Flame", label: "Unid Forbidden Flame (ilvl 86-)", chance: 0.05 },
+        { item: "Forbidden Flame", label: "Unid Forbidden Flame (ilvl 86)",
+          aliases: ["Unidentified Forbidden Flame (ilvl 86)"], chance: 0.05 },
         { item: "Exceptional Eldritch Ember", chance: 0.15 },
         ...ELDRITCH_ORBS,
         { item: "Overheat Support", chance: 0.05 },
@@ -356,7 +362,8 @@ export const BOSSES = [
         { item: "The Celestial Brace", share: 0.015 },
       ]),
       extra([
-        { item: "Forbidden Flame", label: "Unid Forbidden Flame (ilvl 87+)", chance: 0.05 },
+        { item: "Forbidden Flame", label: "Unid Forbidden Flame (ilvl 87)",
+          aliases: ["Unidentified Forbidden Flame (ilvl 87)"], chance: 0.05 },
         { item: "Exceptional Eldritch Ember", chance: 0.15 },
         ...ELDRITCH_ORBS,
         { item: "Curio of Absorption", chance: 0.05 },
@@ -376,7 +383,8 @@ export const BOSSES = [
         { item: "Melding of the Flesh", share: 0.02 },
       ]),
       extra([
-        { item: "Forbidden Flesh", label: "Unid Forbidden Flesh (ilvl 86-)", chance: 0.05 },
+        { item: "Forbidden Flesh", label: "Unid Forbidden Flesh (ilvl 86)",
+          aliases: ["Unidentified Forbidden Flesh (ilvl 86)"], chance: 0.05 },
         { item: "Exceptional Eldritch Ichor", chance: 0.15 },
         ...ELDRITCH_ORBS,
         { item: "Gluttony Support", chance: 0.02 },
@@ -394,7 +402,8 @@ export const BOSSES = [
         { item: "Nimis", share: 0.02 },
       ]),
       extra([
-        { item: "Forbidden Flesh", label: "Unid Forbidden Flesh (ilvl 87+)", chance: 0.05 },
+        { item: "Forbidden Flesh", label: "Unid Forbidden Flesh (ilvl 87)",
+          aliases: ["Unidentified Forbidden Flesh (ilvl 87)"], chance: 0.05 },
         { item: "Exceptional Eldritch Ichor", chance: 0.15 },
         ...ELDRITCH_ORBS,
         { item: "Curio of Consumption", chance: 0.05 },

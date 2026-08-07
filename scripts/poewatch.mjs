@@ -149,6 +149,7 @@ export function normaliseRow(r) {
     gemLevel: r.gemLevel ?? null,
     gemQuality: r.gemQuality ?? null,
     gemCorrupted: r.gemIsCorrupted === true,
+    itemLevel: Number(r.itemLevel) || 0,
   };
 }
 
@@ -277,7 +278,12 @@ export function watchPriceMap(rows, exchange = null) {
     if (e.all.some(isGemRow) && !e.base.length) { excluded.add(name); continue; }
 
     const pick = e.base.length ? e.base : e.all;
-    const chaos = pick.map((r) => r.chaos);
+    /* An unidentified unique is sold as an unopened gamble. poe.watch exposes
+       the current listing floor in `min`; that is the price a player can
+       actually buy the gamble for, while `mean` is pulled upward by stale or
+       optimistic asks. Identified items keep the existing mean-based rule. */
+    const quote = (r) => /^unidentified\b/i.test(name) ? r.lo : r.chaos;
+    const chaos = pick.map(quote);
     // With base variants the cheapest base is the drop; without them every row
     // is a roll and the floor is the honest quote for an unspecified one.
     const c = Math.min(...chaos);
@@ -289,6 +295,29 @@ export function watchPriceMap(rows, exchange = null) {
       daily: e.daily,
       ...(e.thin ? { thin: true } : {}),
     };
+
+    /* Some unidentified boss uniques have the same display name at several
+       item levels, but those levels are different markets. Keep the normal
+       name as a safe fallback and add exact keys for the boss table to target.
+       Watcher's Eye already includes 85/86+ in its poe.watch display name, so
+       it naturally stays separate without an extra synthetic key. */
+    const levels = [...new Set(e.all.map((r) => r.itemLevel).filter((level) => level > 0))];
+    if (levels.length > 1) {
+      for (const level of levels) {
+        const levelAll = e.all.filter((r) => r.itemLevel === level);
+        const levelBase = levelAll.filter(isWatchBaseVariant);
+        const levelPick = levelBase.length ? levelBase : levelAll;
+        const levelChaos = levelPick.map(quote);
+        prices[`${name} (ilvl ${level})`] = {
+          c: Math.round(Math.min(...levelChaos) * 100) / 100,
+          lo: Math.round(Math.min(...levelPick.map((r) => r.lo)) * 100) / 100,
+          hi: Math.round(Math.max(...levelPick.map((r) => r.hi)) * 100) / 100,
+          n: levelPick.length,
+          daily: Math.max(...levelPick.map((r) => r.daily)),
+          ...(levelPick.every((r) => r.lowConfidence) ? { thin: true } : {}),
+        };
+      }
+    }
   }
 
   /* The exchange overrides the listing mean wherever it trades the item. Its

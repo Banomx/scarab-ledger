@@ -188,9 +188,10 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } =
     if (item.startsWith("@")) {
       entry = synthetic(item);
     } else if (priceMap) {
-      // The unidentified name goes FIRST, so it wins where the source has it
-      // and costs nothing where it doesn't.
-      const names = unidentified ? [`Unidentified ${item}`, item, ...aliases] : [item, ...aliases];
+      // A declared alias can name an exact unidentified item-level market, so
+      // it goes before the generic unidentified name. The identified item is
+      // only the final fallback when neither unidentified form is available.
+      const names = unidentified ? [...aliases, `Unidentified ${item}`, item] : [item, ...aliases];
       for (const n of names) { if (priceMap[n]) { entry = priceMap[n]; break; } }
       if (!entry) {
         for (const n of names) {

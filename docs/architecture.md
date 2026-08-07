@@ -46,6 +46,12 @@ roll variants generally require poe.watch or poe.ninja. Boss drop rates and
 Delve biome rules remain curated project data and are not supplied by any price
 API.
 
+For unidentified boss uniques, the poe.watch adapter uses the current listing
+floor and preserves separate item-level markets. Boss data names the exact
+market for Watcher's Eye, Thread of Hope, Forbidden Flame and Forbidden Flesh;
+the resolver prefers that alias, then a generic unidentified listing, and only
+then the identified item.
+
 ## UI composition
 
 `src/App.jsx` owns the shared shell, global market controls and scarab views.

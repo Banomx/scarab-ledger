@@ -452,6 +452,35 @@ eqv(variantHint(null), null, "null line must not throw");
   ok(partial.gross < whole.gross, "shares must NOT be redistributed — that would inflate the EV");
 }
 
+/* ---------------- unidentified item-level markets ----------------
+   poe.watch separates several unopened boss uniques by item level. The exact
+   alias declared by the boss must win before both the generic unidentified
+   row and the identified item. */
+{
+  const pm = {
+    "Watcher's Eye": { c: 1 }, "Unidentified Watcher's Eye": { c: 50 },
+    "Unidentified Watcher's Eye 85": { c: 120 }, "Unidentified Watcher's Eye 86+": { c: 500 },
+    "Thread of Hope": { c: 2 }, "Unidentified Thread of Hope": { c: 40 },
+    "Unidentified Thread of Hope (ilvl 86)": { c: 300 }, "Unidentified Thread of Hope (ilvl 87)": { c: 13 },
+    "Forbidden Flame": { c: 3 }, "Unidentified Forbidden Flame": { c: 100 },
+    "Unidentified Forbidden Flame (ilvl 86)": { c: 2600 }, "Unidentified Forbidden Flame (ilvl 87)": { c: 2400 },
+    "Forbidden Flesh": { c: 4 }, "Unidentified Forbidden Flesh": { c: 110 },
+    "Unidentified Forbidden Flesh (ilvl 86)": { c: 1800 }, "Unidentified Forbidden Flesh (ilvl 87)": { c: 2650 },
+  };
+  const expected = [
+    ["elder", "Watcher's Eye", 120], ["uber-elder", "Watcher's Eye", 500],
+    ["uber-uber-elder", "Watcher's Eye", 500], ["sirus", "Thread of Hope", 300],
+    ["uber-sirus", "Thread of Hope", 13], ["exarch", "Forbidden Flame", 2600],
+    ["uber-exarch", "Forbidden Flame", 2400], ["eater", "Forbidden Flesh", 1800],
+    ["uber-eater", "Forbidden Flesh", 2650],
+  ];
+  for (const [bossId, item, price] of expected) {
+    const computed = computeBoss(BOSSES.find((b) => b.id === bossId), makeResolver(pm));
+    const line = computed.dropLines.find((drop) => drop.item === item);
+    eqv(line?.unit, price, `${bossId} uses the exact unidentified ${item} market`);
+  }
+}
+
 /* Catarina's pool is one line per tradeable item. poe.watch carries a single
    unidentified urn and a single cane — its three cane rows differ by link
    count, not by veiling — so the ledger's split lines are summed, not dropped. */

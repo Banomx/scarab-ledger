@@ -17,13 +17,16 @@ mapping; it does not supply prices.
 no usable trade in the completed GGG hour and price things the Currency Exchange
 does not cover: uniques, maps, gems, unidentified forms and roll variants.
 
-One note for anyone reading the fallback in `scripts/poewatch.mjs`: poe.watch's `mean`/`min`/`max`
-are chaos, but you have to infer that — there is no Chaos Orb row, and Exalted Orb
-reads 1. The per-row `divine` and `exalted` fields are inconsistent with `mean`
-and with each other. The divine rate is the currency-exchange one, recovered as
-`mean / divine` from every row — that ratio is the same constant across unrelated
-items, whereas Divine Orb's own item listing can be thin. These figures are
-only used when the GGG hourly digest is unavailable or has no usable pair.
+One note for anyone reading the fallback in `scripts/poewatch.mjs`: poe.watch's
+`mean`/`min`/`max` are chaos, but you have to infer that — there is no Chaos Orb
+row, and Exalted Orb reads 1. Identified items keep the existing mean-based
+fallback; unidentified boss uniques use the current listing floor and retain
+separate item-level markets where poe.watch provides them. The per-row `divine`
+and `exalted` fields are inconsistent with `mean` and with each other. The divine
+rate is the currency-exchange one, recovered as `mean / divine` from every row —
+that ratio is the same constant across unrelated items, whereas Divine Orb's own
+item listing can be thin. These figures are only used when the GGG hourly digest
+is unavailable or has no usable pair.
 
 ## Run locally
 
@@ -185,6 +188,9 @@ between a big average and a reliable one is visible without switching sort.
 - Prices come from `public/data/<league>/prices.json`, written by the same
   workflow that snapshots scarabs. Items missing from GGG and both fallbacks
   are flagged `no price` rather than silently counted as zero.
+- Unidentified drops are priced from the unidentified market when available.
+  Exact item-level aliases distinguish Watcher's Eye, Thread of Hope, Forbidden
+  Flame and Forbidden Flesh drops; the identified item is only a final fallback.
 
 Two test scripts and a probe:
 
