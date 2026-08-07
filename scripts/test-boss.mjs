@@ -192,10 +192,21 @@ const zeroLine = zc.dropLines.find((l) => l.item === "Unpriced Mystery");
 ok(zeroLine && zeroLine.qty === 0 && zeroLine.value === 0, "chance:0 line present and contributes nothing");
 ok(zc.missingPrices === 0, `chance:0 line must not count as a missing price (got ${zc.missingPrices})`);
 
-// A declared fallback fills in only where poe.ninja returns nothing, is quoted
-// in divine so it tracks the rate, and is flagged so the UI can say so.
-const domLine = (prices, opts) => computeBoss(BOSSES.find((b) => b.id === "shaper"), makeResolver(prices, opts))
-  .dropLines.find((l) => l.item === "Orb of Dominance");
+/* The declared-fallback mechanism, exercised on a synthetic boss.
+
+   No real drop line uses it any more: every price the dataset once hardcoded
+   is now carried by poe.watch, and a hardcoded number that never fires is just
+   a stale figure waiting to be wrong. The machinery stays because a source can
+   drop an item mid-league, but the moment real data uses it again it should be
+   deliberate — hence a fixture rather than a live boss. */
+const fbBoss = (fallback) => ({
+  id: "fb", name: "fb", group: "Other", rates: "ledger", entry: [], ttk: 60, overhead: 0,
+  groups: [{ id: "additional", kind: "independent", label: "x", drops: [{ item: "Orb of Dominance", chance: 1, fallback }] }],
+});
+const domLine = (prices, opts) => {
+  const c = computeBoss(fbBoss({ divine: 3.7, asOf: "2026-08-03" }), makeResolver(prices, opts));
+  return [...c.dropLines, ...c.hiddenLines].find((l) => l.item === "Orb of Dominance");
+};
 const fb = domLine(P({}), { divineRate: 200 });
 ok(fb.found && fb.fallback === true, "fallback should price the line and be flagged");
 ok(near(fb.unit, 740), `3.7 divine at 200c/div should be 740c, got ${fb.unit}`);
@@ -206,12 +217,23 @@ ok(near(real.unit, 12) && !real.fallback, `a live price must win, got ${real.uni
 // A divine-denominated fallback needs a rate to convert against. Without one
 // it cannot be priced, so the line is hidden rather than shown at zero.
 {
-  const noRate = computeBoss(BOSSES.find((b) => b.id === "uber-elder"), makeResolver(P({}), { divineRate: 0 }));
+  const noRate = computeBoss(fbBoss({ divine: 3.7 }), makeResolver(P({}), { divineRate: 0 }));
   ok(!noRate.dropLines.some((l) => l.item === "Orb of Dominance"), "no divine rate means no fallback price, so no row");
   ok(noRate.hiddenLines.some((l) => l.item === "Orb of Dominance"), "and it shows up as hidden");
 }
 // declared prices carry their age so the UI can flag a stale one
 ok(fb.fallbackAge != null && fb.fallbackAge >= 0, `fallback should report its age, got ${fb.fallbackAge}`);
+
+/* And the dataset itself must stay free of them: a hardcoded price that the
+   market already covers is a wrong number waiting to surface. */
+{
+  const hard = [];
+  for (const b of BOSSES) {
+    for (const e of (b.entry || [])) if (e.fallback) hard.push(`${b.name} entry ${e.item}`);
+    for (const g of b.groups) for (const d of g.drops) if (d.fallback) hard.push(`${b.name} ${d.item}`);
+  }
+  ok(hard.length === 0, `bossData.js should carry no hand-set prices, found: ${hard.join(", ")}`);
+}
 const undated = computeBoss(
   { id: "u", name: "u", group: "Other", rates: "ledger", entry: [], ttk: 60, overhead: 0,
     groups: [{ id: "additional", kind: "independent", label: "x", drops: [{ item: "Nope", chance: 1, fallback: { chaos: 5 } }] }] },

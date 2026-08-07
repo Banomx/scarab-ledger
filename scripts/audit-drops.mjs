@@ -100,22 +100,37 @@ for (const [i, item] of terms.entries()) {
   await new Promise((r) => setTimeout(r, 120));
 }
 
-const declared = missing.filter((m) => m.declared);
-const real = missing.filter((m) => !m.declared);
+/* A line kept alive by a hand-set fallback in bossData.js resolves — it has a
+   price — so it lands in `priced`, not in `missing`. Filtering `missing` for
+   them could never match anything, which made "390 of 390 resolve" read as
+   "390 from the market" when some of those numbers may be hardcoded and
+   ageing. They are a different thing from a live price and are counted apart. */
+const declared = priced.filter((m) => m.declared);
+const fromMarket = priced.length - declared.length;
+const real = missing.slice();
 
 if (JSON_OUT) {
   console.log(JSON.stringify({ league, pricedCount: priced.length, missing: real, declared, suggestions, exactHit }, null, 2));
   process.exit(0);
 }
 
-console.log(`\n${priced.length} of ${priced.length + missing.length} drop/entry lines resolve to a poe.watch price.`);
+const total = priced.length + missing.length;
+console.log(`\n${fromMarket} of ${total} drop/entry lines are priced by poe.watch.`);
+if (declared.length) console.log(`${declared.length} more are priced only by a hand-set fallback in bossData.js — a number that does not move with the market.`);
+if (missing.length) console.log(`${missing.length} have no price at all and are hidden.`);
 if (declared.length) {
-  console.log(`\n${declared.length} priced from a declared fallback in bossData.js (poe.watch has no listing, the number is hand-set):`);
-  for (const d of declared) console.log(`  ${d.boss} · ${d.label}`);
+  console.log(`\n${"-".repeat(70)}`);
+  console.log(`HAND-SET PRICES (${declared.length}) — poe.watch has no listing under this name,`);
+  console.log(`so the value comes from a number written into bossData.js and will drift`);
+  console.log(`as the league runs. Worth re-checking, or removing if the market now covers it.`);
+  console.log(`${"-".repeat(70)}\n`);
+  for (const d of declared) console.log(`  ${String(d.boss).slice(0, 29).padEnd(30)}${d.label}`);
 }
 
 if (!real.length) {
-  console.log("\nNothing unpriced. Every drop line the site shows has a market price behind it.");
+  console.log(declared.length
+    ? "\nNothing hidden. Every drop line shows, though the hand-set ones above are not market data."
+    : "\nNothing hidden, nothing hand-set. Every drop line is priced by the live market.");
   process.exit(0);
 }
 
