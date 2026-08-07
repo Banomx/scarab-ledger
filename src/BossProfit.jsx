@@ -712,13 +712,16 @@ function Stat({ label, value, tone, big, title }) {
 /* Click a price to override it; the ↺ puts the market price back. */
 function PriceCell({ item, chaos, overridden, entry, onSet, money }) {
   const [editing, setEditing] = useState(false);
-  /* poe.watch reports how many listings a price came from, which poe.ninja
-     never did — a thin price and a liquid one used to look identical. Prefer
-     that count; fall back to the number of forms we merged. */
-  const spread = entry && (entry.daily > 0 || entry.n > 1)
+  /* How much to trust the number. poe.ninja gave none of this; poe.watch says
+     whether a price came from real exchange trades or from listed asks, and
+     how much moved. An exchange price with volume behind it is worth far more
+     than a listing mean over three optimistic asks. */
+  const spread = entry && (entry.exchange || entry.daily > 0 || entry.n > 1)
     ? [
-        entry.daily > 0 ? `${entry.daily} listings/day` : `${entry.n} listings`,
-        entry.hi > entry.lo ? `${Math.round(entry.lo)}–${Math.round(entry.hi)}c` : null,
+        entry.exchange
+          ? `exchange · ${Math.round(entry.volume24H || 0).toLocaleString()} traded in 24h`
+          : entry.daily > 0 ? `${entry.daily.toLocaleString()} listings/day` : `${entry.n} listings`,
+        entry.hi > entry.lo ? `${Math.round(entry.lo)}–${Math.round(entry.hi)}c listed` : null,
         entry.thin ? "thin market — treat with care" : null,
       ].filter(Boolean).join(" · ")
     : null;

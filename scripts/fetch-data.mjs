@@ -16,7 +16,7 @@
 
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import {
-  watchLeagues, matchWatchLeague, fetchWatchLeague, watchCategoryItems,
+  watchLeagues, matchWatchLeague, fetchWatchLeague, watchCategoryItems, watchStatus,
 } from "./poewatch.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -119,7 +119,7 @@ async function getScarabPrices(lgParams, divisor = null, watch = null) {
   //    single flat array with listing counts attached, so there is nothing to
   //    calibrate and nothing to disambiguate.
   if (watch?.rows?.length) {
-    const items = watchCategoryItems(watch.rows, /scarab/i, watch.rate, ["scarab"]);
+    const items = watchCategoryItems(watch.rows, /scarab/i, watch.rate, ["scarab"], watch.exchange);
     if (items.length) {
       console.log(`  prices via poe.watch (${items.length} scarabs)`);
       return { items, source: "watch", leagueParam: lgParams[0], exchangeDivineRate: watch.rate };
@@ -1006,6 +1006,11 @@ async function main() {
   console.log(watchLgs.length
     ? `poe.watch leagues: ${watchLgs.map((l) => l.name).join(", ")}`
     : "poe.watch unreachable — this run is poe.ninja only");
+  if (watchLgs.length) {
+    // A feed that has stopped moving reads as a quiet market from the outside.
+    const st = await watchStatus();
+    if (st) console.log(`poe.watch status: ${st.computed}/${st.requested} stashes processed, change ${String(st.changeID).slice(0, 24)}…`);
+  }
 
   const written = [];
   for (const [li, lg] of leagues.entries()) {
@@ -1016,10 +1021,12 @@ async function main() {
       const watch = watchName ? await fetchWatchLeague(watchName) : null;
       if (watch) {
         const cats = Object.entries(watch.counts).filter(([, n]) => n).length;
-        console.log(`  poe.watch: ${watch.rows.length} rows over ${cats} categories, ${Object.keys(watch.prices).length} names`
+        console.log(`  poe.watch: ${watch.rows.length} rows over ${cats} categories via /${watch.source}, ${Object.keys(watch.prices).length} names`
           + (watch.failed.length ? `, no data for ${watch.failed.join("/")}` : ""));
+        console.log(`  poe.watch exchange: ${watch.exchange.length} traded pairs`
+          + (watch.exchange.length ? " — volume-weighted trade prices override listing means where they overlap" : " (none; listing means only)"));
         console.log(`  poe.watch divine rate: ${Math.round(watch.rate)}c via ${watch.rateSource}`
-          + (watch.direct ? ` (the Divine Orb listing itself says ${Math.round(watch.direct)}c — thin, so not used)` : ""));
+          + (watch.direct ? ` (Divine Orb's own listing says ${Math.round(watch.direct)}c — thin, so not preferred)` : ""));
       } else if (watchLgs.length) {
         console.log(`  poe.watch: no league matching "${lg.name}" — poe.ninja only for this one`);
       }
@@ -1109,7 +1116,7 @@ async function main() {
         try {
           let r = null;
           if (watch) {
-            const wi = watchCategoryItems(watch.rows, cat.re, watch.rate || divineRate, cat.watch);
+            const wi = watchCategoryItems(watch.rows, cat.re, watch.rate || divineRate, cat.watch, watch.exchange);
             if (wi.length) r = { items: wi, source: "watch" };
           }
           if (!r) r = await getExchangeCategory(lg.params, cat.type, cat.re, ctx?.divisor);

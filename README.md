@@ -3,10 +3,12 @@
 Path of Exile 1 scarab price tracker, grouped by league mechanic.
 
 Prices come from **poe.watch** first, with **poe.ninja** behind it as a fallback.
-poe.watch publishes one flat array per item category with a chaos price, a
-listing count and a low-confidence flag on every row, and — the reason it leads
-— it prices the *unidentified* forms of veiled uniques, which is what several
-bosses actually drop and what poe.ninja has no entry for at all. poe.ninja stays
+One `/compact` call returns every category with a chaos price, a listing count
+and a low-confidence flag on each row, and `/exchange/ratios` adds the currency
+exchange on top — volume-weighted means of trades that actually closed, which
+override the listing means wherever the two overlap. poe.watch also prices the
+*unidentified* forms of veiled uniques, which is what several bosses drop and
+what poe.ninja has no entry for at all. poe.ninja stays
 wired up because it can be reachable when poe.watch is not, and it still carries
 a few names and the per-roll variant splits that poe.watch does not.
 

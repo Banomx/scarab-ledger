@@ -23,18 +23,31 @@
    just an exalt being worth about a chaos these days. Divine Orb reads ~173,
    which agrees with poe.ninja, so chaos it is.
 
+   ---- which endpoints, and why ----
+   /compact?league=X   every category in ONE request. The per-category /get
+                       needed 22 round trips for the same data.
+   /exchange/ratios    the currency exchange. Its `price` is a VOLUME-WEIGHTED
+                       MEAN OF ACTUAL TRADES, where /compact's `mean` is a mean
+                       of listings — asks people posted, not deals that closed.
+                       Where both know an item the exchange wins, and it also
+                       carries real 24h volume and change.
+   /status             how fresh the data is, logged so a stalled feed is
+                       visible rather than looking like a quiet market.
+
    ---- on the divine rate ----
    NOT from Divine Orb's own `mean`. That row is an item listing like any
    other, it is thin (a few dozen a day, flagged lowConfidence), and it reads
    about 173 while the rest of the site disagrees.
 
-   The real rate is the currency exchange one, and every row carries it
-   implicitly: `divine` is that row's price denominated in divine, so
-   mean/divine recovers the rate. Across unrelated items and categories it
-   comes back as the same constant — 1110.05/5 and 888.04/4 both give 222.01 —
-   which is the signature of one authoritative rate being applied, rather than
-   a per-item measurement. `divine` is rounded to two decimals, so the ladder
-   below prefers rows where it is large enough for that rounding not to matter.
+   The real rate is the currency exchange one. /exchange/ratios states it
+   directly: each entry's price is quoted in both chaos and divine, so the
+   ratio of the two IS the rate, taken from whichever entries trade in enough
+   volume to be trustworthy. /compact rows can recover the same number from
+   mean/divine, and that is the fallback.
+
+   Both are rounded to two decimals, so the ladders below prefer entries whose
+   divine figure is large enough for that rounding not to matter: an item worth
+   0.02 divine pins the rate to +/-25, one worth 4 pins it to +/-0.03.
 
    The `exalted` field stays unused: it is inconsistent even between rows that
    share a mean.
@@ -143,27 +156,73 @@ const median = (a) => {
    poe.watch's per-row `divine` field implies a different one, and if those two
    ever converge or the gap explodes, that is worth seeing in the log rather
    than silently repricing the entire site. */
-export function watchDivineRate(rows) {
+/* Walk a set of (chaos, divine, weight) quotes from strict to loose and stop
+   at the first tier with enough of them to median. Shared by both rate
+   sources so they cannot drift apart. */
+function rateLadder(quotes, tiers) {
+  for (const [minDivine, minWeight] of tiers) {
+    const s = quotes
+      .filter((q) => q.divine >= minDivine && q.weight >= minWeight && q.chaos > 0)
+      .map((q) => q.chaos / q.divine);
+    if (s.length >= 3) {
+      const m = median(s);
+      if (rateSane(m)) return m;
+    }
+  }
+  return 0;
+}
+
+export function watchDivineRate(rows, exchange = null) {
+  // 1. The exchange itself: every entry is quoted in both currencies, so the
+  //    ratio is the rate. Weighted by 24h volume — a pair that barely trades
+  //    is not evidence about the rate.
+  const fromExchange = rateLadder(
+    (exchange || [])
+      .filter((e) => !e.lowConfidence)
+      .map((e) => ({ chaos: e.chaos, divine: e.divine, weight: e.volume24H || 0 })),
+    [[1, 1000], [0.5, 100], [0.1, 0], [0.01, 0]]
+  );
+
+  // 2. The same ratio recovered from /compact rows.
+  const fromRows = rateLadder(
+    rows.filter((r) => !r.lowConfidence).map((r) => ({ chaos: r.chaos, divine: r.divineField, weight: r.daily })),
+    [[4, 20], [1, 20], [0.5, 10], [0.1, 0]]
+  );
+
+  // 3. Last resort: Divine Orb as an item listing. Thin, and it reads low —
+  //    only used when a league is too young for either ratio to exist.
   const div = rows.find((r) => r.name === "Divine Orb" && r.chaos > 0);
   const direct = div ? div.chaos : 0;
 
-  /* `divine` carries two decimals, so a row worth 0.02 divine recovers the
-     rate to only ±25 while one worth 4 recovers it to ±0.03. Walk from strict
-     to loose and stop as soon as there are enough rows to take a median of. */
-  const sample = (minDivine, minDaily) => rows
-    .filter((r) => r.divineField >= minDivine && r.daily >= minDaily && !r.lowConfidence)
-    .map((r) => r.chaos / r.divineField);
+  const rate = fromExchange || fromRows || (rateSane(direct) ? direct : 0);
+  const rateSource = fromExchange ? "exchange ratios"
+    : fromRows ? "item divine ratio"
+    : direct ? "Divine Orb listing (thin)" : "none";
+  return { rate, rateSource, fromExchange, fromRows, direct };
+}
 
-  let implied = 0;
-  for (const [minDivine, minDaily] of [[4, 20], [1, 20], [0.5, 10], [0.1, 0]]) {
-    const s = sample(minDivine, minDaily);
-    if (s.length >= 3) { implied = median(s); break; }
-  }
-
-  // The exchange rate leads; Divine Orb's own listing is the backstop for a
-  // league so young or so thin that nothing carries a usable `divine` yet.
-  const rate = rateSane(implied) ? implied : (rateSane(direct) ? direct : 0);
-  return { rate, direct, implied, rateSource: rateSane(implied) ? "exchange" : "divine-orb-listing" };
+/* ---------- exchange ratios ----------
+   The shipped OpenAPI describes an older shape than the API serves, so read
+   defensively: prefer the canonical `price` block (volume-weighted mean of
+   real trades), fall back to the chaos side's own figures. */
+export function normaliseExchange(e) {
+  if (!e || !e.name) return null;
+  const p = e.price || {};
+  const cs = e.chaos || {};
+  const chaos = Number(p.chaos ?? cs.chaosValue ?? cs.value);
+  const divine = Number(p.divine ?? cs.divineValue) || 0;
+  if (!(chaos > 0)) return null;
+  return {
+    name: String(e.name),
+    id: e.id,
+    category: e.category || null,
+    chaos,
+    divine,
+    lowConfidence: (p.lowConfidence ?? cs.lowConfidence) === true,
+    volume24H: Number(cs.volume24H) || 0,
+    change24H: Number(cs.change24H) || 0,
+    method: p.method || null,
+  };
 }
 
 /* ---------- price map ---------- */
@@ -174,7 +233,7 @@ export function watchDivineRate(rows) {
      - otherwise the floor, because an unspecified roll is worth its cheapest
    `daily` and `lowConfidence` ride along so a thin price can be flagged
    rather than presented with the same authority as a liquid one. */
-export function watchPriceMap(rows) {
+export function watchPriceMap(rows, exchange = null) {
   const acc = {};
   for (const r of rows) {
     const e = acc[r.name] || (acc[r.name] = { all: [], base: [], daily: 0, thin: true });
@@ -199,41 +258,103 @@ export function watchPriceMap(rows) {
       ...(e.thin ? { thin: true } : {}),
     };
   }
+
+  /* The exchange overrides the listing mean wherever it trades the item. Its
+     figure is a volume-weighted mean of trades that actually happened; `mean`
+     is an average of asks, which includes everything nobody bought. Only
+     confident, actually-traded pairs are allowed to override. */
+  let overrode = 0;
+  for (const x of (exchange || [])) {
+    if (x.lowConfidence || !(x.chaos > 0) || !(x.volume24H > 0)) continue;
+    const prev = prices[x.name];
+    prices[x.name] = {
+      ...(prev || { lo: x.chaos, hi: x.chaos, n: 1 }),
+      c: Math.round(x.chaos * 100) / 100,
+      exchange: true,
+      volume24H: x.volume24H,
+      ...(x.change24H ? { change24H: x.change24H } : {}),
+    };
+    delete prices[x.name].thin;
+    if (prev) overrode++;
+  }
+  if (overrode) Object.defineProperty(prices, "__exchangeOverrides", { value: overrode, enumerable: false });
   return prices;
 }
 
 /* ---------- the whole snapshot for one league ---------- */
 
+function collect(list, rows, counts, wanted) {
+  for (const raw of list) {
+    const row = normaliseRow(raw);
+    if (!row) continue;
+    const cat = raw.category || null;
+    if (wanted && cat && !wanted.has(cat)) continue;
+    row.divineField = Number(raw.divine) || 0;
+    row.change = Number(raw.change) || 0;
+    row.category = cat;
+    rows.push(row);
+    counts[cat || "?"] = (counts[cat || "?"] || 0) + 1;
+  }
+}
+
 export async function fetchWatchLeague(leagueName, { delayMs = 150, categories = WATCH_CATEGORIES } = {}) {
   const rows = [];
   const counts = {};
   const failed = [];
-  for (const cat of categories) {
-    const j = await tryWatch(`/get?category=${encodeURIComponent(cat)}&league=${encodeURIComponent(leagueName)}`);
-    if (!Array.isArray(j)) { failed.push(cat); await sleep(delayMs); continue; }
-    let n = 0;
-    for (const raw of j) {
-      const row = normaliseRow(raw);
-      if (!row) continue;
-      // Kept only for the divine-rate cross-check; not a price input.
-      row.divineField = Number(raw.divine) || 0;
-      row.category = cat;
-      rows.push(row);
-      n++;
+  const wanted = new Set(categories);
+  let source = "compact";
+
+  // One request for everything. /compact returns the same ItemData rows the
+  // per-category endpoint does, already tagged with their category.
+  const compact = await tryWatch(`/compact?league=${encodeURIComponent(leagueName)}`);
+  if (Array.isArray(compact?.items)) {
+    collect(compact.items, rows, counts, wanted);
+  } else {
+    // Fall back to the per-category endpoint. Slower, but it is the difference
+    // between a stale snapshot and no snapshot.
+    source = "per-category";
+    for (const cat of categories) {
+      const j = await tryWatch(`/get?category=${encodeURIComponent(cat)}&league=${encodeURIComponent(leagueName)}`);
+      if (!Array.isArray(j)) { failed.push(cat); await sleep(delayMs); continue; }
+      collect(j.map((r) => ({ ...r, category: cat })), rows, counts, wanted);
+      await sleep(delayMs);
     }
-    counts[cat] = n;
-    await sleep(delayMs);
   }
   if (!rows.length) return null;
-  const rate = watchDivineRate(rows);
-  return { rows, prices: watchPriceMap(rows), counts, failed, ...rate };
+
+  const exRaw = await tryWatch(`/exchange/ratios?league=${encodeURIComponent(leagueName)}&game=poe1`);
+  const exchange = Array.isArray(exRaw?.items)
+    ? exRaw.items.map(normaliseExchange).filter(Boolean)
+    : [];
+
+  const rate = watchDivineRate(rows, exchange);
+  return {
+    rows, exchange, counts, failed, source,
+    prices: watchPriceMap(rows, exchange),
+    ...rate,
+  };
+}
+
+/* Data freshness. A feed that has stopped moving looks exactly like a quiet
+   market from the outside, so the run says which it is. */
+export async function watchStatus() {
+  const j = await tryWatch("/status");
+  if (!j) return null;
+  return { changeID: j.changeID, requested: j.requestedStashes, computed: j.computedStashes };
 }
 
 /* Rows for one category, in the shape the per-tab JSON files want.
    `change` is poe.watch's own day-over-day figure; the site's finer 4h/8h
    windows still come from its accumulated self-history, which has better
    resolution than a daily series. */
-export function watchCategoryItems(rows, re, divineRate, cats = null) {
+export function watchCategoryItems(rows, re, divineRate, cats = null, exchange = null) {
+  // Exchange figures win here too, for the same reason they do in the price
+  // map: traded beats asked.
+  const byName = {};
+  for (const x of (exchange || [])) {
+    if (!x.lowConfidence && x.chaos > 0 && x.volume24H > 0) byName[x.name] = x;
+  }
+
   const out = [];
   const seen = new Set();
   for (const r of rows) {
@@ -243,13 +364,19 @@ export function watchCategoryItems(rows, re, divineRate, cats = null) {
     if (!re.test(r.name) || seen.has(r.name)) continue;
     if (!isWatchBaseVariant(r)) continue;
     seen.add(r.name);
+    const x = byName[r.name];
+    const chaos = x ? x.chaos : r.chaos;
+    // Seed the movement badges from poe.watch so a fresh deployment is not
+    // blank; the site's own 4-hourly self-history replaces these as it fills.
+    const change = x?.change24H ?? r.change ?? 0;
     out.push({
       id: r.id, name: r.name,
-      chaosValue: Math.round(r.chaos * 100) / 100,
-      divineValue: divineRate > 0 ? r.chaos / divineRate : 0,
-      change24: 0, change48: 0,
-      daily: r.daily,
-      ...(r.lowConfidence ? { thin: true } : {}),
+      chaosValue: Math.round(chaos * 100) / 100,
+      divineValue: divineRate > 0 ? chaos / divineRate : 0,
+      change24: change, change48: change,
+      daily: x ? x.volume24H : r.daily,
+      ...(x ? { exchange: true } : {}),
+      ...(!x && r.lowConfidence ? { thin: true } : {}),
     });
   }
   return out;

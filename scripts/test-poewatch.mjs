@@ -83,7 +83,38 @@ const NINJA_EXCHANGE = {
   Resonator: [["prime-chaotic-resonator", 8]],
 };
 
+/* The exchange trades a subset of items and quotes a volume-weighted mean of
+   real trades. Deliberately different from the listing means above, so which
+   one won is never ambiguous. The `price` block is the shape the live API
+   serves; the OpenAPI file documents an older one, hence the fallback path. */
+const EXCHANGE_ROWS = [
+  {
+    id: 10, name: "Horned Scarab of Pandemonium", category: "scarab",
+    price: { chaos: 111, divine: 111 / EXCHANGE, method: "volumeWeightedMean", lowConfidence: false },
+    chaos: { value: 111, chaosValue: 111, divineValue: 111 / EXCHANGE, volume24H: 380000, change24H: 4.5, lowConfidence: false },
+  },
+  {
+    id: 5, name: "Orb of Intention", category: "currency",
+    price: { chaos: 340, divine: 340 / EXCHANGE, method: "volumeWeightedMean", lowConfidence: false },
+    chaos: { value: 340, chaosValue: 340, divineValue: 340 / EXCHANGE, volume24H: 90000, change24H: -2, lowConfidence: false },
+  },
+  // Thin and untraded: must NOT override anything, or a dead pair silently
+  // reprices an item the listing data knows better.
+  {
+    id: 99, name: "Abrasive Catalyst", category: "currency",
+    price: { chaos: 9999, divine: 45, lowConfidence: true },
+    chaos: { value: 9999, chaosValue: 9999, divineValue: 45, volume24H: 0, change24H: 0, lowConfidence: true },
+  },
+  // Older documented shape, no `price` block — the reader must still cope.
+  {
+    id: 11, name: "Divination Scarab of Pilfering", category: "scarab",
+    chaos: { value: 25, chaosValue: 25, divineValue: 25 / EXCHANGE, volume24H: 5000, change24H: 1, lowConfidence: false },
+    divine: { value: 25 / EXCHANGE, lowConfidence: false },
+  },
+];
+
 let watchDown = process.env.WATCH_DOWN === "1";
+let compactDown = false;
 const hits = [];
 
 globalThis.fetch = async (url) => {
@@ -93,6 +124,16 @@ globalThis.fetch = async (url) => {
   if (u.host === "api.poe.watch") {
     if (watchDown) return new Response("down", { status: 503 });
     if (u.pathname === "/leagues") return J([{ name: "Allflame", start_date: "2026-07-24T20:00:00Z" }]);
+    if (u.pathname === "/status") return J({ changeID: "1-2-3-4-5", requestedStashes: 100, computedStashes: 99 });
+    if (u.pathname === "/compact") {
+      if (compactDown) return new Response("nope", { status: 500 });
+      // One flat array, every row tagged with its category — the whole point
+      // of /compact over 22 per-category calls.
+      const items = [];
+      for (const [cat, rows] of Object.entries(WATCH)) for (const r of rows) items.push({ ...r, category: cat });
+      return J({ items });
+    }
+    if (u.pathname === "/exchange/ratios") return J({ items: EXCHANGE_ROWS });
     if (u.pathname === "/get") {
       const cat = u.searchParams.get("category");
       return J(WATCH[cat] || []);
@@ -147,8 +188,8 @@ ok(near(priced.divineRate, EXCHANGE, 1),
 ok(!near(priced.divineRate, LISTING, 5), "the thin Divine Orb listing must not set the rate");
 
 /* ---- precedence ---- */
-ok(near(P["Orb of Intention"]?.c, 300),
-   `poe.watch must beat poe.ninja where both know an item: ${P["Orb of Intention"]?.c} (ninja says 26.4)`);
+ok(near(P["Orb of Intention"]?.c, 340),
+   `poe.watch must beat poe.ninja where both know an item — and its exchange price (340) beats its own listing mean (300) and poe.ninja (26.4): ${P["Orb of Intention"]?.c}`);
 ok(near(P["Awakener's Orb"]?.c, 210),
    `poe.ninja must still fill what poe.watch lacks: ${P["Awakener's Orb"]?.c}`);
 ok(P["Awakener's Orb"]?.c !== 999, "stash currency stays gap-fill only and must not outrank the exchange");
@@ -178,8 +219,8 @@ ok(near(P["Cinderswallow Urn"]?.c, 120), "and does not overwrite the identified 
 
 /* ---- every tab ---- */
 const scarabs = JSON.parse(await readFile(path.join(OUT_DIR, "Allflame", "scarabs.json"), "utf8"));
-ok(near(scarabs.items.find((i) => /Pandemonium/.test(i.name))?.chaosValue, 95),
-   `scarab tab must read poe.watch (95), not poe.ninja (80): ${scarabs.items.find((i) => /Pandemonium/.test(i.name))?.chaosValue}`);
+ok(near(scarabs.items.find((i) => /Pandemonium/.test(i.name))?.chaosValue, 111),
+   `scarab tab must read poe.watch's traded price (111), not its listing mean (95) or poe.ninja (80): ${scarabs.items.find((i) => /Pandemonium/.test(i.name))?.chaosValue}`);
 ok(near(scarabs.divineRate, EXCHANGE, 1), `scarab tab divine rate: ${scarabs.divineRate}`);
 for (const [file, name, value] of [
   ["astrolabes", "Deceptive Astrolabe", 90],
@@ -198,8 +239,46 @@ for (const [file, name, value] of [
   ok(!cat.items.some((i) => /Astrolabe|Orb/.test(i.name)), `catalyst tab pulled in neighbours: ${cat.items.map((i) => i.name).join(", ")}`);
 }
 
+/* ---- endpoints ---- */
 ok(hits.some((h) => h === "api.poe.watch/leagues"), "poe.watch leagues must be consulted");
-ok(hits.filter((h) => h === "api.poe.watch/get").length >= 5, "every mapped category must be fetched");
+ok(hits.some((h) => h === "api.poe.watch/compact"), "/compact must be used");
+ok(hits.some((h) => h === "api.poe.watch/exchange/ratios"), "/exchange/ratios must be used");
+ok(hits.filter((h) => h === "api.poe.watch/get").length === 0,
+   `/compact answered, so the 22 per-category calls must not fire: ${hits.filter((h) => h === "api.poe.watch/get").length} did`);
+
+/* ---- exchange beats listings ---- */
+ok(near(P["Horned Scarab of Pandemonium"]?.c, 111),
+   `traded price (111) must beat the listing mean (95): ${P["Horned Scarab of Pandemonium"]?.c}`);
+ok(P["Horned Scarab of Pandemonium"]?.exchange === true, "and be marked as an exchange price");
+ok(P["Horned Scarab of Pandemonium"]?.volume24H === 380000, "with real 24h volume attached");
+ok(near(P["Orb of Intention"]?.c, 340), `exchange price beats both sources: ${P["Orb of Intention"]?.c}`);
+ok(near(P["Divination Scarab of Pilfering"]?.c, 25),
+   `the older exchange shape without a price block must still be read: ${P["Divination Scarab of Pilfering"]?.c}`);
+ok(near(P["Abrasive Catalyst"]?.c, 7),
+   `a low-confidence, zero-volume pair must NOT override the listing mean: ${P["Abrasive Catalyst"]?.c}`);
+
+/* The scarab tab takes the traded price too, and seeds its movement badge. */
+{
+  const row = scarabs.items.find((i) => /Pandemonium/.test(i.name));
+  ok(near(row?.chaosValue, 111), `scarab tab must use the traded price: ${row?.chaosValue}`);
+  ok(row?.change24 === 4.5, `and seed the change badge from the exchange: ${row?.change24}`);
+}
+
+/* ---- /compact unavailable ----
+   Checked at the module level rather than through another full snapshot: the
+   question is only whether the per-category path takes over, and a whole extra
+   run to answer it would double the suite's runtime. */
+{
+  compactDown = true;
+  const before = hits.filter((h) => h === "api.poe.watch/get").length;
+  const { fetchWatchLeague } = await import("./poewatch.mjs");
+  const r = await fetchWatchLeague("Allflame", { delayMs: 0 });
+  ok(r && r.source === "per-category", `with /compact down the per-category path must take over: ${r?.source}`);
+  ok(hits.filter((h) => h === "api.poe.watch/get").length > before, "and it must actually issue those calls");
+  ok(near(r?.prices?.["Horned Scarab of Pandemonium"]?.c, 111), "with the exchange still applied on top");
+  ok(near(r?.rate, EXCHANGE, 1), `and the rate unchanged: ${r?.rate}`);
+  compactDown = false;
+}
 
 /* ---- poe.watch down ----
    Re-runs the whole snapshot against a 503ing poe.watch. The point is not that
