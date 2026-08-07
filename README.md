@@ -1,6 +1,6 @@
 # Vaal Street
 
-Path of Exile 1 scarab price tracker, grouped by league mechanic.
+Path of Exile 1 farming profitability and market price tools.
 
 Exchange-traded prices come from **GGG's public Currency Exchange API** first.
 The scheduled snapshot reads the latest completed hourly digest and calculates

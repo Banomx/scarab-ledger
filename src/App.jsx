@@ -710,7 +710,7 @@ export default function ScarabTracker() {
       <header className="st-head">
         <div className="st-title-block">
           <h1>Vaal Street</h1>
-          <p className="st-sub">Path of Exile · scarab prices by league mechanic</p>
+          <p className="st-sub">Path of Exile · farming profits and market prices</p>
         </div>
         <div className="st-controls">
           <label className="st-ctl">
