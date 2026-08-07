@@ -1,4 +1,4 @@
-# Scarab Ledger
+# Vaal Street
 
 Path of Exile 1 scarab price tracker, grouped by league mechanic.
 
@@ -67,7 +67,7 @@ One-time setup:
 cd scarab-ledger
 git init -b main
 git add -A
-git commit -m "Scarab Ledger"
+git commit -m "Vaal Street"
 git remote add origin git@github.com:YOUR_USER/scarab-ledger.git
 git push -u origin main
 ```

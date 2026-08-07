@@ -346,7 +346,7 @@ export default function ScarabTracker() {
   const [showUniversal, setShowUniversal] = useState(true);
   const [showHorned, setShowHorned] = useState(true);
   const [chgWindow, setChgWindow] = useState("24h");      // 24h | 48h
-  const [tab, setTab] = useState("prices");               // prices | farms
+  const [tab, setTab] = useState("farms");                // farms | prices | astrolabes | catalysts | bosses | delve
   const [openGroup, setOpenGroup] = useState(null);
   const [focusScarab, setFocusScarab] = useState(null);
   const [histories, setHistories] = useState({});         // name -> [{day,value}]
@@ -709,7 +709,7 @@ export default function ScarabTracker() {
 
       <header className="st-head">
         <div className="st-title-block">
-          <h1>Scarab Ledger</h1>
+          <h1>Vaal Street</h1>
           <p className="st-sub">Path of Exile · scarab prices by league mechanic</p>
         </div>
         <div className="st-controls">
@@ -740,8 +740,8 @@ export default function ScarabTracker() {
       </header>
 
       <nav className="st-tabs" aria-label="Views">
-        <button className={tab === "prices" ? "on" : ""} onClick={() => { setTab("prices"); setDragSel(null); }}>Scarabs</button>
         <button className={tab === "farms" ? "on" : ""} onClick={() => { setTab("farms"); setDragSel(null); }}>Popular farms</button>
+        <button className={tab === "prices" ? "on" : ""} onClick={() => { setTab("prices"); setDragSel(null); }}>Scarabs</button>
         <button className={tab === "astrolabes" ? "on" : ""} onClick={() => { setTab("astrolabes"); setDragSel(null); }}>Astrolabes</button>
         <button className={tab === "catalysts" ? "on" : ""} onClick={() => { setTab("catalysts"); setDragSel(null); }}>Catalysts</button>
         <button className={tab === "bosses" ? "on" : ""}
