@@ -116,6 +116,8 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const [hist, setHist] = useState({});                 // name -> [{day, value}]
   const [priceMap, setPriceMap] = useState(null);       // prices.json | "missing"
   const [generatedAt, setGeneratedAt] = useState(null);
+  // Which price sources actually answered when this snapshot was taken.
+  const [priceSource, setPriceSource] = useState(null);
 
   useEffect(() => { saveSettings(settings); }, [settings]);
 
@@ -147,6 +149,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     grab("prices.json", (j) => {
       if (j === "missing") { setPriceMap("missing"); return; }
       setPriceMap(j.prices || {});
+      setPriceSource(j.priceSource || null);
       setGeneratedAt((g) => g || j.generatedAt || null);
     });
     return () => { cancelled = true; };
@@ -413,7 +416,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
       )}
       {havePrices && (
         <div className="st-banner st-quiet">
-          Prices via poe.ninja · {league}
+          Prices via {priceSource || "poe.watch and poe.ninja"} · {league}
           {generatedAt ? ` · updated ${new Date(generatedAt).toLocaleString()}` : ""}
           {" · "}1 Divine ≈ {Math.round(rate)} Chaos
           {fossilData === "missing" && priceMap && priceMap !== "missing" ? " · fossil trends appear after the next refresh" : ""}
@@ -882,7 +885,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                       </table>
                       <p className="dl-note">
                         Rates: poewiki, {b.delve.sample}. Lines roll independently — Ahuatotli's six sum past
-                        100% because a kill can hand you several. Prices are poe.ninja's, including the
+                        100% because a kill can hand you several. Prices are the market's, including the
                         divination cards.
                         {b.missingPrices > 0 && ` ${b.missingPrices} line${b.missingPrices > 1 ? "s have" : " has"} no poe.ninja price and contribute nothing.`}
                       </p>

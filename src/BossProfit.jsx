@@ -109,6 +109,8 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                                      unitFor = (chaos, cur) => cur }) {
   const [priceMap, setPriceMap] = useState(null);   // null = loading, "missing" = no snapshot
   const [generatedAt, setGeneratedAt] = useState(null);
+  // Which price sources actually answered on the day this snapshot was taken.
+  const [priceSource, setPriceSource] = useState(null);
   const [profiles, setProfiles] = useState(() => loadProfiles());
   const [activeName, setActiveName] = useState(() => loadActive(loadProfiles()));
   const [view, setView] = useState("bosses");       // bosses | profiles
@@ -139,6 +141,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
           if (cancelled) return;
           setPriceMap(j.prices || {});
           setGeneratedAt(j.generatedAt || null);
+          setPriceSource(j.priceSource || null);
           return;
         }
       } catch { /* fall through */ }
@@ -366,7 +369,7 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
       )}
       {priceMap && priceMap !== "missing" && (
         <div className="st-banner st-quiet">
-          Prices via poe.ninja · {league}
+          Prices via {priceSource || "poe.watch and poe.ninja"} · {league}
           {generatedAt ? ` · updated ${new Date(generatedAt).toLocaleString()}` : ""}
           {" · "}1 Divine ≈ {Math.round(divineRate)} Chaos
         </div>

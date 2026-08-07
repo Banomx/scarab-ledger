@@ -86,6 +86,16 @@ async function getLeagues() {
   return all;
 }
 
+/* What to credit in the UI. The site says where its numbers came from, and
+   that claim has to track what actually answered on the day — poe.watch can be
+   down, or thin on a category, and saying "poe.watch" then would be a lie. */
+function sourceLabel({ watch = 0, ninja = 0 } = {}) {
+  if (watch && ninja) return "poe.watch and poe.ninja";
+  if (watch) return "poe.watch";
+  if (ninja) return "poe.ninja";
+  return null;
+}
+
 /* ---------- extra exchange categories (same features as scarabs) ---------- */
 const EXTRA_CATEGORIES = [
   // `watch` narrows which poe.watch categories a name regex may match in;
@@ -611,7 +621,7 @@ async function getPriceMap(lgParams, ctx, watch = null) {
   if (missed.length) console.log(`    no data for: ${missed.join(", ")}`);
   console.log(`    sources: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(", ")}`);
 
-  return { prices, leagueParam: p, divisor: div, categories: Object.keys(counts).length };
+  return { prices, leagueParam: p, divisor: div, counts, categories: Object.keys(counts).length };
 }
 
 /* Every item the boss tab references, checked against what we actually got.
@@ -1094,14 +1104,19 @@ async function main() {
       const dir = path.join(OUT, slug);
       await mkdir(dir, { recursive: true });
       const generatedAt = new Date().toISOString();
-      await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, historySource, historyAxis, rateHistory, rateHistorySource, items }));
+      const scarabSource = sourceLabel(source === "watch" ? { watch: 1 } : { ninja: 1 });
+      await writeFile(path.join(dir, "scarabs.json"), JSON.stringify({ generatedAt, divineRate, priceSource: scarabSource, historySource, historyAxis, rateHistory, rateHistorySource, items }));
       await writeFile(path.join(dir, "history.json"), JSON.stringify(history));
       await writeFile(path.join(dir, "selfhistory.json"), JSON.stringify(self));
       // broad price map for the boss profitability tab
       try {
         const pm = await getPriceMap(lg.params, ctx, watch);
         if (pm) {
-          await writeFile(path.join(dir, "prices.json"), JSON.stringify({ generatedAt, divineRate, prices: pm.prices }));
+          const priceSource = sourceLabel({
+            watch: pm.counts?.["poe.watch"] || 0,
+            ninja: Object.entries(pm.counts || {}).filter(([k]) => k !== "poe.watch").reduce((n, [, v]) => n + v, 0),
+          });
+          await writeFile(path.join(dir, "prices.json"), JSON.stringify({ generatedAt, divineRate, priceSource, prices: pm.prices }));
           console.log(`  prices: ${Object.keys(pm.prices).length} names across ${pm.categories} sources (league=${pm.leagueParam})`);
           await reportUnpricedBossItems(pm.prices, lg.name, li === 0);
         } else {
@@ -1145,7 +1160,7 @@ async function main() {
               axis: { mode: "self", t0Ms: catAlign ?? firstMs },
             });
           }
-          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, divineRate: rate2, historySource: catHistorySource, historyAxis: catHistoryAxis, rateHistory: catRateHistory, rateHistorySource: !catRateHistory.length ? "none" : rateBackfill.length ? "ninja+self" : "self", items: r.items }));
+          await writeFile(path.join(dir, `${cat.key}.json`), JSON.stringify({ generatedAt, divineRate: rate2, priceSource: sourceLabel(r.source === "watch" ? { watch: 1 } : { ninja: 1 }), historySource: catHistorySource, historyAxis: catHistoryAxis, rateHistory: catRateHistory, rateHistorySource: !catRateHistory.length ? "none" : rateBackfill.length ? "ninja+self" : "self", items: r.items }));
           await writeFile(path.join(dir, `${cat.key}-history.json`), JSON.stringify(catHist));
           await writeFile(path.join(dir, `${cat.key}-selfhistory.json`), JSON.stringify(catSelf));
           console.log(`  ${cat.key}: ${r.items.length} items`);

@@ -374,7 +374,7 @@ export default function ScarabTracker() {
     const j = await res.json();
     setItems((j.items || []).map((it) => ({ ...it, group: groupForName(it.name) })));
     setDivineRate(j.divineRate || DEMO_DIVINE_RATE);
-    setStaticInfo({ generatedAt: j.generatedAt, historySource: j.historySource, historyAxis: j.historyAxis });
+    setStaticInfo({ generatedAt: j.generatedAt, historySource: j.historySource, historyAxis: j.historyAxis, priceSource: j.priceSource });
     setRateHistory(Array.isArray(j.rateHistory) ? j.rateHistory : []);
     setMode("live"); setDataSource("static");
     staticHistFetched.current.delete(name);
@@ -766,7 +766,7 @@ export default function ScarabTracker() {
       {mode === "live" && !OWN_BAR[tab] && (
         <div className="st-banner st-quiet">
           {dataSource === "static"
-            ? `Snapshot data · ${league} · updated ${staticInfo?.generatedAt ? new Date(staticInfo.generatedAt).toLocaleString() : "recently"}`
+            ? `${staticInfo?.priceSource ? `Prices via ${staticInfo.priceSource}` : "Snapshot data"} · ${league} · updated ${staticInfo?.generatedAt ? new Date(staticInfo.generatedAt).toLocaleString() : "recently"}`
             : `Live data · ${league}`} · 1 Divine ≈ {Math.round(divineRate)} Chaos
           {realMode && rateReady && rateDrift && (
             <span className="st-banner-real">
@@ -1122,7 +1122,9 @@ export default function ScarabTracker() {
       )}
 
       <footer className="st-foot">
-        Prices via poe.ninja · one of each scarab per set · Scarab Ledger is a fan tool, not affiliated with GGG.
+        Prices via <a href="https://poe.watch" target="_blank" rel="noopener noreferrer">poe.watch</a>
+        {" and "}<a href="https://poe.ninja" target="_blank" rel="noopener noreferrer">poe.ninja</a>
+        {" · "}one of each scarab per set · Scarab Ledger is a fan tool, not affiliated with GGG.
       </footer>
     </div>
   );
@@ -1290,6 +1292,9 @@ const css = `
 .st-row-price { font-variant-numeric: tabular-nums; color: #e5d49c; white-space: nowrap; }
 .st-breakdown-hint { padding: 8px 14px 12px; font-size: 11px; color: #6f6656; }
 .st-foot { margin-top: 26px; font-size: 11.5px; color: #6f6656; text-align: center; letter-spacing: 0.03em; }
+.st-foot a { color: #9a8c6a; text-decoration: none; border-bottom: 1px dotted #6f6656; }
+.st-foot a:hover { color: #d9c48a; border-bottom-color: #d9c48a; }
+.st-foot a:focus-visible { outline: 2px solid #d8b355; outline-offset: 2px; }
 .st-pct { font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; margin-right: 6px; white-space: nowrap; }
 .st-pct.up { color: #8fd47f; }
 .st-pct.down { color: #d47f7f; }
