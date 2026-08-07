@@ -320,7 +320,9 @@ The Delve tool has three views:
   boss has a guaranteed unique pool plus separate card/fragment rolls, with
   preliminary or unpublished rates visibly flagged for the player to edit.
   Unpublished rates start at a marked 3% default. The view shows value and
-  distribution per kill plus city-biome share. A labelled community curve also
+  distribution per kill plus city-biome share. Each boss card keeps the current
+  median beside exact expected value and revalidates the hourly market snapshot.
+  A labelled community curve also
   leads with the estimated boss-loot value of an eligible city node, then shows
   value and distribution per kill. Boss cards/fragments use GGG pricing first; unique
   markets fall back to poe.watch or poe.ninja. Kurgal's preliminary Eye line

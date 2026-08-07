@@ -1936,8 +1936,14 @@ const css = `
 }
 .dl-boss-head:focus-visible { outline: 2px solid #ff6a24; outline-offset: -2px; }
 .dl-boss-name { flex: 1; min-width: 0; }
-.dl-boss-val { font-variant-numeric: tabular-nums; color: #f4dfd3; white-space: nowrap; }
+.dl-boss-val {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+  font-variant-numeric: tabular-nums; color: #f4dfd3; white-space: nowrap;
+}
+.dl-boss-val > span { display: flex; align-items: baseline; }
+.dl-boss-val b { font-size: 14px; font-weight: 600; }
 .dl-boss-val em { font-style: normal; font-size: 10.5px; color: #9c877e; margin-left: 5px; }
+.dl-boss-val small { color: #d9a86a; font-size: 10px; }
 .dl-boss-meta { font-size: 11.5px; color: #8e7e76; margin-bottom: 10px; line-height: 1.5; }
 .dl-boss-estimate {
   display: grid; grid-template-columns: minmax(280px, 0.85fr) minmax(440px, 1.6fr); gap: 16px;

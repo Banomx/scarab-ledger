@@ -196,7 +196,9 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
     let cancelled = false;
     const grab = async (file, set) => {
       try {
-        const res = await fetch(`${staticBase}/${file}`);
+        // Generated market files keep the same URL between hourly deployments.
+        // Revalidate them so an old browser cache cannot freeze boss medians.
+        const res = await fetch(`${staticBase}/${file}`, { cache: "no-cache" });
         if (res.ok) { const j = await res.json(); if (!cancelled) set(j); return; }
       } catch { /* fall through */ }
       if (!cancelled) set("missing");
@@ -980,7 +982,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             {rankBy === "depth" && (
               <>
                 <span className="dl-mode-kicker"><em className="dl-src warn">community estimate</em> active depth {settings.depth}</span>
-                <strong>Expected value of one non-cache fossil marker</strong>
+                <strong>Expected value of one non-Smugglers cache fossils</strong>
                 <p>Each biome blends its live special-target value with its generic fossil pool using that biome's estimated special-node chance. This is the practical value to compare when choosing a fossil route.</p>
               </>
             )}
@@ -1218,7 +1220,10 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
         <>
           <section className="dl-boss-estimate">
             <header>
-              <span><em className="dl-src warn">community estimate</em> current depth {settings.depth}</span>
+              <span>
+                <em className="dl-src warn">community estimate</em> current depth {settings.depth}
+                {generatedAt ? ` · prices updated ${new Date(generatedAt).toLocaleString()}` : ""}
+              </span>
               <h3>Expected boss loot when a city node appears</h3>
               <p>
                 This is the useful city decision: boss encounter chance × current boss drop-table EV. It is a
@@ -1255,7 +1260,11 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                       {b.delve.name}
                       {!b.available && <em className="dl-flag warn">needs depth {b.delve.minDepth}</em>}
                     </span>
-                    <span className="dl-boss-val">{money(d.median)}<em>typical kill</em></span>
+                    <span className="dl-boss-val"
+                      title={generatedAt ? `Recalculated from the ${new Date(generatedAt).toLocaleString()} price snapshot` : "Recalculated from the active price snapshot"}>
+                      <span><b>{money(d.median)}</b><em>current median</em></span>
+                      <small>{money(b.gross)} expected / kill</small>
+                    </span>
                   </button>
                   <div className="dl-boss-meta">
                     {b.biome.name} · {b.delve.node} · depth {b.delve.minDepth}+
