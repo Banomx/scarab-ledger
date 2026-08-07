@@ -801,7 +801,12 @@ function configuredBossPriceNames() {
       for (const boss of [...data.BOSSES, ...delve.DELVE_BOSSES]) {
         for (const line of boss.entry || []) if (line.item) names.add(line.item);
         for (const group of boss.groups || []) {
-          for (const line of group.drops || []) if (line.item && !line.item.startsWith("@")) names.add(line.item);
+          for (const line of group.drops || []) {
+            if (!line.item) continue;
+            if (line.item.startsWith("@")) {
+              for (const item of (data.SYNTHETIC[line.item]?.items || [])) names.add(item);
+            } else names.add(line.item);
+          }
         }
       }
       return [...names];

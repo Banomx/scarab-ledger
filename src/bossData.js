@@ -72,9 +72,20 @@ export const GROUP_TONES = {
   "Other": "#8fb46a",
 };
 
-/* Available for any boss that drops "a random X"; nothing uses them
-   right now because the ledger data names the individual gems. */
+/* Available for any boss that drops "a random X". A fixed `items` list makes
+   the aggregate strict: every named outcome must be priced before an average
+   is shown. Regex aggregates keep their existing market-wide behaviour. */
 export const SYNTHETIC = {
+  "@zorath-eyes": {
+    label: "Zorath's Eye (average of four variants)",
+    items: [
+      "Zorath's Eye of Malevolence",
+      "Zorath's Eye of Authority",
+      "Zorath's Eye of the Inevitable",
+      "Zorath's Eye of the Endless",
+    ],
+    match: (n) => /^Zorath's Eye of (?:Malevolence|Authority|the Inevitable|the Endless)$/.test(n),
+  },
   "@awakened-common": {
     label: "Awakened support gem (random, non-exceptional)",
     match: (n) => /^Awakened .+ Support$/.test(n) && !/(Enlighten|Empower|Enhance)/.test(n),

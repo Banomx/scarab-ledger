@@ -1836,6 +1836,22 @@ button.ov-signal:hover { background: #1a100c; }
 .dl-boss-body { margin-top: 12px; border-top: 1px solid #2f1f18; padding-top: 4px; }
 .dl-boss-body .dl-table { font-size: 12.5px; }
 .dl-boss-body .dl-table td, .dl-boss-body .dl-table th { padding-left: 0; padding-right: 0; }
+.dl-drop-toggle {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none;
+  color: #d7c8c1; cursor: pointer; font: inherit; text-align: left;
+}
+.dl-drop-toggle:hover { color: #f4dfd3; }
+.dl-drop-toggle:focus-visible { outline: 1px solid #ff6a24; outline-offset: 3px; }
+.dl-drop-toggle > span:last-child { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
+.dl-drop-toggle small { color: #9c877e; font-size: 10px; font-variant-numeric: tabular-nums; }
+.dl-drop-chevron { color: #e65822; width: 9px; font-size: 11px; }
+.dl-table tr.dl-variant-row td { padding: 8px 10px 10px; background: #0e0a08; border-bottom-color: #3e281e; }
+.dl-variant-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 5px 18px; }
+.dl-variant-grid span { display: flex; justify-content: space-between; gap: 12px; color: #9c877e; }
+.dl-variant-grid strong { color: #d7c8c1; font-weight: 500; }
+.dl-variant-grid b { color: #efcdbd; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dl-variant-row p { margin: 8px 0 0; color: #74625b; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.dl-variant-row p strong { color: #e6a078; font-weight: 600; }
 
 /* Delve sample profiles */
 .dl-sample-title { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 12px; }

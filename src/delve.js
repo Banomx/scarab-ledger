@@ -270,7 +270,19 @@ export function computeDelveBosses(resolve, settings = {}) {
   const bossOv = settings.bosses || {};
   const { rows } = biomeShares(s.depth);
   return DELVE_BOSSES.map((b) => {
-    const computed = computeBoss(b, resolve, bossOv[b.id] || {});
+    const rawOverride = bossOv[b.id] || {};
+    // Before the unique pools were modelled explicitly, the Delve editor saved
+    // every percentage under `chance`. Preserve those local profiles by moving
+    // old pool values to `share` at calculation time.
+    const drops = { ...(rawOverride.drops || {}) };
+    for (const group of b.groups.filter((candidate) => candidate.kind === "pool")) {
+      for (const drop of group.drops) {
+        const key = drop.key || drop.item;
+        const old = drops[key];
+        if (old?.share == null && old?.chance != null) drops[key] = { ...old, share: old.chance };
+      }
+    }
+    const computed = computeBoss(b, resolve, { ...rawOverride, drops });
     const biome = BIOME_BY_ID[b.biome];
     const sh = biome ? weightAt(biome, s.depth) : 0;
     const share = rows.find((r) => r.biome.id === b.biome)?.share ?? 0;
@@ -303,24 +315,30 @@ export function killDistribution(computed, trials = 4000, seed = 0xd317e) {
   const rnd = mulberry32(seed);
   const pools = [], weighted = [], indep = [];
   for (const g of computed.groups) {
-    const lines = g.lines.map((l) => ({ p: l.rate, v: l.unit, qty: l.qty }));
+    const lines = g.lines.map((l) => ({
+      p: l.rate, v: l.unit, qty: l.qty,
+      variants: l.priceEntry?.components?.map((part) => part.chaos).filter((value) => value > 0) || null,
+    }));
     if (g.kind === "pool") pools.push({ rolls: g.rolls, lines });
     else if (g.kind === "weighted") weighted.push({ base: g.base, total: g.totalWeight, lines });
     else indep.push({ lines, scale: g.scaled ? 1 + computed.quantity / 100 : 1 });
   }
+  const lineValue = (line) => line.variants?.length
+    ? line.variants[Math.floor(rnd() * line.variants.length)]
+    : line.v;
   const vals = new Array(trials);
   for (let t = 0; t < trials; t++) {
     let v = 0;
     for (const g of pools) {
       for (let r = 0; r < g.rolls; r++) {
         let x = rnd(), acc = 0;
-        for (const l of g.lines) { acc += l.p; if (x <= acc) { v += l.v; break; } }
+        for (const l of g.lines) { acc += l.p; if (x <= acc) { v += lineValue(l); break; } }
       }
     }
     for (const g of weighted) {
       if (rnd() < g.base && g.total > 0) {
         let x = rnd() * g.total, acc = 0;
-        for (const l of g.lines) { acc += l.p; if (x <= acc) { v += l.v; break; } }
+        for (const l of g.lines) { acc += l.p; if (x <= acc) { v += lineValue(l); break; } }
       }
     }
     for (const g of indep) {
@@ -330,8 +348,8 @@ export function killDistribution(computed, trials = 4000, seed = 0xd317e) {
         // cap the drop at one and undercount the boss.
         const rate = l.p * g.scale;
         const whole = Math.floor(rate);
-        if (whole > 0) v += l.v * whole;
-        if (rnd() < rate - whole) v += l.v;
+        for (let copy = 0; copy < whole; copy++) v += lineValue(l);
+        if (rnd() < rate - whole) v += lineValue(l);
       }
     }
     vals[t] = v;

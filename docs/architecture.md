@@ -66,7 +66,12 @@ For unidentified boss uniques, the poe.watch adapter uses the current listing
 floor and preserves separate item-level markets. Boss data names the exact
 market for Watcher's Eye, Thread of Hope, Forbidden Flame and Forbidden Flesh;
 the resolver prefers that alias, then a generic unidentified listing, and only
-then the identified item.
+then the identified item. Aul's Uprising is the current exception: the aggregate
+feeds do not expose its unidentified market, so the Delve dataset carries a
+dated, visibly flagged official-trade floor which wins before the identified
+item value. Current aggregate feeds also do not split Kurgal's one- and
+two-Abyssal-socket uniques; those lines keep the live name-wide quote and are
+badged `shared quote` rather than implying variant-level precision.
 
 ## UI composition
 
@@ -87,6 +92,16 @@ biome share times live target value, normalised to 0–100. It does not convert
 that score to currency per Delve because the depth-dependent reward-tier
 selection curve is not public. City boss EV is calculated separately and never
 enters the fossil ranking.
+
+Delve boss distributions use one guaranteed roll from each boss's measured
+unique pool. Cards and fragments remain independent rolls. The older 3.25
+sample supplies the published shares; current drops without a published sample,
+such as Zorath's Eye, remain visibly preliminary and editable. Kurgal currently
+uses the requested 50% preliminary rate. Its conditional value is the arithmetic
+mean of Malevolence, Authority, the Inevitable and the Endless; the row expands
+to expose the four live inputs, and the one-kill simulation rolls an actual
+variant rather than a fixed average item. Exchange-backed boss drops use the
+same GGG-first resolver as the main Boss profit tab.
 
 Generic fossil nodes and Smuggler's caches use low/median/high outcomes from the
 priced biome pool instead of assuming equal fossil probabilities. The active

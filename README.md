@@ -318,9 +318,14 @@ The Delve tool has four views:
   observation profiles. Enter encounter counts, fossil totals and minutes to
   replace guide quantities and unlock a personal priced-pool low–high hourly projection;
   a timed route with no fossil encounters remains a valid zero-rate sample.
-- **Bosses** keeps Ahuatotli, Kurgal and Aul separate from fossil routing. It
-  shows value and distribution per kill plus city-biome share, but no invented
-  bosses-per-100-Delves rate.
+- **Bosses** keeps Ahuatotli, Kurgal and Aul separate from fossil routing. Each
+  boss has a guaranteed unique pool plus separate card/fragment rolls, with
+  preliminary or unpublished rates visibly flagged for the player to edit. The view shows value
+  and distribution per kill plus city-biome share, but no invented
+  bosses-per-100-Delves rate. Boss cards/fragments use GGG pricing first; unique
+  markets fall back to poe.watch or poe.ninja. Kurgal's preliminary Eye line
+  uses the live arithmetic mean of all four variants and expands to show each
+  underlying price.
 
 PoEDB supplies biome weights plus exclusive encounter tier, weight and minimum
 depth. All six exclusive encounters are tier 4 with weight 100, which supports

@@ -16,7 +16,7 @@ import {
   computeBiome, computeBiomes, computeDelveBosses, killDistribution, sanitizeSettings,
   biomeValueSeries, defaultSampleProfile, sanitizeSampleProfile, uniqueSampleName, sampleMetrics,
 } from "../src/delve.js";
-import { makeResolver } from "../src/bossProfit.js";
+import { makeResolver, bossItems } from "../src/bossProfit.js";
 
 let failed = 0;
 const test = (name, fn) => {
@@ -97,9 +97,9 @@ test("all six exclusive encounters carry the data-mined tier, weight and minimum
 test("boss drop rates are the poewiki 3.25 n=100 figures", () => {
   const rate = (id, key) => {
     const b = DELVE_BOSSES.find((x) => x.id === id);
-    const d = b.groups[0].drops.find((x) => (x.key || x.item) === key);
+    const d = b.groups.flatMap((group) => group.drops).find((x) => (x.key || x.item) === key);
     assert.ok(d, `${id}: no drop line ${key}`);
-    return d.chance;
+    return d.share ?? d.chance;
   };
   near(rate("ahuatotli", "Cerberus Limb"), 0.60, 1e-9, "Cerberus Limb");
   near(rate("ahuatotli", "Curiosity"), 0.40, 1e-9, "Curiosity");
@@ -108,19 +108,37 @@ test("boss drop rates are the poewiki 3.25 n=100 figures", () => {
   near(rate("kurgal", "misery"), 0.20, 1e-9, "Misery in Darkness");
   near(rate("aul", "Aul's Uprising"), 0.61, 1e-9, "Aul's Uprising");
   near(rate("aul", "Crown of the Tyrant"), 0.15, 1e-9, "Crown of the Tyrant");
+  near(rate("kurgal", "zorath"), 0.50, 1e-9, "Zorath's preliminary rate");
+});
+
+test("each boss has a guaranteed 100% unique pool and separate additional rolls", () => {
+  for (const boss of DELVE_BOSSES) {
+    const unique = boss.groups.find((group) => group.kind === "pool");
+    const extra = boss.groups.find((group) => group.kind === "independent");
+    assert.ok(unique, `${boss.name}: no unique pool`);
+    assert.ok(extra, `${boss.name}: no additional-drop group`);
+    near(unique.drops.reduce((sum, drop) => sum + drop.share, 0), 1, 1e-9, `${boss.name} pool`);
+    assert.equal(unique.rolls, 1, `${boss.name}: unique pool must roll once`);
+  }
 });
 
 test("unrated drop lines contribute nothing rather than an invented rate", () => {
   for (const b of DELVE_BOSSES) {
-    for (const d of b.groups[0].drops) {
-      if (d.unrated) assert.equal(d.chance, 0, `${b.name}: ${d.item} is unrated but carries a rate`);
-      assert.ok(d.chance >= 0 && d.chance <= 1, `${b.name}: ${d.item} rate out of range`);
+    for (const d of b.groups.flatMap((group) => group.drops)) {
+      const rate = d.share ?? d.chance;
+      if (d.unrated) assert.equal(rate, 0, `${b.name}: ${d.item} is unrated but carries a rate`);
+      assert.ok(rate >= 0 && rate <= 1, `${b.name}: ${d.item} rate out of range`);
     }
   }
 });
 
 test("no declared price is stale or undated", () => {
-  for (const [name, fb] of Object.entries(FALLBACKS)) {
+  const declared = [
+    ...Object.entries(FALLBACKS),
+    ...DELVE_BOSSES.flatMap((boss) => boss.groups.flatMap((group) => group.drops)
+      .filter((drop) => drop.fallback).map((drop) => [drop.item, drop.fallback])),
+  ];
+  for (const [name, fb] of declared) {
     assert.ok(fb.asOf, `${name}: declared price with no asOf`);
     assert.ok(fb.chaos > 0 || fb.divine > 0, `${name}: declared price with no value`);
   }
@@ -322,14 +340,26 @@ test("Ahuatotli's EV is the sum of chance x price", () => {
   near(a.gross, want, 1e-6, "Ahuatotli gross");
 });
 
-test("a per-line rate override moves the EV", () => {
+test("a per-line pool-share override moves the EV", () => {
   const base = computeDelveBosses(bossResolve, { ...DEFAULTS, depth: 600 })
     .find((r) => r.delve.id === "ahuatotli").gross;
   const bumped = computeDelveBosses(bossResolve, {
     ...DEFAULTS, depth: 600,
-    bosses: { ahuatotli: { drops: { "Doryani's Machinarium": { chance: 0.32 } } } },
+    bosses: { ahuatotli: { drops: { "Doryani's Machinarium": { share: 0.32 } } } },
   }).find((r) => r.delve.id === "ahuatotli").gross;
   near(bumped - base, 0.16 * 1000, 1e-6, "doubling the Machinarium rate");
+});
+
+test("old chance-based pool overrides migrate without changing saved profiles", () => {
+  const migrated = computeDelveBosses(bossResolve, {
+    ...DEFAULTS, depth: 600,
+    bosses: { ahuatotli: { drops: { "Doryani's Machinarium": { chance: 0.32 } } } },
+  }).find((r) => r.delve.id === "ahuatotli");
+  const explicit = computeDelveBosses(bossResolve, {
+    ...DEFAULTS, depth: 600,
+    bosses: { ahuatotli: { drops: { "Doryani's Machinarium": { share: 0.32 } } } },
+  }).find((r) => r.delve.id === "ahuatotli");
+  near(migrated.gross, explicit.gross, 1e-9, "old chance override vs pool share");
 });
 
 test("boss rows expose city share without inventing an encounter rate", () => {
@@ -355,6 +385,40 @@ test("a single kill's median sits below the mean when one line carries the EV", 
   near(d.mean, a.gross, a.gross * 0.05, "simulated mean should track the EV");
   assert.ok(d.median < d.mean, `median ${d.median} should sit below mean ${d.mean}`);
   assert.ok(d.p90 > d.median, "p90 should sit above the median");
+  assert.equal(d.blank, 0, "the guaranteed unique pool must not simulate blank kills");
+});
+
+test("the Zorath line prices the four Eyes as a visible arithmetic average", () => {
+  const prices = {
+    "Zorath's Eye of Malevolence": { c: 20 },
+    "Zorath's Eye of Authority": { c: 16 },
+    "Zorath's Eye of the Inevitable": { c: 1300 },
+    "Zorath's Eye of the Endless": { c: 26 },
+  };
+  const kurgal = computeDelveBosses(makeResolver(prices), { ...DEFAULTS, depth: 600 })
+    .find((row) => row.delve.id === "kurgal");
+  const eye = kurgal.dropLines.find((line) => line.key === "zorath");
+  near(eye.unit, (20 + 16 + 1300 + 26) / 4, 1e-9, "four-Eye average");
+  near(eye.value, eye.unit * 0.50, 1e-9, "50% preliminary Eye EV");
+  assert.equal(eye.priceEntry.components.length, 4, "dropdown needs all four components");
+  const names = bossItems(DELVE_BOSSES.find((boss) => boss.id === "kurgal"));
+  for (const name of Object.keys(prices)) assert.ok(names.has(name), `hourly gap-fill is missing ${name}`);
+});
+
+test("one-kill simulation rolls the actual synthetic variant, not a fixed average item", () => {
+  const computed = {
+    quantity: 0,
+    groups: [{
+      kind: "independent", scaled: false,
+      lines: [{ rate: 1, unit: 340.5, qty: 1, priceEntry: { components: [
+        { chaos: 20 }, { chaos: 16 }, { chaos: 1300 }, { chaos: 26 },
+      ] } }],
+    }],
+  };
+  const spread = killDistribution(computed, 20000, 17);
+  near(spread.mean, 340.5, 8, "synthetic variant simulation mean");
+  assert.ok(spread.median < 30, `median should be a common Eye, got ${spread.median}`);
+  assert.equal(spread.p90, 1300, "the expensive Eye should remain visible in the upper tail");
 });
 
 test("the simulation is seeded, so it doesn't flicker between renders", () => {

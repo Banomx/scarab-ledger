@@ -244,10 +244,11 @@ export const RESONATOR_SOCKETS = { Primitive: 1, Potent: 2, Powerful: 3, Prime: 
 
 /* ---------------- delve bosses ----------------
 
-   Same shape as src/bossData.js so src/bossProfit.js prices them: groups
-   of drop lines, `kind: "independent"` because these tables are sampled
-   per-kill chances that sum well past 100% (Ahuatotli's six lines total
-   140%), i.e. every line rolls on its own.
+   Same shape as src/bossData.js so src/bossProfit.js prices them. Each boss
+   has a normal unique pool whose measured shares total 100%, plus cards or
+   fragments that roll independently. That distinction does not change EV,
+   but it does change the one-kill distribution: a boss always gives one item
+   from its normal pool rather than having a fake chance to drop nothing.
 
    Rates are poewiki's "Estimated drop rates in version 3.25.0, n=100"
    lists. Lines the wiki names as drops but leaves out of the rate list
@@ -260,7 +261,8 @@ export const RESONATOR_SOCKETS = { Primitive: 1, Potent: 2, Powerful: 3, Prime: 
    value per kill plus city-biome share. Boss encounters per 100 Delves are
    intentionally absent because the boss-per-city rate is not public. */
 
-const indep = (drops) => ({ id: "drops", kind: "independent", label: "Drop table", drops });
+const pool = (drops) => ({ id: "unique", kind: "pool", label: "Unique pool", rolls: 1, drops });
+const indep = (drops) => ({ id: "extra", kind: "independent", label: "Additional drops", drops });
 
 export const DELVE_BOSSES = [
   {
@@ -268,13 +270,15 @@ export const DELVE_BOSSES = [
     node: "The Grand Architect's Temple", rates: "wiki", sample: "3.25.0, n=100",
     ttk: 60, overhead: 0,
     groups: [
+      pool([
+        { item: "Cerberus Limb", share: 0.60 },
+        { item: "Doryani's Machinarium", share: 0.16 },
+        { item: "Ahkeli's Mountain", share: 0.08 },
+        { item: "Uzaza's Meadow", share: 0.08 },
+        { item: "Putembo's Valley", share: 0.08 },
+      ]),
       indep([
-        { item: "Cerberus Limb", chance: 0.60 },
         { item: "Curiosity", chance: 0.40 },
-        { item: "Doryani's Machinarium", chance: 0.16 },
-        { item: "Ahkeli's Mountain", chance: 0.08 },
-        { item: "Uzaza's Meadow", chance: 0.08 },
-        { item: "Putembo's Valley", chance: 0.08 },
       ]),
     ],
   },
@@ -283,16 +287,23 @@ export const DELVE_BOSSES = [
     node: "The Lich's Tomb", rates: "wiki", sample: "3.25.0, n=100",
     ttk: 75, overhead: 0,
     groups: [
+      pool([
+        { key: "hale-1", item: "Hale Negator", label: "Hale Negator (1 socket)", share: 0.40 },
+        { key: "command-1", item: "Command of the Pit", label: "Command of the Pit (1 socket)", share: 0.15 },
+        { key: "hale-2", item: "Hale Negator", label: "Hale Negator (2 socket)", share: 0.10 },
+        { key: "ahkeli", item: "Ahkeli's Valley", share: 0.10 },
+        { key: "uzaza", item: "Uzaza's Mountain", share: 0.10 },
+        { key: "putembo", item: "Putembo's Meadow", share: 0.10 },
+        { key: "command-2", item: "Command of the Pit", label: "Command of the Pit (2 socket)", share: 0.05 },
+      ]),
       indep([
-        { key: "hale-1", item: "Hale Negator", label: "Hale Negator (1 socket)", chance: 0.40 },
         { key: "misery", item: "Misery in Darkness", chance: 0.20 },
-        { key: "command-1", item: "Command of the Pit", label: "Command of the Pit (1 socket)", chance: 0.15 },
-        { key: "hale-2", item: "Hale Negator", label: "Hale Negator (2 socket)", chance: 0.10 },
-        { key: "ahkeli", item: "Ahkeli's Valley", chance: 0.10 },
-        { key: "uzaza", item: "Uzaza's Mountain", chance: 0.10 },
-        { key: "putembo", item: "Putembo's Meadow", chance: 0.10 },
-        { key: "command-2", item: "Command of the Pit", label: "Command of the Pit (2 socket)", chance: 0.05 },
-        { key: "zorath", item: "Zorath's Eye of the Inevitable", chance: 0.50, preliminary: true },
+        // Preliminary Allflame estimate. The conditional outcome is treated as
+        // one of the four Eye variants at equal weight, so the collapsed line
+        // uses their live sum divided by four and the UI can reveal each price.
+        { key: "zorath", item: "@zorath-eyes", label: "Zorath's Eye (4-variant average)",
+          chance: 0.50, preliminary: true,
+          preliminaryNote: "Preliminary 50% estimate; edit this rate if you have a better sample." },
       ]),
     ],
   },
@@ -301,16 +312,22 @@ export const DELVE_BOSSES = [
     node: "The Crystal King's Throne", rates: "wiki", sample: "3.25.0, n=100",
     ttk: 90, overhead: 0,
     groups: [
+      pool([
+        // The unidentified amulet is the form Aul drops. Neither aggregate
+        // feed currently exposes that market, so use the audited official
+        // trade-site floor until an automated source starts listing it.
+        { item: "Aul's Uprising", label: "Unidentified Aul's Uprising", unidentified: true,
+          fallback: { chaos: 50, asOf: "2026-08-07" }, share: 0.61 },
+        { item: "Crown of the Tyrant", share: 0.15 },
+        { item: "Ahkeli's Meadow", share: 0.08 },
+        { item: "Uzaza's Valley", share: 0.08 },
+        { item: "Putembo's Mountain", share: 0.08 },
+      ]),
       indep([
-        { item: "Aul's Uprising", chance: 0.61 },
         { item: "Luminous Trove", chance: 0.16 },
-        { item: "Crown of the Tyrant", chance: 0.15 },
-        { item: "Ahkeli's Meadow", chance: 0.08 },
-        { item: "Uzaza's Valley", chance: 0.08 },
-        { item: "Putembo's Mountain", chance: 0.08 },
-        // A divination card, so poe.ninja prices it like any other (the
-        // DivinationCard type is already in the price map). What's missing is
-        // the RATE: the wiki lists it in Aul's drop table but leaves it out of
+        // A divination card, so GGG's exchange feed prices it like the other
+        // exchange-backed drops. What's missing is the RATE: the wiki lists
+        // it in Aul's drop table but leaves it out of
         // the n=100 rate list, which most likely means it didn't drop once in
         // that sample. Zero of 100 is not "no information" — by the rule of
         // three it puts a 95% ceiling of about 3% on it, and the UI offers
@@ -327,10 +344,8 @@ export const DELVE_BOSS_BY_ID = Object.fromEntries(DELVE_BOSSES.map((b) => [b.id
    bossData.js uses: { "Item": { divine: N, asOf: "YYYY-MM-DD" } }, quoted
    in divine so they track the rate instead of going stale when chaos moves.
 
-   Empty on purpose. Every fossil and every boss drop here is something
-   poe.ninja lists, with one exception — Zorath's Eye of the Inevitable,
-   whose rate the wiki itself calls preliminary and whose price I have not
-   checked. A made-up number for it would land straight in Kurgal's EV, so
-   it stays unpriced and visibly contributes nothing. Add one here once you
-   know what it sells for. */
+   Empty on purpose. Exchange-backed fossils, fragments and cards are priced
+   by GGG first; poe.watch and poe.ninja cover the remaining item markets.
+   Aul's unidentified amulet carries its temporary audited fallback directly
+   on the drop line so its age is visible beside that specific price. */
 export const FALLBACKS = {};

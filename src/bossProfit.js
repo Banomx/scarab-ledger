@@ -35,7 +35,10 @@ export function bossItems(boss) {
   const out = new Set();
   for (const e of (boss?.entry || [])) if (e.item) out.add(e.item);
   for (const g of (boss?.groups || [])) {
-    for (const d of (g.drops || [])) if (d.item) out.add(d.item);
+    for (const d of (g.drops || [])) if (d.item) {
+      out.add(d.item);
+      for (const item of (SYNTHETIC[d.item]?.items || [])) out.add(item);
+    }
   }
   return out;
 }
@@ -152,13 +155,26 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } =
     if (synthCache[key] !== undefined) return synthCache[key];
     const spec = SYNTHETIC[key];
     if (!spec || !priceMap) return (synthCache[key] = null);
-    const vals = [];
-    for (const [name, e] of Object.entries(priceMap)) {
-      if (spec.match(name) && e && e.c > 0) vals.push(e.c);
+    const names = spec.items || Object.keys(priceMap).filter((name) => spec.match(name));
+    const components = names.map((name) => ({
+      name,
+      chaos: Number(priceMap[name]?.c) || 0,
+      found: Number(priceMap[name]?.c) > 0,
+      entry: priceMap[name] || null,
+    }));
+    // A declared outcome list means exactly that list. Averaging three of four
+    // would make a missing cheap or expensive Eye silently change the EV.
+    if (!components.length || (spec.items && components.some((part) => !part.found))) {
+      return (synthCache[key] = null);
     }
+    const priced = components.filter((part) => part.found);
+    const vals = priced.map((part) => part.chaos);
     if (!vals.length) return (synthCache[key] = null);
     const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
-    return (synthCache[key] = { c: mean, lo: Math.min(...vals), hi: Math.max(...vals), n: vals.length, synthetic: true });
+    return (synthCache[key] = {
+      c: mean, lo: Math.min(...vals), hi: Math.max(...vals), n: vals.length,
+      synthetic: true, components: priced,
+    });
   }
 
   /* A declared price for something poe.ninja doesn't list. Quoted in divine
@@ -178,6 +194,16 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } =
     return isFinite(t) ? Math.floor((now - t) / 86400000) : null;
   }
 
+  function fallbackResult(fallback) {
+    const chaos = fromFallback(fallback);
+    if (chaos == null) return null;
+    return {
+      chaos, found: true, overridden: false, entry: null,
+      fallback: true, fallbackAge: fallbackAge(fallback),
+      fallbackUnit: fallback.chaos > 0 ? "chaos" : "divine",
+    };
+  }
+
   return function resolve(item, aliases = [], fallback = null, variant = null, unidentified = false) {
     // An override is always keyed on the name the dataset uses, so it wins
     // before any aliasing.
@@ -185,13 +211,15 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } =
       return { chaos: Number(priceOverrides[item]), overridden: true, found: true, entry: null };
     }
     let entry = null;
+    let identifiedFallback = false;
     if (item.startsWith("@")) {
       entry = synthetic(item);
     } else if (priceMap) {
       // A declared alias can name an exact unidentified item-level market, so
-      // it goes before the generic unidentified name. The identified item is
-      // only the final fallback when neither unidentified form is available.
-      const names = unidentified ? [...aliases, `Unidentified ${item}`, item] : [item, ...aliases];
+      // it goes before the generic unidentified name. A dated declared quote
+      // then beats the identified item, which is only the final fallback when
+      // neither unidentified market is available.
+      const names = unidentified ? [...aliases, `Unidentified ${item}`] : [item, ...aliases];
       for (const n of names) { if (priceMap[n]) { entry = priceMap[n]; break; } }
       if (!entry) {
         for (const n of names) {
@@ -199,16 +227,16 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } =
           if (entry) break;
         }
       }
+      if (!entry && unidentified) {
+        const declared = fallbackResult(fallback);
+        if (declared) return declared;
+        entry = priceMap[item] || lookupLoose(item);
+        identifiedFallback = !!entry;
+      }
     }
     if (!entry) {
-      const fb = fromFallback(fallback);
-      if (fb != null) {
-        return {
-          chaos: fb, found: true, overridden: false, entry: null,
-          fallback: true, fallbackAge: fallbackAge(fallback),
-          fallbackUnit: fallback.chaos > 0 ? "chaos" : "divine",
-        };
-      }
+      const declared = fallbackResult(fallback);
+      if (declared) return declared;
       return { chaos: 0, found: false, overridden: false, entry: null };
     }
     // A line that names its variant is priced on that variant, not on the
@@ -217,15 +245,19 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } =
     if (variant && entry.v) {
       const hit = matchVariant(variant, entry.v);
       if (hit && entry.v[hit] > 0) {
-        return { chaos: entry.v[hit], found: true, overridden: false, entry, variant: hit };
+        return { chaos: entry.v[hit], found: true, overridden: false, entry, variant: hit, identifiedFallback };
       }
     }
     const chaos = entry.c ?? 0;
     return {
-      chaos, found: chaos > 0, overridden: false, entry,
+      chaos, found: chaos > 0, overridden: false, entry, identifiedFallback,
       // Flag the case worth knowing about: the item HAS variants, this line
       // claimed one, and nothing matched.
       variantMissed: !!(variant && entry.v) || undefined,
+      // The market has a name-wide quote but does not expose this variant.
+      // Keeping the live shared quote is better than inventing a split, but
+      // the UI should say that the two variants are not independently priced.
+      variantUnavailable: !!(variant && !entry.v) || undefined,
     };
   };
 }
@@ -287,7 +319,8 @@ export function computeBoss(boss, resolve, settings = {}) {
         key: dropKey(d), item: d.item, label, rate, pct, qty,
         unit: p.chaos, value: p.chaos * qty,
         found: p.found, overridden: p.overridden, priceEntry: p.entry, fallback: p.fallback, fallbackAge: p.fallbackAge,
-        variant: p.variant, variantMissed: p.variantMissed,
+        variant: p.variant, variantMissed: p.variantMissed, variantUnavailable: p.variantUnavailable,
+        identifiedFallback: p.identifiedFallback,
         kind: g.kind, groupId: g.id,
       };
     });

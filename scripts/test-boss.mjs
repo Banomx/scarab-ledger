@@ -173,6 +173,20 @@ ok(near(rSyn("@awakened-common").chaos, 50), "@awakened-common mean");
 ok(near(rSyn("@awakened-exceptional").chaos, 3000), "@awakened-exceptional mean");
 ok(rSyn("@nope").found === false, "unknown synthetic resolves to not-found");
 
+const EYES = {
+  "Zorath's Eye of Malevolence": 20,
+  "Zorath's Eye of Authority": 16,
+  "Zorath's Eye of the Inevitable": 1300,
+  "Zorath's Eye of the Endless": 26,
+};
+const eye = makeResolver(P(EYES))("@zorath-eyes");
+ok(near(eye.chaos, (20 + 16 + 1300 + 26) / 4), "the four Zorath Eyes use their arithmetic mean");
+eqv(eye.entry.components.length, 4, "the synthetic Eye keeps its four-item breakdown");
+const partialEyes = { ...EYES };
+delete partialEyes["Zorath's Eye of Authority"];
+ok(makeResolver(P(partialEyes))("@zorath-eyes").found === false,
+   "a strict four-item average must not silently divide only three priced Eyes");
+
 // With no price map at all every line is unpriced, so every line is hidden
 // and nothing is left claiming to be worth something.
 const blind = computeBoss(BOSSES.find((b) => b.id === "shaper"), makeResolver({}));
@@ -428,6 +442,9 @@ eqv(variantHint(null), null, "null line must not throw");
   const miss = rv("Cinderswallow Urn", [], null, "Fire Damage");
   eqv(miss.chaos, 12, "an unmatched hint falls back rather than guessing");
   ok(miss.variantMissed === true, "an unmatched hint is flagged so it shows up in the log and the UI");
+  const shared = makeResolver({ "Hale Negator": { c: 4 } })("Hale Negator", [], null, "2 socket");
+  eqv(shared.chaos, 4, "a missing variant split keeps the live name-wide quote");
+  ok(shared.variantUnavailable === true, "an unavailable market split is exposed to the UI");
   // An override still wins: it is keyed on the item and beats every variant.
   eqv(makeResolver(pm, { priceOverrides: { "Cinderswallow Urn": 5 } })("Cinderswallow Urn", [], null, "ES").chaos, 5,
       "a manual override beats the variant price");
@@ -491,6 +508,16 @@ eqv(variantHint(null), null, "null line must not throw");
     const line = computed.dropLines.find((drop) => drop.item === item);
     eqv(line?.unit, price, `${bossId} uses the exact unidentified ${item} market`);
   }
+
+  const declaredUnid = makeResolver({ "Aul's Uprising": { c: 10 } })(
+    "Aul's Uprising", [], { chaos: 50, asOf: "2026-08-07" }, null, true);
+  eqv(declaredUnid.chaos, 50, "a dated unidentified quote beats the identified item floor");
+  ok(declaredUnid.fallback === true, "the manual unidentified quote remains visibly declared");
+
+  const identifiedFloor = makeResolver({ "Aul's Uprising": { c: 10 } })(
+    "Aul's Uprising", [], null, null, true);
+  eqv(identifiedFloor.chaos, 10, "identified value remains the last fallback without an unid quote");
+  ok(identifiedFloor.identifiedFallback === true, "identified fallback is exposed to the UI");
 }
 
 /* Catarina's pool is one line per tradeable item. poe.watch carries a single

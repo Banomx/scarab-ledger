@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   BIOMES, NODES, TUNABLES, DEFAULTS, SOURCES, DELVE_BOSSES, RESONATOR_ORDER, RESONATOR_SOCKETS,
 } from "./delveData.js";
@@ -122,7 +122,8 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const [editingSample, setEditingSample] = useState(null);
   const [showAssumptions, setShowAssumptions] = useState(false);
   const [openBiome, setOpenBiome] = useState(null);
-  const [openBoss, setOpenBoss] = useState(DELVE_BOSSES[0].id);
+  const [openBoss, setOpenBoss] = useState(null);
+  const [openBossDrop, setOpenBossDrop] = useState(null);
   const [rankBy, setRankBy] = useState("opportunity"); // target | opportunity | sample
   const [sortDir, setSortDir] = useState("desc");
   const [chgWindow, setChgWindow] = useState("24h");
@@ -1035,7 +1036,10 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
               const top = Math.max(d.p90, d.mean, 1);
               return (
                 <article key={b.delve.id} className={`dl-boss${open ? " open" : ""}`}>
-                  <button className="dl-boss-head" onClick={() => setOpenBoss(open ? null : b.delve.id)} aria-expanded={open}>
+                  <button className="dl-boss-head" onClick={() => {
+                    setOpenBoss(open ? null : b.delve.id);
+                    setOpenBossDrop(null);
+                  }} aria-expanded={open}>
                     <span className="dl-boss-name">
                       {b.delve.name}
                       {!b.available && <em className="dl-flag warn">needs depth {b.delve.minDepth}</em>}
@@ -1072,13 +1076,41 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                         <thead><tr><th>Drop</th><th className="r">Chance</th><th className="r">Price</th><th className="r">EV</th></tr></thead>
                         <tbody>
                           {b.dropLines.map((l) => {
-                            const src = b.delve.groups[0].drops.find((x) => (x.key || x.item) === l.key) || {};
+                            const src = b.delve.groups.flatMap((group) => group.drops)
+                              .find((x) => (x.key || x.item) === l.key) || {};
+                            const variants = l.priceEntry?.components || [];
+                            const breakdownKey = `${b.delve.id}:${l.key}`;
+                            const breakdownOpen = variants.length > 0 && openBossDrop === breakdownKey;
                             return (
-                              <tr key={l.key} className={l.found ? "" : "unpriced"}>
+                              <Fragment key={l.key}>
+                              <tr className={l.found ? "" : "unpriced"}>
                                 <td>
-                                  {l.label}
+                                  {variants.length ? (
+                                    <button className="dl-drop-toggle"
+                                      onClick={() => setOpenBossDrop(breakdownOpen ? null : breakdownKey)}
+                                      aria-expanded={breakdownOpen}>
+                                      <span className="dl-drop-chevron" aria-hidden="true">{breakdownOpen ? "▾" : "▸"}</span>
+                                      <span>{l.label}<small>{fmtChaos(l.unit)}c average</small></span>
+                                    </button>
+                                  ) : l.label}
                                   {src.unrated && <em className="dl-flag warn" title="Listed as a drop, no published rate">unrated</em>}
-                                  {src.preliminary && <em className="dl-flag" title="Wiki calls this a preliminary estimate">prelim</em>}
+                                  {src.preliminary && <em className="dl-flag" title={src.preliminaryNote || "Preliminary estimate"}>prelim</em>}
+                                  {l.variantUnavailable && (
+                                    <em className="dl-flag" title="The live aggregate feeds do not split this socket variant, so this line uses the shared name-wide market quote.">
+                                      shared quote
+                                    </em>
+                                  )}
+                                  {l.identifiedFallback && (
+                                    <em className="dl-flag warn" title="No unidentified listing is available from the automated feeds, so this is the identified-item floor.">
+                                      identified floor
+                                    </em>
+                                  )}
+                                  {l.fallback && (
+                                    <em className={`dl-flag ${l.fallbackAge != null && l.fallbackAge >= 30 ? "warn" : ""}`}
+                                      title={`The automated feeds do not list this exact market. This price was checked manually${l.fallbackAge != null ? ` ${l.fallbackAge} day${l.fallbackAge === 1 ? "" : "s"} ago` : ""}.`}>
+                                      set{l.fallbackAge != null && l.fallbackAge >= 30 ? ` ${l.fallbackAge}d` : ""}
+                                    </em>
+                                  )}
                                   {/* Zero sightings in a sample is a ceiling, not a blank:
                                       the rule of three puts 95% confidence under 3/n. */}
                                   {src.unrated && src.sampleZero > 0 && l.rate === 0 && (
@@ -1106,7 +1138,10 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                                         ...(s.bosses || {}),
                                         [b.delve.id]: {
                                           ...((s.bosses || {})[b.delve.id] || {}),
-                                          drops: { ...(((s.bosses || {})[b.delve.id] || {}).drops || {}), [l.key]: { chance: n / 100 } },
+                                          drops: {
+                                            ...(((s.bosses || {})[b.delve.id] || {}).drops || {}),
+                                            [l.key]: { [l.kind === "pool" ? "share" : "chance"]: n / 100 },
+                                          },
                                         },
                                       },
                                     }))} />
@@ -1114,15 +1149,34 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                                 <td className="r num">{l.found ? money(l.unit) : "—"}</td>
                                 <td className="r num">{l.found ? money(l.value) : "—"}</td>
                               </tr>
+                              {breakdownOpen && (
+                                <tr className="dl-variant-row">
+                                  <td colSpan={4}>
+                                    <div className="dl-variant-grid">
+                                      {variants.map((part) => (
+                                        <span key={part.name}>
+                                          <strong>{part.name}</strong>
+                                          <b>{fmtChaos(part.chaos)}c</b>
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <p>
+                                      ({variants.map((part) => `${fmtChaos(part.chaos)}c`).join(" + ")}) ÷ {variants.length}
+                                      {" = "}<strong>{fmtChaos(l.unit)}c average</strong>
+                                    </p>
+                                  </td>
+                                </tr>
+                              )}
+                              </Fragment>
                             );
                           })}
                           <tr className="dl-parts-total"><td colSpan={3}>Expected per kill</td><td className="r num">{money(b.gross)}</td></tr>
                         </tbody>
                       </table>
                       <p className="dl-note">
-                        Rates: poewiki, {b.delve.sample}. Lines roll independently — Ahuatotli's six sum past
-                        100% because a kill can hand you several. Prices are the market's, including the
-                        divination cards.
+                        Rates: poewiki, {b.delve.sample}. The normal unique pool totals 100%; cards and fragments
+                        roll separately, so one kill can still hand you several items. Prices use the same
+                        GGG-first resolver as Boss profit, with poe.watch and poe.ninja filling unsupported markets.
                         {b.missingPrices > 0 && ` ${b.missingPrices} line${b.missingPrices > 1 ? "s have" : " has"} no supported market price and contribute nothing.`}
                       </p>
                     </div>
