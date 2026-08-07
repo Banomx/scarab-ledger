@@ -49,6 +49,51 @@ export function bossItems(boss) {
    name with and without a trailing "Map". */
 const normKey = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
 
+/* ---------- roll variants ----------
+
+   poe.ninja splits some uniques into roll variants and prices each one
+   separately: a Cinderswallow Urn with the Life veiled mod is not worth what
+   the Mana one is. The drop tables already know which is which — Catarina's
+   pool lists "Veiled Cinderswallow Urn (Life)" as its own line with its own
+   share — but the price lookup was by item NAME only, so all three lines got
+   the same number and the interesting one was quoted at the boring one's price.
+
+   A line names its variant either explicitly (variant: "Life") or in the
+   parenthetical of its label, which the ledger tables already use. */
+export function variantHint(d) {
+  if (!d) return null;
+  if (d.variant) return String(d.variant);
+  const m = /\(([^)]+)\)\s*$/.exec(d.label || "");
+  return m ? m[1].trim() : null;
+}
+
+/* poe.ninja's variant strings are not ours, so match in widening steps and
+   stop at the first hit. Anything looser than this starts pricing the wrong
+   item, which is worse than falling back to the base price. */
+export function matchVariant(hint, variants) {
+  if (!hint || !variants) return null;
+  const names = Object.keys(variants);
+  if (!names.length) return null;
+  const h = normKey(hint);
+  if (!h) return null;
+
+  // 1. same string, ignoring case and punctuation
+  for (const n of names) if (normKey(n) === h) return n;
+  // 2. one is a prefix of the other ("ES" vs "ES/Eva", "Life" vs "Life Regen")
+  for (const n of names) { const k = normKey(n); if (k.startsWith(h) || h.startsWith(k)) return n; }
+
+  const tok = (x) => String(x).toLowerCase().match(/[a-z0-9]+/g) || [];
+  const ht = tok(hint);
+  // 3. every word of the hint appears in the variant
+  for (const n of names) { const nt = tok(n); if (ht.length && ht.every((t) => nt.includes(t))) return n; }
+  // 4. the hint is an abbreviation of the variant's words: "1P2S" -> "1 Prefix, 2 Suffix"
+  for (const n of names) {
+    const initials = tok(n).map((w) => (/^\d+$/.test(w) ? w : w[0])).join("");
+    if (initials === h) return n;
+  }
+  return null;
+}
+
 function candidates(item) {
   const out = [item];
   if (/ map$/i.test(item)) out.push(item.replace(/ map$/i, ""));
@@ -105,7 +150,7 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } =
     return isFinite(t) ? Math.floor((now - t) / 86400000) : null;
   }
 
-  return function resolve(item, aliases = [], fallback = null) {
+  return function resolve(item, aliases = [], fallback = null, variant = null) {
     // An override is always keyed on the name the dataset uses, so it wins
     // before any aliasing.
     if (priceOverrides[item] != null && isFinite(priceOverrides[item])) {
@@ -135,8 +180,22 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } =
       }
       return { chaos: 0, found: false, overridden: false, entry: null };
     }
+    // A line that names its variant is priced on that variant, not on the
+    // name-wide figure. No match means the hint is not one poe.ninja splits on
+    // (or the strings drifted) — the base price is the honest answer then.
+    if (variant && entry.v) {
+      const hit = matchVariant(variant, entry.v);
+      if (hit && entry.v[hit] > 0) {
+        return { chaos: entry.v[hit], found: true, overridden: false, entry, variant: hit };
+      }
+    }
     const chaos = entry.c ?? 0;
-    return { chaos, found: chaos > 0, overridden: false, entry };
+    return {
+      chaos, found: chaos > 0, overridden: false, entry,
+      // Flag the case worth knowing about: the item HAS variants, this line
+      // claimed one, and nothing matched.
+      variantMissed: !!(variant && entry.v) || undefined,
+    };
   };
 }
 
@@ -191,12 +250,13 @@ export function computeBoss(boss, resolve, settings = {}) {
         pct = rate;
         qty = rate * (scaled ? qMul : 1);
       }
-      const p = resolve(d.item, d.aliases, d.fallback);
+      const p = resolve(d.item, d.aliases, d.fallback, variantHint(d));
       const label = d.label || (d.item.startsWith("@") ? SYNTHETIC[d.item]?.label : null) || d.item;
       return {
         key: dropKey(d), item: d.item, label, rate, pct, qty,
         unit: p.chaos, value: p.chaos * qty,
         found: p.found, overridden: p.overridden, priceEntry: p.entry, fallback: p.fallback, fallbackAge: p.fallbackAge,
+        variant: p.variant, variantMissed: p.variantMissed,
         kind: g.kind, groupId: g.id,
       };
     });

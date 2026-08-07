@@ -650,6 +650,8 @@ export default function BossProfit({ league, staticBase, currency, divineRate, f
                             <span className="bp-cell-name" title={l.item !== l.label ? `Priced as: ${l.item}` : undefined}>
                               {l.label}
                               {l.fallback && <FallbackFlag age={l.fallbackAge} />}
+                              {l.variant && <em className="bp-flag" title={`Priced on poe.ninja's "${l.variant}" roll variant, not the name-wide figure`}>{l.variant}</em>}
+                              {l.variantMissed && <em className="bp-flag warn" title="This line names a roll variant, but nothing on poe.ninja matched it — showing the name-wide price, which may be well off">variant?</em>}
                               {!l.found && l.qty > 0 && <em className="bp-flag warn" title="No poe.ninja price under this name — set one manually">no price</em>}
                             </span>
                             <span className="bp-cell-rate">

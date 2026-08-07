@@ -405,13 +405,22 @@ async function getPriceMap(lgParams, ctx) {
   const missed = [];
   // rank 0 beats rank 1 beats rank 2: a name already priced by a
   // direct-chaos source is never re-priced from a converted one.
-  const add = (rank, name, chaos, preferred) => {
+  // `variant` is poe.ninja's roll label ("Life", "ES", "1 Prefix, 2 Suffix").
+  // Kept per name so a drop line that identifies WHICH variant it is can be
+  // priced exactly, instead of falling back to the floor across all of them.
+  const add = (rank, name, chaos, preferred, variant = null) => {
     if (!name || !(chaos > 0)) return;
     const e = acc[name];
     if (e && e.rank < rank) return;
-    if (!e || e.rank > rank) { acc[name] = { rank, all: [chaos], base: preferred ? [chaos] : [] }; return; }
+    if (!e || e.rank > rank) {
+      acc[name] = { rank, all: [chaos], base: preferred ? [chaos] : [], byVariant: {} };
+      if (variant) acc[name].byVariant[variant] = chaos;
+      return;
+    }
     e.all.push(chaos);
     if (preferred) e.base.push(chaos);
+    // Same variant listed twice (different links, say): keep the cheaper.
+    if (variant && (e.byVariant[variant] == null || chaos < e.byVariant[variant])) e.byVariant[variant] = chaos;
   };
   const tally = (t, n) => { if (n) counts[t] = (counts[t] || 0) + n; else missed.push(t); };
 
@@ -434,7 +443,7 @@ async function getPriceMap(lgParams, ctx) {
     for (const l of lines) {
       const chaos = l.chaosValue ?? l.chaosEquivalent;
       if (!l.name || !(chaos > 0)) continue;
-      add(0, l.name, chaos, isBaseVariant(t, l));
+      add(0, l.name, chaos, isBaseVariant(t, l), l.variant || null);
       // Maps are labelled inconsistently — the tier 17s group under
       // "Nightmare Map" and baseType isn't always the display name.
       if (/Map$/.test(t) && l.baseType && l.baseType !== l.name) add(0, l.baseType, chaos, true);
@@ -527,6 +536,14 @@ async function getPriceMap(lgParams, ctx) {
       hi: Math.round(Math.max(...pick) * 100) / 100,
       n: pick.length,
     };
+    // Only worth carrying when there is a choice to make. One variant is just
+    // the base price under another name.
+    const vs = Object.keys(e.byVariant || {});
+    if (vs.length > 1) {
+      const v = {};
+      for (const k of vs) v[k] = Math.round(e.byVariant[k] * 100) / 100;
+      prices[name].v = v;
+    }
   }
   if (!prices["Chaos Orb"]) prices["Chaos Orb"] = { c: 1, lo: 1, hi: 1, n: 1 };
 
@@ -576,6 +593,8 @@ async function reportUnpricedBossItems(prices, leagueName = "", detailed = true)
   const resolve = mod.calc.makeResolver(prices, { divineRate: prices["Divine Orb"]?.c || 0 });
   const missing = new Map();   // item name -> where it appears
   const declared = new Set();  // priced from bossData's fallback, not the API
+  const varOk = [];            // drop lines priced on a specific roll variant
+  const varMiss = [];          // lines that named a variant nothing matched
   // Every fossil the Delve tab prices. A fossil that stops resolving takes a
   // biome average down with it silently, so it is worth a line in the log —
   // but only one line: fossil names are stable, so a miss is a thin economy,
@@ -591,6 +610,15 @@ async function reportUnpricedBossItems(prices, leagueName = "", detailed = true)
       else if (!l.found) missing.set(l.item, `entry: ${b.name}`);
     }
     for (const l of c.dropLines) {
+      if (l.variant) varOk.push(`${l.item} [${l.variant}] ${Math.round(l.unit)}c`);
+      else if (l.variantMissed) {
+        // The item HAS variants and this line claimed one, but the strings
+        // didn't line up — so the line is quoting the name-wide price. This is
+        // the only way to see that from outside, so print BOTH sides and let
+        // the mapping be corrected in bossData.
+        const vs = Object.keys(prices[l.item]?.v || {});
+        varMiss.push(`${b.name} / "${l.label}" wanted "${mod.calc.variantHint({ label: l.label })}" — ${l.item} has: ${vs.join(" | ")}`);
+      }
       if (l.fallback) declared.add(`${l.item}${l.fallbackAge != null ? ` (${l.fallbackAge}d old)` : ""}`);
       else if (!l.found && l.qty > 0 && !missing.has(l.item)) missing.set(l.item, b.name);
     }
@@ -599,6 +627,22 @@ async function reportUnpricedBossItems(prices, leagueName = "", detailed = true)
     console.log(`    ${leagueName ? leagueName + ": " : ""}priced from a declared fallback, not the API (${declared.size}): ${[...declared].sort().join(", ")}`);
   }
   const tag = leagueName ? `${leagueName}: ` : "";
+  if (detailed) {
+    if (varOk.length) console.log(`    ${tag}priced on a specific roll variant (${varOk.length}): ${varOk.join(", ")}`);
+    if (varMiss.length) {
+      console.log(`    ${tag}${varMiss.length} drop line(s) name a variant that did NOT match — each is using the name-wide price:`);
+      for (const m of varMiss) console.log(`      ${m}`);
+    }
+    // Any priced item carrying variants is a candidate for splitting a drop
+    // line, so list them once: it is the only view of what poe.ninja actually
+    // splits on, and guessing those strings blind is how they drift.
+    const withVariants = Object.entries(prices)
+      .filter(([, e]) => e.v && Object.keys(e.v).length > 1)
+      .map(([n, e]) => `${n} (${Object.keys(e.v).length})`);
+    if (withVariants.length) {
+      console.log(`    ${tag}${withVariants.length} priced item(s) have roll variants: ${withVariants.slice(0, 40).join(", ")}${withVariants.length > 40 ? ", …" : ""}`);
+    }
+  }
   if (fossilMisses.length) {
     console.log(`    ${tag}${fossilMisses.length}/${mod.delve.FOSSILS.length} delve fossils unpriced: ${fossilMisses.join(", ")}`);
   } else {

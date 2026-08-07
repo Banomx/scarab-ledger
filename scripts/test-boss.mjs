@@ -2,9 +2,10 @@
    Run: node scripts/test-boss.mjs */
 
 import { BOSSES, SYNTHETIC, GROUP_ORDER } from "../src/bossData.js";
-import { makeResolver, computeBoss, profitChance, sanitizeProfile, dropKey, bossItems } from "../src/bossProfit.js";
+import { makeResolver, computeBoss, profitChance, sanitizeProfile, dropKey, bossItems, variantHint, matchVariant } from "../src/bossProfit.js";
 
 let fails = 0;
+const eqv = (a, b, m) => ok(a === b, `${m}: got ${JSON.stringify(a)}, want ${JSON.stringify(b)}`);
 const ok = (c, m) => { if (!c) { fails++; console.log("FAIL:", m); } };
 const near = (a, b, eps = 0.005) => Math.abs(a - b) <= eps;
 
@@ -347,6 +348,42 @@ ok(bossItems({}).size === 0, "bossItems({}) must not throw");
 }
 
 console.log(`reset scope: ${BOSSES.length} bosses, ${new Set(BOSSES.flatMap((b) => [...bossItems(b)])).size} distinct items`);
+
+/* ---------------- roll variants ----------------
+   poe.ninja prices a Cinderswallow Urn per veiled mod, and Catarina's pool
+   names which one each line is. Pricing all three off the name-wide figure put
+   the valuable roll at the cheap roll's price. */
+eqv(variantHint({ label: "Veiled Cinderswallow Urn (Life)" }), "Life", "hint read from the label parenthetical");
+eqv(variantHint({ variant: "ES", label: "whatever (Life)" }), "ES", "explicit variant beats the label");
+eqv(variantHint({ label: "Starforge" }), null, "no parenthetical, no hint");
+eqv(variantHint({ label: "Veiled Cane of Kulemak (1P2S)" }), "1P2S", "abbreviated roll names survive");
+eqv(variantHint(null), null, "null line must not throw");
+
+{
+  const V = { "Life": 12, "Mana": 40, "Energy Shield": 900, "1 Prefix, 2 Suffix": 30 };
+  eqv(matchVariant("Life", V), "Life", "exact match");
+  eqv(matchVariant("life", V), "Life", "case-insensitive");
+  eqv(matchVariant("ES", V), "Energy Shield", "initials expand");
+  eqv(matchVariant("1P2S", V), "1 Prefix, 2 Suffix", "digits survive the initialism");
+  eqv(matchVariant("Nonsense", V), null, "no match is null, never a guess");
+  eqv(matchVariant("Life", null), null, "no variant map is null");
+  eqv(matchVariant(null, V), null, "no hint is null");
+}
+
+/* End to end through the resolver: same item name, three lines, three prices. */
+{
+  const pm = { "Cinderswallow Urn": { c: 12, lo: 12, hi: 900, n: 3, v: { "Life": 12, "Mana": 40, "Energy Shield": 900 } } };
+  const rv = makeResolver(pm);
+  eqv(rv("Cinderswallow Urn", [], null, "ES").chaos, 900, "ES line prices on the ES variant");
+  eqv(rv("Cinderswallow Urn", [], null, "Life").chaos, 12, "Life line prices on the Life variant");
+  eqv(rv("Cinderswallow Urn", [], null, null).chaos, 12, "no hint falls back to the name-wide price");
+  const miss = rv("Cinderswallow Urn", [], null, "Fire Damage");
+  eqv(miss.chaos, 12, "an unmatched hint falls back rather than guessing");
+  ok(miss.variantMissed === true, "an unmatched hint is flagged so it shows up in the log and the UI");
+  // An override still wins: it is keyed on the item and beats every variant.
+  eqv(makeResolver(pm, { priceOverrides: { "Cinderswallow Urn": 5 } })("Cinderswallow Urn", [], null, "ES").chaos, 5,
+      "a manual override beats the variant price");
+}
 
 console.log(fails ? `\n${fails} FAILURES` : "\nAll checks passed.");
 process.exit(fails ? 1 : 0);

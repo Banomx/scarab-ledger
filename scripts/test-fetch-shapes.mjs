@@ -79,6 +79,12 @@ const STASH_ITEMS = {
     { id: 5, name: "Atziri's Splendour", chaosValue: 8, variant: "Armour" },
     { id: 6, name: "Atziri's Splendour", chaosValue: 40, variant: "Armour/ES" },
     { id: 7, name: "Atziri's Splendour", chaosValue: 900, variant: "ES/Eva" },
+    // Catarina's pool names WHICH veiled roll each line is, so these have to
+    // survive into prices.json individually — collapsing them to the floor is
+    // what made a 900c veiled flask read as a 12c one.
+    { id: 8, name: "Cinderswallow Urn", chaosValue: 12, variant: "Life" },
+    { id: 9, name: "Cinderswallow Urn", chaosValue: 40, variant: "Mana" },
+    { id: 10, name: "Cinderswallow Urn", chaosValue: 900, variant: "Energy Shield" },
   ],
   SkillGem: [
     { id: 11, name: "Awakened Spell Echo Support", chaosValue: 700, gemLevel: 1, gemQuality: 0, corrupted: false },
@@ -220,6 +226,18 @@ for (const [n, v] of [["Pacifism Support", 1050], ["Awakened Spell Echo Support"
 ok(near(P["Atziri's Splendour"]?.lo, 8) && near(P["Atziri's Splendour"]?.hi, 900),
    `roll-variant spread lost: ${JSON.stringify(P["Atziri's Splendour"])}`);
 ok(near(P["Awakened Spell Echo Support"]?.c, 700), `gem base variant ${P["Awakened Spell Echo Support"]?.c}`);
+/* ---- roll variants survive into the snapshot ---- */
+{
+  const cs = P["Cinderswallow Urn"] || {};
+  ok(cs.v && Object.keys(cs.v).length === 3, `variant map missing: ${JSON.stringify(cs)}`);
+  ok(near(cs.v?.Life, 12) && near(cs.v?.Mana, 40) && near(cs.v?.["Energy Shield"], 900),
+     `variant prices wrong: ${JSON.stringify(cs.v)}`);
+  ok(near(cs.c, 12), `name-wide price is still the floor: ${cs.c}`);
+  // One variant is just the base price wearing a hat — not worth the bytes.
+  ok(P["Shaper's Touch"]?.v === undefined, "single-listing item must not carry a variant map");
+  ok(P["Starforge"]?.v === undefined, "links are not roll variants");
+}
+
 ok(near(P["Atziri's Splendour"]?.c, 8),
    `a roll-variant unique must quote its floor, not the median: ${JSON.stringify(P["Atziri's Splendour"])}`);
 // The rule is specific to items whose listings are ALL roll variants. Where a
