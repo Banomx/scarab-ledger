@@ -102,7 +102,7 @@ function candidates(item) {
 }
 
 /* prices.json shape: { "Item Name": { c, lo, hi, n } } */
-export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0, tradePrices = null } = {}) {
+export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0 } = {}) {
   const synthCache = {};
   let normIndex = null;
 
@@ -150,41 +150,11 @@ export function makeResolver(priceMap, { priceOverrides = {}, divineRate = 0, tr
     return isFinite(t) ? Math.floor((now - t) / 86400000) : null;
   }
 
-  /* Prices measured off the trade site for things poe.ninja does not index —
-     veiled and unidentified drops, whose worth is the mod they rolled rather
-     than an economy figure. Keyed "Item" or "Item|Variant"; the variant half
-     goes through the same loose match as poe.ninja's own variants, so the
-     ledger's "(Life)" label finds "...|Life" without needing an exact
-     spelling. These outrank poe.ninja, because they exist precisely where its
-     number is missing or describes a different item. */
-  function fromTrade(item, variant) {
-    if (!tradePrices) return null;
-    if (variant) {
-      const prefix = `${item}|`;
-      const keyed = {};
-      for (const k of Object.keys(tradePrices)) {
-        if (k.startsWith(prefix)) keyed[k.slice(prefix.length)] = tradePrices[k];
-      }
-      const hit = matchVariant(variant, keyed);
-      if (hit && keyed[hit]?.c > 0) return { chaos: keyed[hit].c, key: `${item}|${hit}`, variant: hit };
-    }
-    const flat = tradePrices[item];
-    if (flat?.c > 0) return { chaos: flat.c, key: item };
-    return null;
-  }
-
   return function resolve(item, aliases = [], fallback = null, variant = null) {
     // An override is always keyed on the name the dataset uses, so it wins
     // before any aliasing.
     if (priceOverrides[item] != null && isFinite(priceOverrides[item])) {
       return { chaos: Number(priceOverrides[item]), overridden: true, found: true, entry: null };
-    }
-    const t = fromTrade(item, variant);
-    if (t) {
-      return {
-        chaos: t.chaos, found: true, overridden: false, entry: null,
-        trade: true, tradeKey: t.key, variant: t.variant,
-      };
     }
     let entry = null;
     if (item.startsWith("@")) {
@@ -249,7 +219,7 @@ export function computeBoss(boss, resolve, settings = {}) {
   const entryLines = (boss.entry || []).map((e) => {
     const qty = num(entryOv[e.item], e.qty ?? 1);
     const p = resolve(e.item, e.aliases, e.fallback);
-    return { ...e, qty, unit: p.chaos, total: p.chaos * qty, found: p.found, overridden: p.overridden, fallback: p.fallback, fallbackAge: p.fallbackAge, trade: p.trade };
+    return { ...e, qty, unit: p.chaos, total: p.chaos * qty, found: p.found, overridden: p.overridden, fallback: p.fallback, fallbackAge: p.fallbackAge };
   });
   const entryCost = entryLines.reduce((s, l) => s + l.total, 0);
   const entryUnknown = entryLines.some((l) => !l.found && l.qty > 0);
@@ -286,7 +256,7 @@ export function computeBoss(boss, resolve, settings = {}) {
         key: dropKey(d), item: d.item, label, rate, pct, qty,
         unit: p.chaos, value: p.chaos * qty,
         found: p.found, overridden: p.overridden, priceEntry: p.entry, fallback: p.fallback, fallbackAge: p.fallbackAge,
-        variant: p.variant, variantMissed: p.variantMissed, trade: p.trade,
+        variant: p.variant, variantMissed: p.variantMissed,
         kind: g.kind, groupId: g.id,
       };
     });

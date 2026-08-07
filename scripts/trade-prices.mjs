@@ -34,8 +34,11 @@
      4. node scripts/trade-prices.mjs
 
    Optional:
-     POESESSID=xxx node scripts/trade-prices.mjs     more headroom on limits
+     node scripts/trade-prices.mjs --init catarina   print a starter config for
+                                                     one boss's unique drops,
+                                                     price keys already correct
      node scripts/trade-prices.mjs --dry             show the plan, no requests
+     POESESSID=xxx node scripts/trade-prices.mjs     more headroom on limits
 
    Output: public/trade-prices.json, which the boss tab layers over poe.ninja.
    Commit it and the numbers ship to everyone who visits the site.
@@ -49,6 +52,7 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONFIG = process.env.TRADE_CONFIG || path.join(ROOT, "trade-queries.json");
 const OUT = process.env.TRADE_OUT || path.join(ROOT, "public", "trade-prices.json");
 const DRY = process.argv.includes("--dry");
+const INIT = (() => { const i = process.argv.indexOf("--init"); return i >= 0 ? process.argv[i + 1] : null; })();
 
 /* GGG asks tools to identify themselves. Keep the contact link in it. */
 const UA = process.env.TRADE_UA
@@ -216,8 +220,59 @@ async function divineRateFor(league) {
   }
 }
 
+/* ---------- starter config ----------
+   Getting a priceKey wrong is invisible: the search runs, the file is written,
+   and the boss tab quietly ignores a key nothing looks up. So generate them
+   from the drop table itself rather than typing them out.
+
+   Only the "pool" group — a boss's unique drops. Its currency and fragment
+   extras are indexed by poe.ninja already and don't need a trade search. */
+async function init(bossId) {
+  const { BOSSES } = await import("../src/bossData.js");
+  const { variantHint } = await import("../src/bossProfit.js");
+  const boss = BOSSES.find((b) => b.id === bossId || b.name.toLowerCase().includes(String(bossId).toLowerCase()));
+  if (!boss) {
+    console.error(`No boss matching "${bossId}". Ids: ${BOSSES.map((b) => b.id).join(", ")}`);
+    process.exit(1);
+  }
+  const items = [];
+  for (const g of boss.groups || []) {
+    if (g.kind !== "pool") continue;
+    for (const d of g.drops || []) {
+      const h = variantHint(d);
+      items.push({
+        priceKey: h ? `${d.item}|${h}` : d.item,
+        url: "https://www.pathofexile.com/trade/search/LEAGUE/REPLACE_ME",
+        note: d.label || d.item,
+      });
+    }
+  }
+  const body = JSON.stringify({
+    _readme: `Starter config for ${boss.name}. Replace each url with a trade search you built yourself, then run: npm run trade-prices`,
+    divineRate: null,
+    items,
+  }, null, 2) + "\n";
+
+  // Written here rather than printed for you to redirect: PowerShell's ">"
+  // produces UTF-16 on Windows and a BOM even on 7, either of which makes this
+  // file unparseable later, with an error that points nowhere near the cause.
+  const force = process.argv.includes("--force");
+  let exists = false;
+  try { await readFile(CONFIG, "utf8"); exists = true; } catch { /* good */ }
+  if (exists && !force) {
+    console.log(`${path.basename(CONFIG)} already exists — not overwriting it.`);
+    console.log("Add these entries by hand, or re-run with --force to replace the file:\n");
+    console.log(body);
+    return;
+  }
+  await writeFile(CONFIG, body, "utf8");
+  console.log(`Wrote ${items.length} entries for ${boss.name} to ${path.relative(ROOT, CONFIG)}`);
+  console.log("Now replace every REPLACE_ME url with a search you built on the trade site, then: npm run trade-prices");
+}
+
 /* ---------- main ---------- */
 async function main() {
+  if (INIT) return init(INIT);
   const { cfg, items } = await loadConfig();
   if (!items.length) { console.log("Nothing to price."); return; }
 
