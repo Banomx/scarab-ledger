@@ -5,7 +5,7 @@
 
    1. Every self-history point must carry the divine rate at the moment it was
       written, and points written before that existed must stay usable.
-   2. The change windows must gain a divine-denominated twin (change24R and
+   2. The change windows must gain a divine-denominated twin (change1R through
       friends) computed from the rate at BOTH ends of the window — using
       today's rate for the old end is the mistake that makes the whole feature
       lie.
@@ -63,6 +63,8 @@ const PREV_SELF = {
     { t: ago(12), values: { [SCARAB]: 165 } },
     { t: ago(8), values: { [SCARAB]: 170 }, rate: 1280 },
     { t: ago(4), values: { [SCARAB]: 175 }, rate: 1300 },
+    { t: ago(2), values: { [SCARAB]: 178 }, rate: 1290 },
+    { t: ago(1), values: { [SCARAB]: 179 }, rate: 1295 },
   ],
 };
 
@@ -131,10 +133,14 @@ ok(near(scarabs.divineRate, 1300, 1), `divineRate ${scarabs.divineRate} != 1300`
 // 1) the new point records the rate, and the rate-less legacy point survives
 const last = self.points[self.points.length - 1];
 ok(near(last.rate, 1300, 1), `new self point rate ${last.rate} != 1300`);
-ok(self.points.length === 6, `self points ${self.points.length} != 6`);
+ok(self.points.length === 8, `self points ${self.points.length} != 8`);
 ok(self.points.filter((p) => p.rate == null).length === 1, "the rate-less legacy point should be kept as-is");
 
 // 2) nominal vs divine-denominated change — the whole point of the feature
+ok(near(item?.change1, 0.559, 0.02), `change1 ${item?.change1} != 0.559`);
+ok(near(item?.change1R, 0.172, 0.02), `change1R ${item?.change1R} != 0.172`);
+ok(near(item?.change2, 1.124, 0.02), `change2 ${item?.change2} != 1.124`);
+ok(near(item?.change2R, 0.346, 0.02), `change2R ${item?.change2R} != 0.346`);
 ok(near(item?.change24, 12.5, 0.05), `change24 ${item?.change24} != 12.5`);
 ok(near(item?.change24R, 3.846, 0.02), `change24R ${item?.change24R} != 3.846`);
 ok(near(item?.change48, 20, 0.05), `change48 ${item?.change48} != 20`);

@@ -13,6 +13,7 @@ import {
 import { makeResolver } from "./bossProfit.js";
 import PriceChart, { PctBadge, rateAt } from "./PriceChart.jsx";
 import { unitForSeries } from "./money.js";
+import { CHANGE_KEYS, CHANGE_WINDOW_OPTIONS, nearestRateWindow } from "./marketWindows.js";
 
 /* ================================================================
    DELVE
@@ -25,7 +26,7 @@ import { unitForSeries } from "./money.js";
                because it is the same question about different items.
      Biomes    which exclusive fossil target do I want at this depth?
                Target value stays in currency. A clearly labelled community
-               curve estimates special-vs-generic marker value by depth; biome
+               curve estimates special-vs-generic node value by depth; biome
                share and that estimate form the relative opportunity index.
                Opening one gives it the mechanic panel treatment: that node
                charted over the league, the biome's fossils beside it, and
@@ -41,7 +42,6 @@ import { unitForSeries } from "./money.js";
 
 const pctText = (v) => (v >= 0.1 ? `${(v * 100).toFixed(0)}%` : v >= 0.001 ? `${(v * 100).toFixed(1)}%` : v > 0 ? "<0.1%" : "—");
 
-const CHG_KEYS = { "4h": "change4", "8h": "change8", "12h": "change12", "24h": "change24", "48h": "change48" };
 const BIOME_NAME = Object.fromEntries(BIOMES.map((b) => [b.id, b.name]));
 const BIOME_TONE = Object.fromEntries(BIOMES.map((b) => [b.id, b.tone]));
 
@@ -246,7 +246,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
   const realWindows = useMemo(() => {
     const items = [...fossilItems, ...resoItems];
     const out = new Set();
-    for (const [w, key] of Object.entries(CHG_KEYS)) {
+    for (const [w, key] of Object.entries(CHANGE_KEYS)) {
       if (items.some((it) => isFinite(it[`${key}R`]))) out.add(w);
     }
     return out;
@@ -328,18 +328,14 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
      tell whether fossils fell or the divine ran away from them. */
   const rateDrift = useMemo(() => {
     if (!rateReady) return null;
-    const hours = parseInt(chgWindow, 10);
-    const last = rateHistory[rateHistory.length - 1];
-    const wantDay = last.day - hours / 24;
-    const then = rateHistory.reduce((best, p) => (Math.abs(p.day - wantDay) < Math.abs(best.day - wantDay) ? p : best), rateHistory[0]);
-    if (!(then.rate > 0) || !(last.rate > 0)) return null;
-    return { pct: (last.rate / then.rate - 1) * 100, now: last.rate };
+    const window = nearestRateWindow(rateHistory, chgWindow);
+    return window ? { pct: window.pct, now: window.last.rate } : null;
   }, [rateHistory, rateReady, chgWindow]);
 
   const money = (c) => (c > 0 ? fmtPrice(c, currency, rate) : "—");
   const observedMoney = (c) => (Number.isFinite(c) && c >= 0 ? fmtPrice(c, currency, rate) : "—");
   const pricedMoney = (c, found) => (found ? observedMoney(c) : "—");
-  const chgKey = CHG_KEYS[chgWindow] || "change24";
+  const chgKey = CHANGE_KEYS[chgWindow] || "change24";
   const chgOf = (name) => {
     const it = trendBy[name];
     if (!it) return undefined;
@@ -494,7 +490,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
               <div className="dl-sample-summary">
                 {metrics.hasTimedSample
                   ? <><strong>{metrics.totalEncounters}</strong> fossil encounters in <strong>{metrics.observations.minutes}</strong> minutes
-                      {metrics.markerShare != null && <> · <strong>{Math.round(metrics.markerShare * 100)}%</strong> were exclusive nodes</>}</>
+                      {metrics.exclusiveShare != null && <> · <strong>{Math.round(metrics.exclusiveShare * 100)}%</strong> were exclusive nodes</>}</>
                   : "No timed encounter rate. The profile cannot produce an hourly figure yet."}
               </div>
 
@@ -702,7 +698,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                 <div className="dl-depth-guide">
                   <strong>{settings.depth >= COMMUNITY_DEPTH_GUIDE.specialNode.capDepth ? "Special-node cap reached" : "Special-node chance still scaling"}</strong>
                   <span>
-                    Active community estimate: {pctText(specialChanceNow)} of non-cache fossil markers become the
+                    Active community estimate: {pctText(specialChanceNow)} of fossil nodes outside Smuggler's Caches become the
                     biome's special node at depth {settings.depth}. The working curve rises linearly from each node's
                     unlock depth to {Math.round(COMMUNITY_DEPTH_GUIDE.specialNode.capChance * 100)}% at depth {COMMUNITY_DEPTH_GUIDE.specialNode.capDepth}.
                     Biome cards use it for Depth EV and Opportunity.
@@ -770,7 +766,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
           too high. The unit is one NODE now: price x count, both checkable.
           Said out loud, because a unit you have to infer is the bug. */}
       <p className="dl-define">
-        <strong>Depth EV</strong> estimates one non-cache fossil marker at the selected depth. <strong>Target value</strong> prices
+        <strong>Depth EV</strong> estimates one fossil node outside Smuggler's Caches at the selected depth. <strong>Target value</strong> prices
         the exclusive fossil encounter by itself, while <strong>Opportunity</strong> combines biome share with Depth EV. Absolute hourly profit only appears as
         <strong> your observed pace</strong> after a custom sample contains timed observations.
       </p>
@@ -800,7 +796,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             <div className="st-ctl">
               <span>Price change</span>
               <div className="st-seg">
-                {["4h", "8h", "12h", "24h", "48h"].map((w) => {
+                {CHANGE_WINDOW_OPTIONS.map((w) => {
                   const noReal = useReal && realBadges && !realWindows.has(w);
                   return (
                     <button key={w} className={`${chgWindow === w ? "on" : ""}${noReal ? " dim" : ""}`}
@@ -959,11 +955,11 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
           <div className="dl-subbar">
             <div className="st-seg">
               <button className={rankBy === "depth" ? "on" : ""} onClick={() => setRankBy("depth")}
-                title="Community-estimated value of one non-cache fossil marker at this depth">Depth EV</button>
+                title="Community-estimated value of one fossil node outside Smuggler's Caches at this depth">Depth EV</button>
               <button className={rankBy === "target" ? "on" : ""} onClick={() => setRankBy("target")}
                 title="Live value of one exclusive fossil encounter">Target value</button>
               <button className={rankBy === "opportunity" ? "on" : ""} onClick={() => setRankBy("opportunity")}
-                title="Relative score from biome share and community depth-adjusted marker value">Opportunity</button>
+                title="Relative score from biome share and community depth-adjusted node value">Opportunity</button>
               <button className={rankBy === "sample" ? "on" : ""} disabled={!sample.hasTimedSample}
                 onClick={() => sample.hasTimedSample && setRankBy("sample")}
                 title={sample.hasTimedSample ? "Low/median/high projection at your observed encounter pace" : "Add timed observations in My samples first"}>
@@ -982,7 +978,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
             {rankBy === "depth" && (
               <>
                 <span className="dl-mode-kicker"><em className="dl-src warn">community estimate</em> active depth {settings.depth}</span>
-                <strong>Expected value of one non-Smugglers cache fossils</strong>
+                <strong>Expected value of non-Smugglers cache fossil nodes</strong>
                 <p>Each biome blends its live special-target value with its generic fossil pool using that biome's estimated special-node chance. This is the practical value to compare when choosing a fossil route.</p>
               </>
             )}
@@ -1026,7 +1022,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                   <span className="st-panel-total" title={`One ${openRow.headlineLabel} at the active profile's quantity.`}>
                     {pricedMoney(openRow.headline, openRow.exclusive?.found)} · {openRow.headlineLabel}
                   </span>
-                  <span className="st-panel-total" title="Community depth-adjusted median value of one non-cache fossil marker">
+                  <span className="st-panel-total" title="Community depth-adjusted median value of one fossil node outside Smuggler's Caches">
                     {pricedMoney(openRow.depthAdjustedRange.median, openRow.depthAdjustedFound)} · depth EV
                   </span>
                   <span className="st-panel-total">{pctText(openRow.share)} of the mine</span>
@@ -1173,7 +1169,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                           : rankBy === "depth"
                             ? pricedMoney(headline, r.depthAdjustedFound)
                           : pricedMoney(headline, r.exclusive?.found)}
-                      <em>{rankBy === "opportunity" ? "/100 opportunity" : rankBy === "sample" ? "/h, median" : rankBy === "depth" ? "/marker EV" : "/target"}</em>
+                      <em>{rankBy === "opportunity" ? "/100 opportunity" : rankBy === "sample" ? "/h, median" : rankBy === "depth" ? "/node EV" : "/target"}</em>
                     </span>
                   </button>
 
@@ -1198,7 +1194,7 @@ export default function Delve({ league, staticBase, currency, divineRate, fmtPri
                   {r.exclusive && (
                     <div className="dl-community-range">
                       <em className="dl-src ok">estimate</em>
-                      {pctText(r.specialChance)} special → {pricedMoney(r.depthAdjustedRange.median, r.depthAdjustedFound)} median per non-cache fossil marker
+                      {pctText(r.specialChance)} special → {pricedMoney(r.depthAdjustedRange.median, r.depthAdjustedFound)} median per fossil node outside Smuggler's Caches
                       {r.poolCoverage < 1 && <em className="dl-flag warn">partial prices</em>}
                     </div>
                   )}

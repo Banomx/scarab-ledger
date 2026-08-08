@@ -6,10 +6,10 @@
      target value  what one biome-exclusive fossil encounter is worth.
      biome share   how much of the mine that biome occupies at a given
                    depth, from the data-mined spawn weights.
-     depth value   expected value of one non-cache fossil marker using the
+     depth value   expected value of one fossil node outside Smuggler's Caches using the
                    explicitly labelled community special-node curve.
      opportunity   a relative 0-100 routing index from biome share and that
-                   community depth-adjusted marker value.
+                   community depth-adjusted node value.
      sample value  a personal low/median/high hourly projection, shown only
                    when a saved profile contains timed observations.
      boss value    expected chaos per kill, and the SHAPE of that: a
@@ -151,7 +151,7 @@ export function fossilRows(priceOf) {
 
    A normal biome's headline is its exclusive fossil encounter: the active
    sample profile's quantity times the live fossil price. The community depth
-   value treats a non-cache fossil marker as either that special encounter or
+   value treats a fossil node outside Smuggler's Caches as either that special encounter or
    a generic fossil node. City bosses live in their own calculation and never
    enter this ranking. Generic nodes and Smuggler's caches use low/median/high
    pool scenarios because no public data establishes equal fossil probabilities. */
@@ -221,8 +221,8 @@ export function personalProjection(row, sample) {
   return { low: point("low"), median: point("median"), high: point("high") };
 }
 
-/* Opportunity combines the community depth-adjusted value of one non-cache
-   fossil marker with the data-mined biome share, then normalises the result.
+/* Opportunity combines the community depth-adjusted value of one fossil node
+   outside Smuggler's Caches with the data-mined biome share, then normalises the result.
    It remains a relative routing score rather than chaos per generated node. */
 export function computeBiomes(priceOf, settings = {}, sample = null) {
   const s = { ...DEFAULTS, ...GUIDE_SAMPLE, ...settings };
@@ -494,7 +494,6 @@ export function sampleMetrics(profile) {
   // it as a zero-rate sample avoids biasing profiles toward successful runs.
   const hasTimedSample = o.minutes > 0;
   const perHour = (count) => hasTimedSample ? count * 60 / o.minutes : 0;
-  const markerTotal = totalEncounters;
   const warnings = [];
   for (const [nodes, fossils, label] of [
     [o.exclusiveNodes, o.exclusiveFossils, "exclusive"],
@@ -514,7 +513,7 @@ export function sampleMetrics(profile) {
     exclusivePerHour: perHour(o.exclusiveNodes),
     genericPerHour: perHour(o.genericNodes),
     cachePerHour: perHour(o.cacheNodes),
-    markerShare: markerTotal > 0 ? o.exclusiveNodes / markerTotal : null,
+    exclusiveShare: totalEncounters > 0 ? o.exclusiveNodes / totalEncounters : null,
     totalEncounters,
     hasTimedSample,
     hasObservations: Object.values(o).some((v) => v > 0),

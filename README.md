@@ -5,7 +5,10 @@ Path of Exile 1 farming profitability and market price tools.
 The site opens on a compact **Overview** briefing. It reuses the existing scarab
 movement, boss EV, Delve biome and category-price calculations in a selectable
 headline, three decision desks and a small data-quality strip. Every result links
-to the full tool; **Popular farms** keeps its existing scarab-strategy layout.
+to the full tool. **Popular farms** keeps the existing mechanic movement layout
+and adds one saved custom setup of up to five scarab slots. Its total cost and
+price movement also appear on Overview; duplicate scarabs count as separate
+map-device slots and the setup stays in this browser.
 Boss price-coverage warnings still open the boss that contains the first gap.
 
 Exchange-traded prices come from **GGG's public Currency Exchange API** first.
@@ -102,7 +105,9 @@ Notes:
   route, but if it's gone, the site **accumulates its own history**: every
   scheduled run reads the previous deployment's `selfhistory.json` and appends
   the current prices. Graphs start appearing after the second run and grow
-  from there — so the earlier in the league you deploy, the better.
+  from there — so the earlier in the league you deploy, the better. The 1h and
+  2h change buttons need those hourly snapshots; they stay unavailable until a
+  matching earlier point exists.
 - You can also run `node scripts/fetch-data.mjs` locally — the dev server will
   then serve the same snapshots from `public/data/`. Delete that folder to go
   back to the live `/ninja` proxy during development. (Self-history needs the
@@ -311,7 +316,8 @@ The Delve tool has three views:
 
 - **Fossils & resonators** shows live prices, history, pool value ranges and
   current fractured-wall targets.
-- **Biome targets** opens on Depth EV, the practical per-marker estimate for the
+- **Biome targets** opens on Depth EV, the practical estimate for one fossil
+  node outside Smuggler's Caches at the
   selected depth. It blends the live special-target value with the generic
   fossil-node range using the labelled community special-node curve. Target value
   isolates the special encounter; Opportunity is a relative 0–100 routing score
@@ -402,6 +408,10 @@ Consequences worth knowing:
 - the live-API fallback (no static snapshots) has no rate curve at all, so the
   toggle stays off there.
 
+The selectable windows are 1h, 2h, 4h, 8h, 12h, 24h and 48h. Short windows
+come from the site's hourly self-history. poe.ninja's daily sparkline can only
+fill 24h/48h when self-history is not ready.
+
 `node scripts/test-rate.mjs` covers the whole data path: rate storage, the
 nominal-vs-real split, the upside-down backfill, and the day-axis alignment.
 
@@ -429,7 +439,8 @@ nominal-vs-real split, the upside-down backfill, and the day-axis alignment.
   instead of breaking. Reload once you're back online.
 - Price history loads lazily per mechanic (one request per scarab in the
   group, cached), so opening a group the first time takes a moment.
-- 24h/48h change comes from poe.ninja's daily sparkline, i.e. "since
-  yesterday's / the day before's data point".
+- 1h–12h change comes from accumulated hourly snapshots. 24h/48h can also fall
+  back to poe.ninja's daily sparkline, i.e. "since yesterday's / the day
+  before's data point".
 - Every % in the app is a chaos figure unless the Divine-adjusted box is
   ticked; see the section above for what changes when it is.

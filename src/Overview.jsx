@@ -4,6 +4,7 @@ import {
   computeBiomes, loadSettings, makePriceOf, loadSampleProfiles,
   loadActiveSampleProfile, sampleMetrics,
 } from "./delve.js";
+import { CHANGE_WINDOW_OPTIONS } from "./marketWindows.js";
 
 const CATEGORY_FILES = [
   ["catalysts", "Catalysts"],
@@ -43,6 +44,7 @@ export default function Overview({
   divineRate,
   fmtPrice,
   movers,
+  customFarm,
   activeKey,
   changeKey,
   changeWindow,
@@ -60,7 +62,7 @@ export default function Overview({
     setSnapshots(null);
     const read = async (file) => {
       try {
-        const response = await fetch(`${staticBase}/${file}`);
+        const response = await fetch(`${staticBase}/${file}`, { cache: "no-cache" });
         return response.ok ? await response.json() : null;
       } catch {
         return null;
@@ -150,6 +152,10 @@ export default function Overview({
 
   const scarab = movers.rising[0] || movers.falling[0] || null;
   const scarabRising = !!movers.rising[0];
+  const customChange = customFarm?.[activeKey];
+  const customDirection = Number.isFinite(customChange)
+    ? customChange > 0 ? "more expensive" : customChange < 0 ? "cheaper" : "unchanged"
+    : "waiting for history";
   const updatedAt = staticInfo?.generatedAt || snapshots?.prices?.generatedAt;
   const statusSource = snapshots?.prices?.priceSource || staticInfo?.priceSource;
   const status = mode === "connecting"
@@ -174,6 +180,19 @@ export default function Overview({
       openLabel: "Open Popular farms",
       open: () => onOpenTab("farms"),
     },
+    customFarm?.scarabs?.length ? {
+      id: "custom-farm",
+      kind: "Your farming strat",
+      status: `${customFarm.scarabs.length}/5 scarab slots`,
+      title: `${customFarm.name} is ${customDirection}`,
+      value: Number.isFinite(customChange) ? pct(customChange) : "â€”",
+      tone: Number.isFinite(customChange) ? (customChange > 0 ? "up" : customChange < 0 ? "down" : "") : "",
+      unit: `${changeWindow}${activeKey.endsWith("R") ? " divine-adjusted" : ""} total cost movement`,
+      note: "The total counts every selected slot, including duplicate scarabs. Edit the saved setup in Popular farms whenever your map device changes.",
+      flow: [fmtPrice(customFarm.total, currency, divineRate), `${customFarm.scarabs.length} scarabs`, "Saved on this device"],
+      openLabel: "Open farming strat",
+      open: () => onOpenTab("farms"),
+    } : null,
     {
       id: "boss",
       kind: "Boss profit",
@@ -219,7 +238,7 @@ export default function Overview({
       openLabel: `Open ${categorySummary?.label || "market prices"}`,
       open: () => onOpenTab(categorySummary?.tab || "catalysts"),
     },
-  ];
+  ].filter(Boolean);
   const activeSignal = signals.find((signal) => signal.id === selectedSignal) || signals[0];
 
   const coverageTitle = bossSummary
@@ -247,7 +266,7 @@ export default function Overview({
           <p>The same live calculations, organised around what deserves a closer look.</p>
         </div>
         <div className="ov-window" aria-label="Change window">
-          {["4h", "8h", "12h", "24h", "48h"].map((window) => (
+          {CHANGE_WINDOW_OPTIONS.map((window) => (
             <button type="button" key={window} className={changeWindow === window ? "on" : ""}
               aria-pressed={changeWindow === window} onClick={() => setChangeWindow(window)}>
               {window}
@@ -288,12 +307,18 @@ export default function Overview({
       <h3 className="ov-section-title">Three decision desks</h3>
       <div className="ov-desks">
         <section className="ov-desk">
-          <header><h3>Run a scarab strategy</h3><em>Popular farms</em></header>
-          <p>The existing strategy presentation stays unchanged.</p>
+          <header><h3>{customFarm?.scarabs?.length ? customFarm.name : "Run a scarab strategy"}</h3><em>Popular farms</em></header>
+          <p>{customFarm?.scarabs?.length ? "Your saved map-device cost and current movement." : "Save up to five scarab slots to follow your own setup."}</p>
           <dl>
-            <div><dt>Movement leader</dt><dd>{scarab?.name || "No notable movement"}</dd></div>
-            <div><dt>{changeWindow} move</dt><dd>{scarab ? pct(scarab[activeKey]) : "Stable"}</dd></div>
-            <div><dt>Direction</dt><dd>{scarab ? (scarabRising ? "Rising" : "Falling") : "Stable"}</dd></div>
+            {customFarm?.scarabs?.length ? <>
+              <div><dt>Current cost</dt><dd>{fmtPrice(customFarm.total, currency, divineRate)}</dd></div>
+              <div><dt>{changeWindow}{activeKey.endsWith("R") ? " divine-adjusted" : ""}</dt><dd>{pct(customChange)}</dd></div>
+              <div><dt>Slots</dt><dd>{customFarm.scarabs.length}/5</dd></div>
+            </> : <>
+              <div><dt>Movement leader</dt><dd>{scarab?.name || "No notable movement"}</dd></div>
+              <div><dt>{changeWindow} move</dt><dd>{scarab ? pct(scarab[activeKey]) : "Stable"}</dd></div>
+              <div><dt>Direction</dt><dd>{scarab ? (scarabRising ? "Rising" : "Falling") : "Stable"}</dd></div>
+            </>}
           </dl>
           <button type="button" onClick={() => onOpenTab("farms")}>Open Popular farms</button>
         </section>

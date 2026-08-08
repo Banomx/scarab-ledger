@@ -923,7 +923,7 @@ async function updateSelfHistory(slug, items, prefix = "", rate = null) {
 /* Recompute change windows from our own accumulated points when we have data
    old enough; otherwise sparkline-derived values (24h/48h only) stay. The
    15-min tolerance forgives GitHub's cron starting a few minutes late. */
-const CHANGE_WINDOWS = [[4, "change4"], [8, "change8"], [12, "change12"], [24, "change24"], [48, "change48"]];
+const CHANGE_WINDOWS = [[1, "change1"], [2, "change2"], [4, "change4"], [8, "change8"], [12, "change12"], [24, "change24"], [48, "change48"]];
 function applySelfChanges(items, self) {
   const pts = (self.points || []).map(normalizePoint);
   if (pts.length < 2) return;

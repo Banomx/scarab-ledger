@@ -241,14 +241,14 @@ test("pool range and node values use the declared scenarios", () => {
   assert.equal(r.headlineLabel, "Crystal Spire");
 });
 
-test("community Depth EV blends special and generic fossil markers", () => {
+test("community Depth EV blends special and generic fossil nodes", () => {
   const abyssal = BIOMES.find((b) => b.id === "abyssal");
   const s = { ...DEFAULTS, depth: 600, exclusiveQty: 3, genericQty: 2, cacheQty: 5 };
   const r = computeBiome(abyssal, priceOf, s);
   const chance = communitySpecialChance(600, abyssal.exclusive.minDepth);
   near(r.specialChance, chance, 1e-9, "special replacement chance");
   near(r.depthAdjustedRange.median,
-    chance * 900 + (1 - chance) * 20, 1e-9, "depth-adjusted marker EV");
+    chance * 900 + (1 - chance) * 20, 1e-9, "depth-adjusted node EV");
   assert.equal(r.depthAdjustedFound, true);
 });
 
@@ -557,7 +557,7 @@ test("custom observations replace guide quantities and produce a finite personal
   near(metrics.exclusivePerHour, 2, 1e-9, "exclusive encounters/hour");
   near(metrics.genericPerHour, 1, 1e-9, "generic encounters/hour");
   near(metrics.cachePerHour, 0.5, 1e-9, "cache encounters/hour");
-  near(metrics.markerShare, 4 / 7, 1e-9, "exclusive share of recorded fossil encounters");
+  near(metrics.exclusiveShare, 4 / 7, 1e-9, "exclusive share of recorded fossil encounters");
 
   const all = computeBiomes(priceOf, { ...DEFAULTS, depth: 600, ...metrics.quantities }, metrics);
   const abyssal = all.targets.find((r) => r.biome.id === "abyssal");

@@ -49,7 +49,9 @@ Each deployed JSON file records `generatedAt`; files using GGG also record
 `gggHour`, the newest completed market hour used by the snapshot. Individual
 GGG entries record `marketHour`, which differs when a thin boss item came from a
 recent earlier hour. The existing `selfhistory.json` files accumulate hourly
-snapshots for charts.
+snapshots for charts and the 1h/2h/4h/8h/12h/24h/48h change fields. Short
+windows remain absent until a sufficiently old snapshot exists; they are never
+estimated from the daily poe.ninja sparkline.
 
 ## Coverage boundary
 
@@ -79,9 +81,14 @@ badged `shared quote` rather than implying variant-level precision.
 `src/Overview.jsx` is the default view and reads the same generated snapshots as
 the detailed tools. It calls the pure boss and Delve calculation modules instead
 of maintaining separate estimates. The compact briefing presents one selectable
-headline, four signal selectors, three decision desks and a data-quality strip.
+headline, four core signal selectors, an optional saved-strategy signal, three
+decision desks and a data-quality strip.
 These are alternate presentations of existing results, not new calculations.
-Popular farms remains a dedicated scarab-only view, while TTK profiles stay
+Popular farms remains a dedicated scarab-only view and owns the searchable
+five-slot custom strategy editor. `src/farmStrategy.js` sanitises its
+`vaal-street.farmingStrategy.v1` localStorage record and calculates weighted
+nominal and divine-adjusted movement from the same live scarab rows; Overview
+only presents that result. TTK profiles stay
 inside Boss profit and Delve sample profiles stay inside the Delve Assumptions
 panel. Boss summaries and price gaps carry a boss id through `src/App.jsx`, so
 their links open the relevant boss instead of the first boss in the list.
@@ -96,7 +103,7 @@ guide control sits beside Assumptions so both explanatory panels share one place
 ## Delve estimation boundary
 
 The six biome-exclusive fossil encounters share PoEDB tier 4 and encounter
-weight 100. `src/delve.js` calculates Depth EV for one non-cache fossil marker:
+weight 100. `src/delve.js` calculates Depth EV for one fossil node outside Smuggler's Caches:
 the community special-node chance times the live target-node value, plus the
 remaining generic-node share. Opportunity is biome share times median Depth EV,
 normalised to 0–100. City boss EV is calculated separately and never enters the
