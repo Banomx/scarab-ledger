@@ -5,11 +5,13 @@ import {
   loadActiveSampleProfile, sampleMetrics,
 } from "./delve.js";
 import { CHANGE_WINDOW_OPTIONS } from "./marketWindows.js";
+import { TREND_DEPTH, TREND_ROTATION_MS, pickTrend, rotateTrend } from "./overviewTrends.js";
 
 const CATEGORY_FILES = [
   ["catalysts", "Catalysts"],
   ["astrolabes", "Astrolabes"],
 ];
+const ROTATION_SECONDS = Math.round(TREND_ROTATION_MS / 1000);
 
 function pct(value) {
   if (!Number.isFinite(value)) return "—";
@@ -37,6 +39,41 @@ function Signal({ kind, title, value, tone = "", selected, onSelect }) {
   );
 }
 
+function Feature({ signal }) {
+  return (
+    <section className="ov-feature" aria-live="polite">
+      <div className="ov-feature-top">
+        <span className="ov-kind">{signal.kind}</span>
+        <em>{signal.status}</em>
+      </div>
+      <h3>{signal.title}</h3>
+      <div className="ov-feature-number">
+        <strong className={signal.tone}>{signal.value}</strong>
+        <span>{signal.unit}</span>
+      </div>
+      <p>{signal.note}</p>
+      <div className="ov-feature-bottom">
+        <div className="ov-feature-flow">
+          {signal.flow.map((item) => <span key={item}>{item}</span>)}
+        </div>
+        <button type="button" onClick={signal.open}>{signal.openLabel}</button>
+      </div>
+    </section>
+  );
+}
+
+function SignalList({ label, signals, activeId, onSelect }) {
+  return (
+    <aside className="ov-signal-list" aria-label={label}>
+      {signals.map((signal) => (
+        <Signal key={signal.id} kind={signal.kind} title={signal.title}
+          value={signal.value} tone={signal.tone} selected={signal.id === activeId}
+          onSelect={() => onSelect(signal.id)} />
+      ))}
+    </aside>
+  );
+}
+
 export default function Overview({
   league,
   staticBase,
@@ -55,8 +92,14 @@ export default function Overview({
   onOpenTab,
 }) {
   const [snapshots, setSnapshots] = useState(null);
-  const [selectedSignal, setSelectedSignal] = useState("farms");
-  const [strategyRotation, setStrategyRotation] = useState(0);
+  const [selectedRising, setSelectedRising] = useState("farms");
+  const [selectedFalling, setSelectedFalling] = useState("farms");
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick((value) => value + 1), TREND_ROTATION_MS);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,27 +145,24 @@ export default function Overview({
       divineRate,
     });
     const rows = computeAll(resolve, profile);
-    const best = rows
-      .filter((row) => !row.entryUnknown && Number.isFinite(row.net))
-      .sort((a, b) => b.net - a.net)[0] || null;
     const gaps = rows.flatMap((row) => row.hiddenLines.map((line) => ({
       boss: row.boss,
       line,
     })));
     return {
-      best,
+      rows: rows.filter((row) => !row.entryUnknown && Number.isFinite(row.net)),
       missing: gaps.length,
       firstGap: gaps[0] || null,
     };
   }, [snapshots, profile, divineRate]);
 
-  const delveSummary = useMemo(() => {
+  const delveTargets = useMemo(() => {
     const priceMap = snapshots?.prices?.prices || null;
     const categoryItems = [
       ...(snapshots?.fossils?.items || []),
       ...(snapshots?.resonators?.items || []),
     ];
-    if (!priceMap && !categoryItems.length) return null;
+    if (!priceMap && !categoryItems.length) return [];
     const categoryMap = {};
     for (const item of categoryItems) {
       if (item.chaosValue > 0) categoryMap[item.name] = { c: item.chaosValue, n: 1 };
@@ -133,14 +173,12 @@ export default function Overview({
       divineRate: rate,
     });
     const modelSettings = { ...delveSettings, ...delveSample.quantities };
-    const best = computeBiomes(priceOf, modelSettings, delveSample).targets
-      .filter((row) => row.opportunityIndex > 0)
-      .sort((a, b) => b.opportunityIndex - a.opportunityIndex)[0] || null;
-    return { best };
+    return computeBiomes(priceOf, modelSettings, delveSample).targets
+      .filter((row) => row.opportunityIndex > 0);
   }, [snapshots, delveSettings, delveSample, divineRate]);
 
-  const categorySummary = useMemo(() => {
-    if (!snapshots) return null;
+  const categoryRows = useMemo(() => {
+    if (!snapshots) return [];
     const candidates = [];
     for (const [key, label] of CATEGORY_FILES) {
       for (const item of snapshots[key]?.items || []) {
@@ -148,42 +186,156 @@ export default function Overview({
         if (Number.isFinite(change)) candidates.push({ ...item, change, label, tab: key });
       }
     }
-    return candidates.sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0] || null;
+    return candidates;
   }, [snapshots, changeKey]);
 
-  const scarab = movers.rising[0] || movers.falling[0] || null;
-  const scarabRising = !!movers.rising[0];
-  const rankedStrategies = useMemo(() => (customFarms || [])
-    .filter((strategy) => strategy.hasItems)
-    .slice()
-    .sort((a, b) => {
-      const av = Number.isFinite(a[activeKey]) ? a[activeKey] : -Infinity;
-      const bv = Number.isFinite(b[activeKey]) ? b[activeKey] : -Infinity;
-      return bv - av;
-    }), [customFarms, activeKey]);
-  const rotatingStrategies = useMemo(() => {
-    const measured = rankedStrategies.filter((strategy) => Number.isFinite(strategy[activeKey]));
-    return (measured.length ? measured : rankedStrategies).slice(0, 3);
-  }, [rankedStrategies, activeKey]);
-  const fallingStrategies = useMemo(() => rankedStrategies
-    .filter((strategy) => Number.isFinite(strategy[activeKey]) && strategy[activeKey] < 0)
-    .slice()
-    .sort((a, b) => a[activeKey] - b[activeKey])
-    .slice(0, 3), [rankedStrategies, activeKey]);
-  const rotationKey = rotatingStrategies.map((strategy) => strategy.id).join("|");
+  const strategyRows = useMemo(
+    () => (customFarms || []).filter((strategy) => strategy.hasItems),
+    [customFarms],
+  );
 
-  useEffect(() => {
-    setStrategyRotation(0);
-    if (rotatingStrategies.length < 2) return undefined;
-    const timer = setInterval(() => setStrategyRotation((index) => (index + 1) % rotatingStrategies.length), 5000);
-    return () => clearInterval(timer);
-  }, [rotationKey]);
+  /* Each desk keeps its own three-deep rising and falling shortlist. The panels
+     below are the same five desks read from opposite ends of these lists. */
+  const pools = useMemo(() => {
+    const byChange = (rows, valueOf) => ({
+      up: pickTrend(rows, valueOf, "up"),
+      down: pickTrend(rows, valueOf, "down"),
+    });
+    const byLevel = (rows, valueOf) => ({
+      up: pickTrend(rows, valueOf, "up", { signed: false }),
+      down: pickTrend(rows, valueOf, "down", { signed: false }),
+    });
+    return {
+      farms: {
+        up: movers.rising.slice(0, TREND_DEPTH),
+        down: movers.falling.slice(0, TREND_DEPTH),
+      },
+      watcher: byChange(strategyRows, (strategy) => strategy[activeKey]),
+      boss: byLevel(bossSummary?.rows, (row) => row.net),
+      delve: byLevel(delveTargets, (row) => row.opportunityIndex),
+      market: byChange(categoryRows, (row) => row.change),
+    };
+  }, [movers, strategyRows, bossSummary, delveTargets, categoryRows, activeKey]);
 
-  const customFarm = rotatingStrategies[strategyRotation % Math.max(1, rotatingStrategies.length)] || null;
-  const customChange = customFarm?.[activeKey];
-  const customDirection = Number.isFinite(customChange)
-    ? customChange > 0 ? "more expensive" : customChange < 0 ? "cheaper" : "unchanged"
-    : "waiting for history";
+  const realSuffix = activeKey.endsWith("R") ? " divine-adjusted" : "";
+
+  const buildSignals = (direction) => {
+    const up = direction === "up";
+    const signals = [];
+    const position = (slot) => `${slot.index + 1}/${slot.count}`;
+
+    const farm = rotateTrend(pools.farms[direction], tick);
+    if (farm.entry) signals.push({
+      id: "farms",
+      kind: "Popular farms",
+      status: `Scarab movement · ${position(farm)}`,
+      title: farm.index === 0
+        ? `${farm.entry.name} is the strongest ${up ? "rising" : "falling"} mechanic`
+        : `${farm.entry.name} is the #${farm.index + 1} ${up ? "rising" : "falling"} mechanic`,
+      value: pct(farm.entry[activeKey]),
+      tone: up ? "up" : "down",
+      unit: `${changeWindow} mechanic-total movement`,
+      note: "This is market movement, not a promised profit margin. The detailed tab keeps the existing scarab strategies and cost breakdowns unchanged.",
+      flow: ["Live scarab prices", "Existing strategy recipes", "Mechanic movement"],
+      openLabel: "Open Popular farms",
+      open: () => onOpenTab("farms"),
+    });
+
+    const strategy = rotateTrend(pools.watcher[direction], tick);
+    if (strategy.entry) signals.push({
+      id: "watcher",
+      kind: "Strat Watcher",
+      status: `${up ? "Top" : "Bottom"} ${strategy.count} · rotates every ${ROTATION_SECONDS}s`,
+      title: `${strategy.entry.name} is getting ${up ? "more expensive" : "cheaper"}`,
+      value: pct(strategy.entry[activeKey]),
+      tone: up ? "up" : "down",
+      unit: `${changeWindow}${realSuffix} total cost movement`,
+      note: "The total counts every slot of the saved setup, including duplicates and the Astrolabe.",
+      flow: [
+        fmtPrice(strategy.entry.total, currency, divineRate),
+        `${strategy.entry.scarabs.length} scarabs${strategy.entry.astrolabe ? " + Astrolabe" : ""}`,
+        position(strategy),
+      ],
+      openLabel: "Open Strat Watcher",
+      open: () => onOpenTab("watcher"),
+    });
+
+    const boss = rotateTrend(pools.boss[direction], tick);
+    if (boss.entry) signals.push({
+      id: "boss",
+      kind: "Boss profit",
+      status: profile?.name || "Active TTK profile",
+      title: boss.index === 0
+        ? `${boss.entry.boss.name} has the ${up ? "highest" : "lowest"} current estimated net`
+        : `${boss.entry.boss.name} is #${boss.index + 1} from the ${up ? "top" : "bottom"} by estimated net`,
+      value: fmtPrice(boss.entry.net, currency, divineRate),
+      tone: boss.entry.net > 0 ? "up" : boss.entry.net < 0 ? "down" : "",
+      unit: "estimated net per kill",
+      note: "Correct drop values can still produce a negative result. The detailed tab keeps entry cost, editable chances, kill distribution and the active TTK profile.",
+      flow: ["Entry cost", "Median and mean", "Active TTK profile"],
+      openLabel: "Open Boss profit",
+      open: () => onOpenTab("bosses", boss.entry.boss?.id),
+    });
+
+    const delve = rotateTrend(pools.delve[direction], tick);
+    if (delve.entry) signals.push({
+      id: "delve",
+      kind: "Delve",
+      status: "Experimental",
+      title: delve.index === 0
+        ? `${delve.entry.biome.name} ${up ? "leads" : "trails"} the fossil opportunities at depth ${delveSettings.depth}`
+        : `${delve.entry.biome.name} is #${delve.index + 1} from the ${up ? "top" : "bottom"} of the fossil opportunities`,
+      value: fmtPrice(delve.entry.depthAdjustedRange.median, currency, divineRate),
+      tone: "",
+      unit: "community Depth EV",
+      note: "This reuses the saved depth and sample profile. It never mixes city bosses into fossil routing or invents a universal hourly rate.",
+      flow: ["Live fossil price", `Depth ${delveSettings.depth}`, "Personal sample pace"],
+      openLabel: "Open Delve",
+      open: () => onOpenTab("delve"),
+    });
+
+    const market = rotateTrend(pools.market[direction], tick);
+    if (market.entry) signals.push({
+      id: "market",
+      kind: market.entry.label,
+      status: `Category movement · ${position(market)}`,
+      title: market.index === 0
+        ? `${market.entry.name} has the largest ${changeWindow} category ${up ? "gain" : "drop"}`
+        : `${market.entry.name} is the #${market.index + 1} ${changeWindow} category ${up ? "gain" : "drop"}`,
+      value: pct(market.entry.change),
+      tone: up ? "up" : "down",
+      unit: `${changeWindow} price movement`,
+      note: "One prominent mover appears here, then opens the existing category history for the full price path and divine-adjusted context.",
+      flow: ["Live price", `${changeWindow} window`, "History chart"],
+      openLabel: `Open ${market.entry.label}`,
+      open: () => onOpenTab(market.entry.tab),
+    });
+
+    if (signals.length) return signals;
+    /* Keep both panels the same shape while data is loading or genuinely flat,
+       so the page does not collapse to a single column and back. */
+    return [{
+      id: "quiet",
+      kind: up ? "Rising" : "Cooling",
+      status: snapshots === null ? "Loading" : "Nothing measured",
+      title: snapshots === null
+        ? "Loading market data"
+        : `Nothing is measurably ${up ? "climbing" : "cooling"} in the ${changeWindow} window`,
+      value: "—",
+      tone: "",
+      unit: `${changeWindow}${realSuffix} window`,
+      note: "Short windows stay empty until a snapshot old enough to compare against exists. They are never estimated.",
+      flow: ["Live prices", `${changeWindow} window`, "No measured move"],
+      openLabel: "Open Popular farms",
+      open: () => onOpenTab("farms"),
+    }];
+  };
+
+  const risingSignals = buildSignals("up");
+  const fallingSignals = buildSignals("down");
+  const risingSignal = risingSignals.find((signal) => signal.id === selectedRising) || risingSignals[0];
+  const fallingSignal = fallingSignals.find((signal) => signal.id === selectedFalling) || fallingSignals[0];
+
   const updatedAt = staticInfo?.generatedAt || snapshots?.prices?.generatedAt;
   const statusSource = snapshots?.prices?.priceSource || staticInfo?.priceSource;
   const status = mode === "connecting"
@@ -192,82 +344,12 @@ export default function Overview({
       ? "Demo snapshot"
       : dataSource === "static" ? sourceLabel(statusSource) : "Live market data";
 
-  const signals = [
-    {
-      id: "farms",
-      kind: "Popular farms",
-      status: "Scarab movement",
-      title: scarab
-        ? `${scarab.name} is the strongest ${scarabRising ? "rising" : "falling"} mechanic`
-        : "No notable scarab mechanic movement",
-      value: scarab ? pct(scarab[activeKey]) : "Stable",
-      tone: scarab ? (scarab[activeKey] > 0 ? "up" : scarab[activeKey] < 0 ? "down" : "") : "",
-      unit: `${changeWindow} mechanic-total movement`,
-      note: "This is market movement, not a promised profit margin. The detailed tab keeps the existing scarab strategies and cost breakdowns unchanged.",
-      flow: ["Live scarab prices", "Existing strategy recipes", "Mechanic movement"],
-      openLabel: "Open Popular farms",
-      open: () => onOpenTab("farms"),
-    },
-    customFarm?.hasItems ? {
-      id: "watcher",
-      kind: "Strat Watcher",
-      status: `Top ${Math.min(3, rotatingStrategies.length)} · rotates every 5s`,
-      title: `${customFarm.name} is ${customDirection}`,
-      value: Number.isFinite(customChange) ? pct(customChange) : "—",
-      tone: Number.isFinite(customChange) ? (customChange > 0 ? "up" : customChange < 0 ? "down" : "") : "",
-      unit: `${changeWindow}${activeKey.endsWith("R") ? " divine-adjusted" : ""} total cost movement`,
-      note: "This rotates through your three strongest saved setups for the selected window. The total counts every slot, including duplicates and the Astrolabe.",
-      flow: [fmtPrice(customFarm.total, currency, divineRate), `${customFarm.scarabs.length} scarabs${customFarm.astrolabe ? " + Astrolabe" : ""}`, `${strategyRotation + 1}/${rotatingStrategies.length}`],
-      openLabel: "Open Strat Watcher",
-      open: () => onOpenTab("watcher"),
-    } : null,
-    {
-      id: "boss",
-      kind: "Boss profit",
-      status: profile?.name || "Active TTK profile",
-      title: bossSummary?.best
-        ? `${bossSummary.best.boss.name} has the highest current estimated net`
-        : snapshots === null ? "Loading boss prices" : "No complete boss estimate available",
-      value: bossSummary?.best ? fmtPrice(bossSummary.best.net, currency, divineRate) : "—",
-      tone: bossSummary?.best ? (bossSummary.best.net > 0 ? "up" : bossSummary.best.net < 0 ? "down" : "") : "",
-      unit: "estimated net per kill",
-      note: "Correct drop values can still produce a negative result. The detailed tab keeps entry cost, editable chances, kill distribution and the active TTK profile.",
-      flow: ["Entry cost", "Median and mean", "Active TTK profile"],
-      openLabel: "Open Boss profit",
-      open: () => onOpenTab("bosses", bossSummary?.best?.boss?.id),
-    },
-    {
-      id: "delve",
-      kind: "Delve",
-      status: "Experimental",
-      title: delveSummary?.best
-        ? `${delveSummary.best.biome.name} leads the fossil opportunities at depth ${delveSettings.depth}`
-        : snapshots === null ? "Loading Delve prices" : "No priced biome value available",
-      value: delveSummary?.best ? fmtPrice(delveSummary.best.depthAdjustedRange.median, currency, divineRate) : "—",
-      tone: "",
-      unit: "community Depth EV",
-      note: "This reuses the saved depth and sample profile. It never mixes city bosses into fossil routing or invents a universal hourly rate.",
-      flow: ["Live fossil price", `Depth ${delveSettings.depth}`, "Personal sample pace"],
-      openLabel: "Open Delve",
-      open: () => onOpenTab("delve"),
-    },
-    {
-      id: "market",
-      kind: categorySummary?.label || "Market movers",
-      status: "Category movement",
-      title: categorySummary
-        ? `${categorySummary.name} has the largest ${changeWindow} category move`
-        : snapshots === null ? "Loading category movement" : `No ${changeWindow} category movement available`,
-      value: categorySummary ? pct(categorySummary.change) : "—",
-      tone: categorySummary ? (categorySummary.change > 0 ? "up" : categorySummary.change < 0 ? "down" : "") : "",
-      unit: `${changeWindow} price movement`,
-      note: "One prominent mover appears here, then opens the existing category history for the full price path and divine-adjusted context.",
-      flow: ["Live price", `${changeWindow} window`, "History chart"],
-      openLabel: `Open ${categorySummary?.label || "market prices"}`,
-      open: () => onOpenTab(categorySummary?.tab || "catalysts"),
-    },
-  ].filter(Boolean);
-  const activeSignal = signals.find((signal) => signal.id === selectedSignal) || signals[0];
+  const bestBoss = pools.boss.up[0] || null;
+  const bestDelve = pools.delve.up[0] || null;
+  const leadFarm = pools.farms.up[0] || pools.farms.down[0] || null;
+  const leadFarmRising = !!pools.farms.up[0];
+  const deskStrategy = rotateTrend(pools.watcher.up, tick).entry || strategyRows[0] || null;
+  const deskChange = deskStrategy?.[activeKey];
 
   const coverageTitle = bossSummary
     ? bossSummary.missing > 0
@@ -304,68 +386,39 @@ export default function Overview({
       </div>
 
       <div className="ov-briefing">
-        <section className="ov-feature" aria-live="polite">
-          <div className="ov-feature-top">
-            <span className="ov-kind">{activeSignal.kind}</span>
-            <em>{activeSignal.status}</em>
-          </div>
-          <h3>{activeSignal.title}</h3>
-          <div className="ov-feature-number">
-            <strong className={activeSignal.tone}>{activeSignal.value}</strong>
-            <span>{activeSignal.unit}</span>
-          </div>
-          <p>{activeSignal.note}</p>
-          <div className="ov-feature-bottom">
-            <div className="ov-feature-flow">
-              {activeSignal.flow.map((item) => <span key={item}>{item}</span>)}
-            </div>
-            <button type="button" onClick={activeSignal.open}>{activeSignal.openLabel}</button>
-          </div>
-        </section>
-
-        <aside className="ov-signal-list" aria-label="Overview signals">
-          {signals.map((signal) => (
-            <Signal key={signal.id} kind={signal.kind} title={signal.title}
-              value={signal.value} tone={signal.tone} selected={signal.id === activeSignal.id}
-              onSelect={() => setSelectedSignal(signal.id)} />
-          ))}
-        </aside>
+        <Feature signal={risingSignal} />
+        <SignalList label="Upward trends" signals={risingSignals}
+          activeId={risingSignal.id} onSelect={setSelectedRising} />
       </div>
 
-      <section className="ov-falling" aria-label="Worst performing saved strategies">
-        <div className="ov-falling-head">
-          <div><span className="ov-kind">Downward trends</span><strong>Cooling saved strategies</strong></div>
-          <button type="button" onClick={() => onOpenTab("watcher")}>Open Strat Watcher</button>
+      <div className="ov-head ov-head-flip">
+        <div>
+          <div className="ov-kicker">Downward trends</div>
+          <h2>What is cooling off</h2>
+          <p>The same desks, read from the bottom of each list.</p>
         </div>
-        {fallingStrategies.length ? (
-          <div className="ov-falling-grid">
-            {fallingStrategies.map((strategy) => (
-              <button type="button" className="ov-signal" key={strategy.id} onClick={() => onOpenTab("watcher")}>
-                <span className="ov-kind">{changeWindow}{activeKey.endsWith("R") ? " divine-adjusted" : ""}</span>
-                <strong>{strategy.name} is getting cheaper</strong>
-                <span className="ov-value down">{pct(strategy[activeKey])}</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p>No measured saved strategy is falling in the selected window.</p>
-        )}
-      </section>
+      </div>
+
+      <div className="ov-briefing ov-flip">
+        <SignalList label="Downward trends" signals={fallingSignals}
+          activeId={fallingSignal.id} onSelect={setSelectedFalling} />
+        <Feature signal={fallingSignal} />
+      </div>
 
       <h3 className="ov-section-title">Three decision desks</h3>
       <div className="ov-desks">
         <section className="ov-desk">
-          <header><h3>{customFarm?.hasItems ? customFarm.name : "Watch a farming strategy"}</h3><em>Strat Watcher</em></header>
-          <p>{customFarm?.hasItems ? "Currently rotating through your three strongest saved setups." : "Save up to ten setups of five scarabs and one Astrolabe."}</p>
+          <header><h3>{deskStrategy ? deskStrategy.name : "Watch a farming strategy"}</h3><em>Strat Watcher</em></header>
+          <p>{deskStrategy ? `Rotating through your strongest saved setups every ${ROTATION_SECONDS} seconds.` : "Save up to ten setups of five scarabs and one Astrolabe."}</p>
           <dl>
-            {customFarm?.hasItems ? <>
-              <div><dt>Current cost</dt><dd>{fmtPrice(customFarm.total, currency, divineRate)}</dd></div>
-              <div><dt>{changeWindow}{activeKey.endsWith("R") ? " divine-adjusted" : ""}</dt><dd>{pct(customChange)}</dd></div>
-              <div><dt>Setup</dt><dd>{customFarm.scarabs.length}/5 scarabs{customFarm.astrolabe ? " + Astrolabe" : ""}</dd></div>
+            {deskStrategy ? <>
+              <div><dt>Current cost</dt><dd>{fmtPrice(deskStrategy.total, currency, divineRate)}</dd></div>
+              <div><dt>{changeWindow}{realSuffix}</dt><dd>{pct(deskChange)}</dd></div>
+              <div><dt>Setup</dt><dd>{deskStrategy.scarabs.length}/5 scarabs{deskStrategy.astrolabe ? " + Astrolabe" : ""}</dd></div>
             </> : <>
-              <div><dt>Movement leader</dt><dd>{scarab?.name || "No notable movement"}</dd></div>
-              <div><dt>{changeWindow} move</dt><dd>{scarab ? pct(scarab[activeKey]) : "Stable"}</dd></div>
-              <div><dt>Direction</dt><dd>{scarab ? (scarabRising ? "Rising" : "Falling") : "Stable"}</dd></div>
+              <div><dt>Movement leader</dt><dd>{leadFarm?.name || "No notable movement"}</dd></div>
+              <div><dt>{changeWindow} move</dt><dd>{leadFarm ? pct(leadFarm[activeKey]) : "Stable"}</dd></div>
+              <div><dt>Direction</dt><dd>{leadFarm ? (leadFarmRising ? "Rising" : "Falling") : "Stable"}</dd></div>
             </>}
           </dl>
           <button type="button" onClick={() => onOpenTab("watcher")}>Open Strat Watcher</button>
@@ -375,20 +428,20 @@ export default function Overview({
           <header><h3>Price a boss kill</h3><em>Boss profit</em></header>
           <p>A quick read before the full loot and TTK view.</p>
           <dl>
-            <div><dt>Current leader</dt><dd>{bossSummary?.best?.boss?.name || "Unavailable"}</dd></div>
-            <div><dt>Estimated net</dt><dd>{bossSummary?.best ? fmtPrice(bossSummary.best.net, currency, divineRate) : "—"}</dd></div>
+            <div><dt>Current leader</dt><dd>{bestBoss?.boss?.name || "Unavailable"}</dd></div>
+            <div><dt>Estimated net</dt><dd>{bestBoss ? fmtPrice(bestBoss.net, currency, divineRate) : "—"}</dd></div>
             <div><dt>TTK profile</dt><dd>{profile?.name || "Default"}</dd></div>
           </dl>
-          <button type="button" onClick={() => onOpenTab("bosses", bossSummary?.best?.boss?.id)}>Open Boss profit</button>
+          <button type="button" onClick={() => onOpenTab("bosses", bestBoss?.boss?.id)}>Open Boss profit</button>
         </section>
 
         <section className="ov-desk">
           <header><h3>Choose a Delve route</h3><em>Delve EXP</em></header>
           <p>Reuses saved depth and sample; EXP stays visible.</p>
           <dl>
-            <div><dt>Target</dt><dd>{delveSummary?.best?.exclusive?.fossil || "Unavailable"}</dd></div>
-            <div><dt>Depth EV</dt><dd>{delveSummary?.best ? fmtPrice(delveSummary.best.depthAdjustedRange.median, currency, divineRate) : "—"}</dd></div>
-            <div><dt>Opportunity</dt><dd>{delveSummary?.best ? `${Math.round(delveSummary.best.opportunityIndex)}/100 at ${delveSettings.depth}` : "—"}</dd></div>
+            <div><dt>Target</dt><dd>{bestDelve?.exclusive?.fossil || "Unavailable"}</dd></div>
+            <div><dt>Depth EV</dt><dd>{bestDelve ? fmtPrice(bestDelve.depthAdjustedRange.median, currency, divineRate) : "—"}</dd></div>
+            <div><dt>Opportunity</dt><dd>{bestDelve ? `${Math.round(bestDelve.opportunityIndex)}/100 at ${delveSettings.depth}` : "—"}</dd></div>
           </dl>
           <button type="button" onClick={() => onOpenTab("delve")}>Open Delve</button>
         </section>

@@ -80,20 +80,29 @@ badged `shared quote` rather than implying variant-level precision.
 `src/App.jsx` owns the shared shell, global market controls and scarab views.
 `src/Overview.jsx` is the default view and reads the same generated snapshots as
 the detailed tools. It calls the pure boss and Delve calculation modules instead
-of maintaining separate estimates. The compact briefing presents one selectable
-headline, four core signal selectors, an optional rotating Strat Watcher signal,
-three decision desks, a saved-strategy downward-trend strip and a data-quality strip.
-These are alternate presentations of existing results, not new calculations.
+of maintaining separate estimates. It stacks two briefing panels: an upward one
+with the feature card on the left and the signal selectors on the right, and a
+downward one mirrored on the y axis. Both panels draw the same five desks —
+Popular farms, Strat Watcher, Boss profit, Delve and category movers — and each
+desk contributes a signal only while it has an entry for that direction. Three
+decision desks and a data-quality strip follow. These are alternate
+presentations of existing results, not new calculations.
+
+`src/overviewTrends.js` owns the ranking and the shared five-second rotation.
+Every desk keeps a three-deep shortlist per direction and both panels advance
+through their shortlists on the same tick. Movements — scarab mechanics, saved
+strategies, category prices — are sign-filtered, so a rising list holds real
+gains rather than the least-bad losses. Levels rather than movements — boss net,
+Delve opportunity — take a plain best/worst slice instead, since an all-negative
+boss list still has a best three. Non-finite values never rank: a window without
+a comparison snapshot is not a trend.
 Popular farms remains a dedicated scarab-only market view. Strat Watcher owns
 the searchable five-scarab-plus-Astrolabe editor and caps its collection at ten.
 `src/farmStrategy.js` migrates the old `vaal-street.farmingStrategy.v1` record
 into `vaal-street.farmingStrategies.v2`, sanitises unique strategy ids and
 calculates weighted nominal and divine-adjusted movement from the same live
-scarab and Astrolabe rows. Overview rotates through the three highest measured
-moves every five seconds and separately presents up to three negative moves.
-TTK profiles stay
-inside Boss profit and Delve sample profiles stay inside the Delve Assumptions
-panel. Boss summaries and price gaps carry a boss id through `src/App.jsx`, so
+scarab and Astrolabe rows. TTK profiles stay inside Boss profit and Delve sample
+profiles stay inside the Delve Assumptions panel. Boss summaries and price gaps carry a boss id through `src/App.jsx`, so
 their links open the relevant boss instead of the first boss in the list.
 
 The Delve toolbar also owns a collapsible money guide. Its route priorities,

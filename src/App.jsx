@@ -1697,7 +1697,7 @@ const css = `
 }
 .ov-window button.on { color: #fff0e7; background: #7a2a13; }
 .ov-window button:focus-visible, .ov-signal:focus-visible, .ov-feature button:focus-visible,
-.ov-desk button:focus-visible, .ov-attention button:focus-visible, .ov-falling-head button:focus-visible { outline: 2px solid #ff6a24; outline-offset: 2px; }
+.ov-desk button:focus-visible, .ov-attention button:focus-visible { outline: 2px solid #ff6a24; outline-offset: 2px; }
 .ov-briefing { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, .75fr); gap: 8px; }
 .ov-feature {
   min-height: 190px; padding: 14px; border: 1px solid #66301e; border-left: 3px solid #f05a24;
@@ -1736,16 +1736,22 @@ const css = `
 .ov-value { grid-column: 2; grid-row: 1 / 3; color: #dbccc4; font-size: 14px; font-weight: 500; text-align: right; white-space: nowrap; }
 .ov-value.up { color: #69bfa1; }
 .ov-value.down { color: #d47f7f; }
-.ov-falling { margin-top: 8px; padding: 9px; background: #0f0b0a; border: 1px solid #482621; border-radius: 5px; }
-.ov-falling-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 7px; }
-.ov-falling-head > div { display: grid; gap: 2px; }
-.ov-falling-head strong { color: #e2cec6; font-size: 14px; font-weight: 500; }
-.ov-falling-head button {
-  padding: 5px 8px; color: #d99a87; background: #17100d; border: 1px solid #65351f;
-  border-radius: 4px; cursor: pointer; font: inherit; font-size: 11.5px;
+/* The downward panel is the upward panel mirrored on the y axis: the signal
+   list moves to the left, the feature card to the right, and every row inside
+   it reverses so the two blocks read outwards from the middle of the page. */
+.ov-head-flip { justify-content: flex-end; margin-top: 14px; text-align: right; }
+.ov-head-flip .ov-kicker { color: #d4694a; }
+.ov-flip { grid-template-columns: minmax(260px, .75fr) minmax(0, 1.6fr); }
+.ov-flip .ov-feature {
+  border-left: 1px solid #66301e; border-right: 3px solid #d1563a; text-align: right;
+  background: radial-gradient(circle at 12% 22%, rgba(212,127,127,.15), transparent 26%), linear-gradient(235deg, #1b0e0a, #100b09 68%);
 }
-.ov-falling-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
-.ov-falling > p { margin: 2px 0; color: #8f786f; font-size: 12px; }
+.ov-flip .ov-feature-top, .ov-flip .ov-feature-number,
+.ov-flip .ov-feature-bottom, .ov-flip .ov-feature-flow { flex-direction: row-reverse; }
+.ov-flip .ov-feature h3, .ov-flip .ov-feature > p { margin-left: auto; }
+.ov-flip .ov-signal { grid-template-columns: auto minmax(0, 1fr); text-align: right; }
+.ov-flip .ov-signal .ov-kind, .ov-flip .ov-signal > strong { grid-column: 2; }
+.ov-flip .ov-value { grid-column: 1; text-align: left; }
 .ov-section-title {
   margin: 13px 0 6px; padding: 0; color: #9e8176; border: 0;
   font-size: 11px; font-weight: 500; letter-spacing: .13em; text-transform: uppercase;
@@ -1784,7 +1790,8 @@ const css = `
 }
 @media (max-width: 680px) {
   .ov-head { align-items: flex-start; flex-direction: column; }
-  .ov-briefing, .ov-desks, .ov-attention, .ov-falling-grid { grid-template-columns: 1fr; }
+  .ov-head-flip { align-items: flex-end; }
+  .ov-briefing, .ov-flip, .ov-desks, .ov-attention { grid-template-columns: 1fr; }
   .ov-signal-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ov-attention > div, .ov-attention > button { border-right: 0; border-bottom: 1px solid #3a261e; }
   .ov-attention > :last-child { border-bottom: 0; }
