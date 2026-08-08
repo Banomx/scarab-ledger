@@ -118,8 +118,9 @@ export default function Overview({
       read("resonators.json"),
       read("catalysts.json"),
       read("astrolabes.json"),
-    ]).then(([prices, fossils, resonators, catalysts, astrolabes]) => {
-      if (!cancelled) setSnapshots({ prices, fossils, resonators, catalysts, astrolabes });
+      read("catalogue.json"),
+    ]).then(([prices, fossils, resonators, catalysts, astrolabes, catalogue]) => {
+      if (!cancelled) setSnapshots({ prices, fossils, resonators, catalysts, astrolabes, catalogue });
     });
     return () => { cancelled = true; };
   }, [staticBase]);
@@ -351,6 +352,38 @@ export default function Overview({
   const deskStrategy = rotateTrend(pools.watcher.up, tick).entry || strategyRows[0] || null;
   const deskChange = deskStrategy?.[activeKey];
 
+  /* What the last snapshot found the market had gained, lost or renamed. New
+     items need no help — every category is fetched by type and name pattern —
+     but the curated boss and Delve datasets reference names by string, so a
+     name leaving a feed is the one case that needs a person. */
+  const catalogue = useMemo(() => {
+    const categories = snapshots?.catalogue?.categories;
+    if (!Array.isArray(categories)) return null;
+    const collect = (field) => categories.flatMap((entry) => entry[field] || []);
+    const added = collect("added");
+    const renamed = collect("renamed");
+    const suspected = collect("suspected");
+    const removed = collect("removed");
+    const breaking = collect("breaking");
+    const changes = added.length + renamed.length + suspected.length + removed.length;
+    const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+    if (breaking.length) {
+      return {
+        title: `${plural(breaking.length, "curated name")} need updating`,
+        note: `${breaking.slice(0, 3).join(", ")} left the market feed, so anything pricing them is unpriced.`,
+      };
+    }
+    if (!changes) {
+      return { title: "No catalogue changes", note: "New items are adopted automatically on the next hourly snapshot." };
+    }
+    const parts = [];
+    if (added.length) parts.push(`${plural(added.length, "new item")} adopted`);
+    if (renamed.length) parts.push(`${plural(renamed.length, "rename")} followed`);
+    if (suspected.length) parts.push(`${plural(suspected.length, "possible rename")}`);
+    if (removed.length) parts.push(`${plural(removed.length, "item")} gone`);
+    return { title: `${plural(changes, "catalogue change")}`, note: `${parts.join(", ")}. Nothing curated is affected.` };
+  }, [snapshots]);
+
   const coverageTitle = bossSummary
     ? bossSummary.missing > 0
       ? `${bossSummary.missing} boss drop price${bossSummary.missing === 1 ? "" : "s"} missing`
@@ -453,6 +486,11 @@ export default function Overview({
         </button>
         <div><span>Experimental</span><strong>Delve assumptions stay labelled</strong><small>Community estimates never appear as official probabilities.</small></div>
         <div><span>Source quality</span><strong>{status}</strong><small>GGG exchange remains first; fallbacks stay visible.</small></div>
+        <div>
+          <span>Catalogue</span>
+          <strong>{catalogue ? catalogue.title : snapshots === null ? "Checking the item catalogue" : "Catalogue tracking unavailable"}</strong>
+          <small>{catalogue ? catalogue.note : "The first snapshot after this change starts the comparison."}</small>
+        </div>
       </section>
     </main>
   );

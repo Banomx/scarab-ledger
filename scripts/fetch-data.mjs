@@ -21,6 +21,8 @@ import {
 import {
   fetchGggExchange, fetchGggPriceLookback, mergeGggLookback,
 } from "./ggg-exchange.mjs";
+import { CATEGORY_BY_KEY, FETCHED_CATEGORIES } from "../src/categories.js";
+import { applyRenames, breakingNames, describeDiff, diffCatalogue } from "../src/catalogue.js";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -150,22 +152,10 @@ function mergeGggPriceMap(priceMap, ggg, leagueParam) {
   return out;
 }
 
-/* ---------- extra exchange categories (same features as scarabs) ---------- */
-const EXTRA_CATEGORIES = [
-  // `watch` narrows which poe.watch categories a name regex may match in;
-  // without it /fossil/i would happily pick up a unique with the word in it.
-  { key: "astrolabes", type: "Astrolabe", re: /astrolabe/i, watch: ["currency"] },
-  // You query poe.watch's `currency` for catalysts but the rows come back
-  // tagged `catalysts`, so both spellings have to be accepted.
-  { key: "catalysts", type: "Currency", re: /catalyst/i, watch: ["currency", "catalysts"] },
-  // The Delve tab could read fossil prices out of prices.json, which already
-  // covers the Fossil and Resonator types for the boss tab. It gets its own
-  // category anyway because prices.json is a bare name -> price map: no
-  // sparkline, no self-history, so no "is this fossil going up?" — which is
-  // the whole question a delver is asking.
-  { key: "fossils", type: "Fossil", re: /fossil/i, watch: ["fossil"] },
-  { key: "resonators", type: "Resonator", re: /resonator/i, watch: ["resonator"] },
-];
+/* ---------- extra exchange categories (same features as scarabs) ----------
+   Described once in src/categories.js, which the app reads too, so adding a
+   family never means editing the same list in two places. */
+const EXTRA_CATEGORIES = FETCHED_CATEGORIES;
 
 async function getExchangeCategory(lgParams, type, nameRe, divisor = null) {
   for (const p of lgParams) {
@@ -868,6 +858,54 @@ async function previousPriceSnapshot(slug) {
   return tryJson(`${base}/data/${slug}/prices.json`);
 }
 
+/* ---------- catalogue drift ----------
+   Categories are fetched by type plus a name regex, so an item GGG adds shows
+   up on its own. What needs watching is the other direction: a name that
+   leaves a feed takes its accumulated history with it and silently unprices
+   any curated boss or Delve line referencing it. Comparing each category
+   against the previously deployed file turns that into a line in this log on
+   the hour it happens rather than something noticed weeks later. */
+
+async function previousCategoryItems(slug, file) {
+  const base = pagesBaseUrl();
+  if (!base) return null;
+  const previous = await tryJson(`${base}/data/${slug}/${file}`);
+  return Array.isArray(previous?.items) ? previous.items : null;
+}
+
+/* Names the curated datasets price by string. A catalogue change touching one
+   of these is a breakage; anything else is just news. */
+let curatedNamesPromise = null;
+function curatedNames() {
+  if (!curatedNamesPromise) {
+    curatedNamesPromise = Promise.all([configuredBossPriceNames(), import("../src/delveData.js")])
+      .then(([boss, delve]) => new Set([...boss, ...delve.FOSSILS.map((f) => f.name)]))
+      .catch(() => new Set());
+  }
+  return curatedNamesPromise;
+}
+
+async function trackCatalogue(slug, cat, items, curated) {
+  const previous = await previousCategoryItems(slug, cat.file);
+  const empty = { added: [], removed: [], renamed: [], suspected: [], breaking: [] };
+  if (!previous) {
+    console.log(`  ${cat.key}: ${items.length} items, no previous snapshot to compare against`);
+    return { key: cat.key, label: cat.label, count: items.length, first: true, ...empty };
+  }
+  const diff = diffCatalogue(previous, items);
+  const breaking = breakingNames(diff, curated);
+  console.log(`  ${describeDiff(cat.key, diff)}`);
+  if (breaking.length) {
+    console.log(`  ${cat.key}: CURATED NAMES AFFECTED — ${breaking.join(", ")}`
+      + " (update src/bossData.js or src/delveData.js)");
+  }
+  return {
+    key: cat.key, label: cat.label, count: diff.count, first: false,
+    added: diff.added, removed: diff.removed, renamed: diff.renamed,
+    suspected: diff.suspected, breaking,
+  };
+}
+
 /* Hourly exchange digests contain only that hour's completed trades. Keep a
    recent official boss-item price from the preceding deployment when the new
    hour is empty; the original trade hour travels with the entry, so it cannot
@@ -905,11 +943,17 @@ function normalizePoint(p) {
   return out;
 }
 
-async function updateSelfHistory(slug, items, prefix = "", rate = null) {
+async function updateSelfHistory(slug, items, prefix = "", rate = null, renames = []) {
   const base = pagesBaseUrl();
   const reset = process.env.RESET_HISTORY === "true";
   const prev = (base && !reset) ? await tryJson(`${base}/data/${slug}/${prefix}selfhistory.json`) : null;
   const points = ((prev && Array.isArray(prev.points)) ? prev.points : []).map(normalizePoint);
+  /* Points are keyed by display name, so an id-confirmed rename would restart
+     that item's history at zero. Carrying the old key forward keeps its change
+     windows intact. Only id-confirmed renames arrive here — a guess from name
+     similarity would risk grafting a sibling's price curve onto the wrong
+     item, which is worse than a day of blank percentages. */
+  applyRenames(points, renames);
   const values = {};
   for (const it of items) values[it.name] = Math.round(it.chaosValue * 100) / 100;
   const point = { t: new Date().toISOString(), values }; // one point per run
@@ -1193,6 +1237,16 @@ async function main() {
       for (const it of items) if (!it.divineValue) it.divineValue = it.chaosValue / divineRate;
 
       const slug = slugify(lg.name);
+      /* One drift report per run. The primary current league is the catalogue
+         the curated boss and Delve datasets are written against, and every
+         extra league would cost another round of requests for the same news. */
+      const trackDrift = lg.group === "current" && li === 0;
+      const curated = trackDrift ? await curatedNames() : null;
+      const catalogue = [];
+      const scarabDrift = trackDrift
+        ? await trackCatalogue(slug, CATEGORY_BY_KEY.scarabs, items, curated)
+        : null;
+      if (scarabDrift) catalogue.push(scarabDrift);
       let history = {};
       let ninjaMaxAgo = 0;
       // Only the legacy endpoint serves per-item history. poe.watch has a
@@ -1210,7 +1264,7 @@ async function main() {
       let historyAxis = "league day";
       let rateAxis = { mode: "ninja", maxAgo: ninjaMaxAgo };
       if (lg.group === "current") {
-        self = await updateSelfHistory(slug, items, "", divineRate);
+        self = await updateSelfHistory(slug, items, "", divineRate, scarabDrift?.renamed);
         applySelfChanges(items, self);
         const alignMs = alignmentBase(self, lg.start);
         if (!Object.keys(history).length) {
@@ -1306,19 +1360,21 @@ async function main() {
             const wi = watchCategoryItems(watch.rows, cat.re, watch.rate || divineRate, cat.watch, watch.exchange);
             if (wi.length) r = { items: wi, source: "watch" };
           }
-          if (!r) r = await getExchangeCategory(lg.params, cat.type, cat.re, ctx?.divisor);
+          if (!r) r = await getExchangeCategory(lg.params, cat.ninjaType, cat.re, ctx?.divisor);
           const rate2 = ggg?.divineRate || r?.exchangeDivineRate || divineRate;
           const mergedCat = mergeGggCategory(r?.items || [], ggg, cat.key, rate2);
           const catItems = mergedCat.items;
           if (!catItems.length) { console.log(`  ${cat.key}: no data for ${lg.name}`); continue; }
           for (const it of catItems) if (!it.divineValue) it.divineValue = it.chaosValue / rate2;
+          const catDrift = trackDrift ? await trackCatalogue(slug, cat, catItems, curated) : null;
+          if (catDrift) catalogue.push(catDrift);
           let catHist = {};
           let catSelf = { points: [] };
           let catHistorySource = "none";
           let catHistoryAxis = "days since first snapshot";
           let catRateHistory = [];
           if (lg.group === "current") {
-            catSelf = await updateSelfHistory(slug, catItems, `${cat.key}-`, rate2);
+            catSelf = await updateSelfHistory(slug, catItems, `${cat.key}-`, rate2, catDrift?.renamed);
             applySelfChanges(catItems, catSelf);
             const catAlign = alignmentBase(catSelf, lg.start);
             catHist = selfHistoryToSeries(catSelf, catAlign);
@@ -1346,6 +1402,12 @@ async function main() {
         } catch (e) {
           console.log(`  ${cat.key}: FAILED (${e.message})`);
         }
+      }
+
+      if (catalogue.length) {
+        const breaking = catalogue.flatMap((entry) => entry.breaking);
+        await writeFile(path.join(dir, "catalogue.json"), JSON.stringify({ generatedAt, categories: catalogue }));
+        if (breaking.length) console.log(`  catalogue: ${breaking.length} curated name(s) need attention`);
       }
 
       written.push({ name: lg.name, slug, group: lg.group || "current" });

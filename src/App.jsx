@@ -9,6 +9,7 @@ import BossProfit from "./BossProfit.jsx";
 import Delve from "./Delve.jsx";
 import { SMART_DIV_AT, fmtChaos, fmtDiv, fmtPrice, unitFor, unitForSeries } from "./money.js";
 import { CHANGE_KEYS, CHANGE_WINDOW_OPTIONS, nearestRateWindow, weightedChange } from "./marketWindows.js";
+import { TAB_CATEGORIES } from "./categories.js";
 import {
   FARM_STRATEGY_COUNT_LIMIT, computeFarmStrategy, defaultFarmStrategy,
   loadFarmStrategies, makeFarmStrategyId, sanitizeFarmStrategy, saveFarmStrategies,
@@ -286,10 +287,9 @@ function StrategySlotPicker({ index, value, items, kind = "scarab", open, query,
    so also opt out of the shared connection banners. */
 const OWN_BAR = { overview: true, bosses: true, delve: true };
 
-const CATEGORY_TABS = {
-  astrolabes: { label: "Astrolabes", type: "Astrolabe", re: /astrolabe/i, shape: "ring" },
-  catalysts: { label: "Catalysts", type: "Currency", re: /catalyst/i, shape: "gem" },
-};
+/* Which families get their own tab, and how to fetch them live. Defined in
+   src/categories.js so the snapshot script and the app cannot disagree. */
+const CATEGORY_TABS = TAB_CATEGORIES;
 
 const SMALL_WORDS = new Set(["of", "the", "a", "and", "in"]);
 function slugToName(slug) {
@@ -1757,7 +1757,7 @@ const css = `
 .ov-desk dd { margin: 0; color: #e6d7d0; font-weight: 500; text-align: right; }
 .ov-desk > button { margin-top: 7px; }
 .ov-attention {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 8px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 8px;
   border: 1px solid #3e281f; background: #0f0c0a;
 }
 .ov-attention > div, .ov-attention > button {

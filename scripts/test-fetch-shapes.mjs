@@ -24,6 +24,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { CATEGORIES } from "../src/categories.js";
 
 const OUT_DIR = await mkdtemp(path.join(tmpdir(), "sl-fetch-test-"));
 const hits = [];
@@ -268,6 +269,22 @@ ok(!hits.includes("/poe1/api/economy/exchange/current/overview?type=Invitation")
    "Invitation answered from stash, so it should not have been retried on the exchange");
 ok(hits.some((h) => h === "/poe1/api/economy/exchange/current/overview?type=Astrolabe"), "astrolabes must be fetched");
 ok(hits.some((h) => h === "/poe1/api/economy/stash/current/item/overview?type=UniqueWeapon"), "uniques must come from the stash endpoint");
+
+// Catalogue drift is recorded for every tracked family, not just the ones
+// with their own tab. With no previous deployment to compare against, every
+// family reports `first` rather than claiming its whole contents are new.
+const catalogue = JSON.parse(await readFile(path.join(OUT_DIR, "Allflame", "catalogue.json"), "utf8"));
+const tracked = catalogue.categories.map((c) => c.key).sort();
+const known = new Set(CATEGORIES.map((c) => c.key));
+ok(tracked.every((key) => known.has(key)), `catalogue tracked an unknown family: ${tracked.join(",")}`);
+// A family the feeds served must be tracked; one they served nothing for is
+// already reported as missing data and has no catalogue to diff.
+for (const key of ["scarabs", "astrolabes", "fossils", "resonators"]) {
+  ok(tracked.includes(key), `${key} missing from the catalogue report`);
+}
+ok(catalogue.categories.every((c) => c.first && !c.added.length && !c.breaking.length),
+   "a first run reports no drift rather than inventing it");
+ok(catalogue.categories.find((c) => c.key === "scarabs")?.count > 0, "scarab catalogue counted");
 
 console.log(`\nprice map: ${Object.keys(P).length} names, chaos=${P["Chaos Orb"]?.c}, divine=${P["Divine Orb"]?.c}c`);
 await rm(OUT_DIR, { recursive: true, force: true });

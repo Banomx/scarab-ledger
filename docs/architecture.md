@@ -75,6 +75,64 @@ not price the line if any outcome is missing. Current aggregate feeds also do no
 two-Abyssal-socket uniques; those lines keep the live name-wide quote and are
 badged `shared quote` rather than implying variant-level precision.
 
+## Catalogue maintenance
+
+Every market family is defined once in `src/categories.js`: key, display label,
+poe.ninja type, name regex, the poe.watch categories that regex may match
+inside, and whether it gets its own tab. `scripts/fetch-data.mjs` and
+`src/App.jsx` both read it, so adding a family is one entry plus a nav item
+rather than the same list maintained in two places.
+
+No list of individual item names exists anywhere in the fetch path. Families
+are fetched by type and matched by name pattern, so an item GGG adds to an
+existing family is priced, charted and counted in movement on the next hourly
+run with no code change. Scarabs additionally group themselves: `groupForName`
+in `src/App.jsx` falls back to the first word of the name, so a new scarab
+joins its existing mechanic and a brand-new family creates its own group.
+`GROUPS` there lists only the irregular names — Horned, Universal, Influencing
+— and seeds the demo snapshot. `GROUP_TONES` is cosmetic; an unknown group
+renders in the default colour.
+
+What is not automatic is a **rename**. Curated data references items by display
+name — `src/bossData.js` drop tables, `src/delveData.js` biome pools — and
+self-history is keyed by name too, so a renamed item silently unprices those
+lines and restarts its own history.
+
+`src/catalogue.js` compares each family against the previously deployed
+snapshot, once per run for the primary current league, and writes
+`catalogue.json` beside the other files for that league:
+
+* `renamed` — the same stable id under a different name. poe.watch assigns real
+  numeric item ids; the poe.ninja exchange derives its id from the name itself,
+  so only a numeric id counts as continuity. These are acted on: `applyRenames`
+  rewrites the accumulated self-history keys so the item's change windows
+  survive instead of restarting blank.
+* `suspected` — a vanished name paired with a new one by token similarity.
+  Reported, never applied. "Ritual Scarab of Wisps" and "Ritual Scarab of
+  Abundance" share three of four tokens, so acting on similarity alone would
+  graft a sibling's price curve onto the wrong item — worse than a day of empty
+  percentages.
+* `added` / `removed` — the plain remainder.
+* `breaking` — the subset of the above that curated data prices by name. This
+  is the only part that needs a person; it prints as `CURATED NAMES AFFECTED`
+  in the Actions log.
+
+The Overview's data-quality strip shows the same summary, so a catalogue change
+is visible on the site and not only in CI output. With no previous deployment
+to compare against, a family reports `first` rather than claiming its entire
+contents are new.
+
+### After a league launch
+
+1. Read the `catalogue:` lines in the Actions log, or the Catalogue cell on the
+   Overview.
+2. Fix anything reported as `CURATED NAMES AFFECTED` in `src/bossData.js` or
+   `src/delveData.js`. `reportUnpricedBossItems` prints the closest priced names
+   as suggestions, which separates a drifted spelling from an item no source
+   lists.
+3. New Delve fossils are priced and charted immediately but need a biome pool
+   entry in `src/delveData.js` before they enter Depth EV.
+
 ## UI composition
 
 `src/App.jsx` owns the shared shell, global market controls and scarab views.
