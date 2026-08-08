@@ -10,8 +10,8 @@ import Delve from "./Delve.jsx";
 import { SMART_DIV_AT, fmtChaos, fmtDiv, fmtPrice, unitFor, unitForSeries } from "./money.js";
 import { CHANGE_KEYS, CHANGE_WINDOW_OPTIONS, nearestRateWindow, weightedChange } from "./marketWindows.js";
 import {
-  computeFarmStrategy, defaultFarmStrategy, loadFarmStrategy,
-  sanitizeFarmStrategy, saveFarmStrategy,
+  FARM_STRATEGY_COUNT_LIMIT, computeFarmStrategy, defaultFarmStrategy,
+  loadFarmStrategies, makeFarmStrategyId, sanitizeFarmStrategy, saveFarmStrategies,
 } from "./farmStrategy.js";
 
 /* ================================================================
@@ -394,7 +394,7 @@ export default function ScarabTracker() {
   const [showUniversal, setShowUniversal] = useState(true);
   const [showHorned, setShowHorned] = useState(true);
   const [chgWindow, setChgWindow] = useState("24h");      // 24h | 48h
-  const [tab, setTab] = useState("overview");             // overview | farms | prices | astrolabes | catalysts | bosses | delve
+  const [tab, setTab] = useState("overview");             // overview | farms | watcher | prices | astrolabes | catalysts | bosses | delve
   const [bossTarget, setBossTarget] = useState(null);      // boss opened from an Overview signal
   const [openGroup, setOpenGroup] = useState(null);
   const [focusScarab, setFocusScarab] = useState(null);
@@ -412,11 +412,12 @@ export default function ScarabTracker() {
   const [dragSel, setDragSel] = useState(null);           // {start, end, active} in day units
   const [rateHistory, setRateHistory] = useState([]);     // [{day, rate}] chaos per divine
   const [realMode, setRealMode] = useState(false);        // read every % in divine terms
-  const [farmStrategy, setFarmStrategy] = useState(() => loadFarmStrategy());
+  const [farmStrategies, setFarmStrategies] = useState(() => loadFarmStrategies());
   const [farmDraft, setFarmDraft] = useState(() => defaultFarmStrategy());
   const [showFarmEditor, setShowFarmEditor] = useState(false);
   const [farmPicker, setFarmPicker] = useState(null);
   const [farmQuery, setFarmQuery] = useState("");
+  const savedStrategyNeedsAstrolabes = farmStrategies.some((strategy) => !!strategy.astrolabe);
 
   /* ---- static snapshots (GitHub Pages etc.) ---- */
   const loadStaticLeague = useCallback(async (name, slugsArg) => {
@@ -579,7 +580,7 @@ export default function ScarabTracker() {
   useEffect(() => {
     const categoryKey = CATEGORY_TABS[tab]
       ? tab
-      : (showFarmEditor || farmStrategy.astrolabe) ? "astrolabes" : null;
+      : (showFarmEditor || savedStrategyNeedsAstrolabes) ? "astrolabes" : null;
     const cat = CATEGORY_TABS[categoryKey];
     if (!cat || catData[categoryKey] !== undefined) return;
     let cancelled = false;
@@ -617,7 +618,7 @@ export default function ScarabTracker() {
       if (!cancelled) setCatData((d) => ({ ...d, [categoryKey]: "missing" }));
     })();
     return () => { cancelled = true; };
-  }, [tab, league, dataSource, mode, catData, showFarmEditor, farmStrategy.astrolabe]);
+  }, [tab, league, dataSource, mode, catData, showFarmEditor, savedStrategyNeedsAstrolabes]);
 
   /* ---- derived ---- */
   const groups = useMemo(() => {
@@ -751,25 +752,34 @@ export default function ScarabTracker() {
     () => catData.astrolabes && catData.astrolabes !== "missing" ? catData.astrolabes.items || [] : [],
     [catData.astrolabes],
   );
-  const customFarm = useMemo(
-    () => computeFarmStrategy(farmStrategy, items, strategyAstrolabes),
-    [farmStrategy, items, strategyAstrolabes],
+  const customFarms = useMemo(
+    () => farmStrategies.map((strategy) => computeFarmStrategy(strategy, items, strategyAstrolabes)),
+    [farmStrategies, items, strategyAstrolabes],
   );
-  const customFarmChange = customFarm[activeKey];
-  const customFarmDirection = Number.isFinite(customFarmChange)
-    ? customFarmChange > 0 ? "more expensive" : customFarmChange < 0 ? "cheaper" : "unchanged"
-    : "history building";
-  const openFarmEditor = () => {
-    setFarmDraft({ ...farmStrategy, scarabs: [...farmStrategy.scarabs] });
+  const farmDirection = (farm) => {
+    const change = farm[activeKey];
+    return Number.isFinite(change)
+      ? change > 0 ? "more expensive" : change < 0 ? "cheaper" : "unchanged"
+      : "history building";
+  };
+  const openFarmEditor = (strategy = null) => {
+    const next = strategy || { ...defaultFarmStrategy(), id: makeFarmStrategyId(), name: `Farming strat ${farmStrategies.length + 1}` };
+    setFarmDraft({ ...next, scarabs: [...next.scarabs] });
     setFarmPicker(null); setFarmQuery(""); setShowFarmEditor(true);
   };
   const saveFarmDraft = () => {
-    const clean = saveFarmStrategy(sanitizeFarmStrategy(farmDraft));
-    setFarmStrategy(clean); setShowFarmEditor(false); setFarmPicker(null); setFarmQuery("");
+    const clean = sanitizeFarmStrategy(farmDraft);
+    if (!clean.id) clean.id = makeFarmStrategyId();
+    const exists = farmStrategies.some((strategy) => strategy.id === clean.id);
+    const next = exists
+      ? farmStrategies.map((strategy) => strategy.id === clean.id ? clean : strategy)
+      : [...farmStrategies, clean].slice(0, FARM_STRATEGY_COUNT_LIMIT);
+    setFarmStrategies(saveFarmStrategies(next));
+    setShowFarmEditor(false); setFarmPicker(null); setFarmQuery("");
   };
-  const clearFarmStrategy = () => {
-    const clean = saveFarmStrategy(defaultFarmStrategy());
-    setFarmStrategy(clean); setFarmDraft(clean); setShowFarmEditor(false); setFarmPicker(null); setFarmQuery("");
+  const deleteFarmStrategy = (id) => {
+    setFarmStrategies((current) => saveFarmStrategies(current.filter((strategy) => strategy.id !== id)));
+    if (farmDraft.id === id) setShowFarmEditor(false);
   };
 
   /* ---- render ---- */
@@ -812,6 +822,7 @@ export default function ScarabTracker() {
       <nav className="st-tabs" aria-label="Views">
         <button className={tab === "overview" ? "on" : ""} onClick={() => { setTab("overview"); setDragSel(null); }}>Overview</button>
         <button className={tab === "farms" ? "on" : ""} onClick={() => { setTab("farms"); setDragSel(null); }}>Popular farms</button>
+        <button className={tab === "watcher" ? "on" : ""} onClick={() => { setTab("watcher"); setDragSel(null); }}>Strat Watcher</button>
         <button className={tab === "prices" ? "on" : ""} onClick={() => { setTab("prices"); setDragSel(null); }}>Scarabs</button>
         <button className={tab === "astrolabes" ? "on" : ""} onClick={() => { setTab("astrolabes"); setDragSel(null); }}>Astrolabes</button>
         <button className={tab === "catalysts" ? "on" : ""} onClick={() => { setTab("catalysts"); setDragSel(null); }}>Catalysts</button>
@@ -952,7 +963,7 @@ export default function ScarabTracker() {
           divineRate={divineRate}
           fmtPrice={fmtPrice}
           movers={movers}
-          customFarm={customFarm}
+          customFarms={customFarms}
           activeKey={activeKey}
           changeKey={chgKey}
           changeWindow={chgWindow}
@@ -1153,84 +1164,13 @@ export default function ScarabTracker() {
       {/* ---------- popular farms tab ---------- */}
       {tab === "farms" && (
         <section className="st-farms">
-          <div className="st-farms-top">
-            <p className="st-farms-intro">
+          <p className="st-farms-intro">
             Scarab prices react fast when the player base changes farming strategies. Rising set
             prices mean players are buying in — a strat is getting popular. Falling prices mean the
             market is being flooded or a strat is dying off. Based on the last {chgWindow}
             {mode === "demo" ? " (sample data in this preview)" : ""}.
             {realBadges && " Divine-adjusted: a mechanic only counts as heating up if it outran the divine rate."}
-            </p>
-            <button type="button" className="st-farm-open" onClick={openFarmEditor}>Farming strat</button>
-          </div>
-
-          {showFarmEditor && (
-            <section className="st-strat-editor" aria-label="Custom farming strategy">
-              <header>
-                <div><span>Custom farming strat</span><strong>Choose up to five scarabs and one Astrolabe</strong></div>
-                <label>Strategy name<input value={farmDraft.name} maxLength={48}
-                  onChange={(event) => setFarmDraft((draft) => ({ ...draft, name: event.target.value }))} /></label>
-              </header>
-              <div className="st-strat-slots">
-                {Array.from({ length: 5 }, (_, index) => (
-                  <StrategySlotPicker key={index} index={index} value={farmDraft.scarabs[index] || ""} items={items}
-                    open={farmPicker === index} query={farmPicker === index ? farmQuery : ""}
-                    onOpen={() => { setFarmPicker((current) => current === index ? null : index); setFarmQuery(""); }}
-                    onQuery={setFarmQuery}
-                    onSelect={(name) => {
-                      setFarmDraft((draft) => {
-                        const scarabs = Array.from({ length: 5 }, (_, slot) => draft.scarabs[slot] || "");
-                        scarabs[index] = name;
-                        return { ...draft, scarabs };
-                      });
-                      setFarmPicker(null); setFarmQuery("");
-                    }} />
-                ))}
-                <StrategySlotPicker index={5} kind="astrolabe" value={farmDraft.astrolabe || ""} items={strategyAstrolabes}
-                  open={farmPicker === 5} query={farmPicker === 5 ? farmQuery : ""}
-                  onOpen={() => { setFarmPicker((current) => current === 5 ? null : 5); setFarmQuery(""); }}
-                  onQuery={setFarmQuery}
-                  onSelect={(name) => {
-                    setFarmDraft((draft) => ({ ...draft, astrolabe: name }));
-                    setFarmPicker(null); setFarmQuery("");
-                  }} />
-              </div>
-              <footer>
-                <span>{farmDraft.scarabs.filter(Boolean).length}/5 scarabs{farmDraft.astrolabe ? " + Astrolabe" : ""}. Duplicate scarabs are allowed.</span>
-                <div>
-                  {(farmStrategy.scarabs.length > 0 || farmStrategy.astrolabe) && <button type="button" className="quiet" onClick={clearFarmStrategy}>Clear saved</button>}
-                  <button type="button" className="quiet" onClick={() => { setShowFarmEditor(false); setFarmPicker(null); }}>Cancel</button>
-                  <button type="button" onClick={saveFarmDraft} disabled={!farmDraft.scarabs.some(Boolean) && !farmDraft.astrolabe}>Save strategy</button>
-                </div>
-              </footer>
-            </section>
-          )}
-
-          {customFarm.hasItems && (
-            <section className="st-strat-saved">
-              <div className="st-strat-saved-title"><span>Your farming strat</span><strong>{customFarm.name}</strong></div>
-              <div className="st-strat-icons">
-                {customFarm.scarabs.map((name, index) => {
-                  const item = items.find((candidate) => candidate.name === name);
-                  return <span key={`${name}-${index}`} tabIndex="0" aria-label={name} data-name={name}
-                    className={`st-strat-icon${item ? "" : " missing"}`}>
-                    <ScarabIcon size={22} tone={GROUP_TONES[item?.group] || "#6b4a3b"} />
-                  </span>;
-                })}
-                {customFarm.astrolabe && (
-                  <span tabIndex="0" aria-label={customFarm.astrolabe} data-name={customFarm.astrolabe}
-                    className={`st-strat-icon astrolabe${customFarm.astrolabeItem ? "" : " missing"}`}>
-                    <CategoryIcon name={customFarm.astrolabe} shape="ring" size={22} />
-                  </span>
-                )}
-              </div>
-              <div className="st-strat-total"><span>Current cost</span><strong>{fmtPrice(customFarm.total, currency, divineRate)}</strong></div>
-              <div className="st-strat-move"><span>{chgWindow}{activeKey.endsWith("R") ? " divine-adjusted" : ""}</span>
-                <strong><PctBadge v={customFarmChange} real={activeKey.endsWith("R")} /><em>{customFarmDirection}</em></strong></div>
-              <button type="button" onClick={openFarmEditor}>Edit</button>
-              {!!customFarm.missing.length && <small>{customFarm.missing.length} saved scarab price{customFarm.missing.length === 1 ? " is" : "s are"} currently unavailable.</small>}
-            </section>
-          )}
+          </p>
           {realMode && rateReady && (
             <div className="st-chart st-rate-strip">
               <div className="st-chart-label">
@@ -1290,6 +1230,101 @@ export default function ScarabTracker() {
             ))}
           </div>
           <p className="st-farms-note">Tap anything to jump to its price breakdown and league graph.</p>
+        </section>
+      )}
+
+      {/* ---------- saved strategy watcher ---------- */}
+      {tab === "watcher" && (
+        <section className="st-watcher">
+          <div className="st-watcher-head">
+            <div>
+              <span className="ov-kicker">Saved setups</span>
+              <h2>Strat Watcher</h2>
+              <p>Track the combined cost of up to ten farming strategies across the selected market window.</p>
+            </div>
+            <div className="st-watcher-create">
+              <span>{farmStrategies.length}/{FARM_STRATEGY_COUNT_LIMIT} saved</span>
+              <button type="button" className="st-farm-open" disabled={farmStrategies.length >= FARM_STRATEGY_COUNT_LIMIT}
+                onClick={() => openFarmEditor()}>New strategy</button>
+            </div>
+          </div>
+
+          {showFarmEditor && (
+            <section className="st-strat-editor" aria-label="Custom farming strategy">
+              <header>
+                <div><span>Custom farming strat</span><strong>Choose up to five scarabs and one Astrolabe</strong></div>
+                <label>Strategy name<input value={farmDraft.name} maxLength={48}
+                  onChange={(event) => setFarmDraft((draft) => ({ ...draft, name: event.target.value }))} /></label>
+              </header>
+              <div className="st-strat-slots">
+                {Array.from({ length: 5 }, (_, index) => (
+                  <StrategySlotPicker key={index} index={index} value={farmDraft.scarabs[index] || ""} items={items}
+                    open={farmPicker === index} query={farmPicker === index ? farmQuery : ""}
+                    onOpen={() => { setFarmPicker((current) => current === index ? null : index); setFarmQuery(""); }}
+                    onQuery={setFarmQuery}
+                    onSelect={(name) => {
+                      setFarmDraft((draft) => {
+                        const scarabs = Array.from({ length: 5 }, (_, slot) => draft.scarabs[slot] || "");
+                        scarabs[index] = name;
+                        return { ...draft, scarabs };
+                      });
+                      setFarmPicker(null); setFarmQuery("");
+                    }} />
+                ))}
+                <StrategySlotPicker index={5} kind="astrolabe" value={farmDraft.astrolabe || ""} items={strategyAstrolabes}
+                  open={farmPicker === 5} query={farmPicker === 5 ? farmQuery : ""}
+                  onOpen={() => { setFarmPicker((current) => current === 5 ? null : 5); setFarmQuery(""); }}
+                  onQuery={setFarmQuery}
+                  onSelect={(name) => {
+                    setFarmDraft((draft) => ({ ...draft, astrolabe: name }));
+                    setFarmPicker(null); setFarmQuery("");
+                  }} />
+              </div>
+              <footer>
+                <span>{farmDraft.scarabs.filter(Boolean).length}/5 scarabs{farmDraft.astrolabe ? " + Astrolabe" : ""}. Duplicate scarabs are allowed.</span>
+                <div>
+                  <button type="button" className="quiet" onClick={() => { setShowFarmEditor(false); setFarmPicker(null); }}>Cancel</button>
+                  <button type="button" onClick={saveFarmDraft} disabled={!farmDraft.scarabs.some(Boolean) && !farmDraft.astrolabe}>Save strategy</button>
+                </div>
+              </footer>
+            </section>
+          )}
+
+          {!customFarms.length && !showFarmEditor && (
+            <div className="st-watcher-empty">No saved strategies yet. Add one to start watching its full setup cost.</div>
+          )}
+          <div className="st-watcher-list">
+            {customFarms.map((farm) => (
+              <section className="st-strat-saved" key={farm.id}>
+                <div className="st-strat-saved-title"><span>Farming strat</span><strong>{farm.name}</strong></div>
+                <div className="st-strat-icons">
+                  {farm.scarabs.map((name, index) => {
+                    const item = items.find((candidate) => candidate.name === name);
+                    return <span key={`${name}-${index}`} tabIndex="0" aria-label={name} data-name={name}
+                      className={`st-strat-icon${item ? "" : " missing"}`}>
+                      <ScarabIcon size={22} tone={GROUP_TONES[item?.group] || "#6b4a3b"} />
+                    </span>;
+                  })}
+                  {farm.astrolabe && (
+                    <span tabIndex="0" aria-label={farm.astrolabe} data-name={farm.astrolabe}
+                      className={`st-strat-icon astrolabe${farm.astrolabeItem ? "" : " missing"}`}>
+                      <CategoryIcon name={farm.astrolabe} shape="ring" size={22} />
+                    </span>
+                  )}
+                </div>
+                <div className="st-strat-total"><span>Current cost</span><strong>{fmtPrice(farm.total, currency, divineRate)}</strong></div>
+                <div className="st-strat-move"><span>{chgWindow}{activeKey.endsWith("R") ? " divine-adjusted" : ""}</span>
+                  <strong><PctBadge v={farm[activeKey]} real={activeKey.endsWith("R")} /><em>{farmDirection(farm)}</em></strong></div>
+                <div className="st-strat-actions">
+                  <button type="button" onClick={() => openFarmEditor(farm)}>Edit</button>
+                  <button type="button" className="danger" onClick={() => {
+                    if (window.confirm(`Delete ${farm.name}?`)) deleteFarmStrategy(farm.id);
+                  }}>Delete</button>
+                </div>
+                {!!farm.missing.length && <small>{farm.missing.length} saved item price{farm.missing.length === 1 ? " is" : "s are"} currently unavailable.</small>}
+              </section>
+            ))}
+          </div>
         </section>
       )}
 
@@ -1513,13 +1548,20 @@ const css = `
   border-radius: 3px; color: #d9a86a; font-size: 8.5px; font-style: normal;
   line-height: 1; letter-spacing: 0.08em; vertical-align: 1px;
 }
-.st-farms-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
 .st-farms-intro { max-width: 720px; font-size: 13.5px; line-height: 1.55; color: #b49c91; margin: 2px 0 18px; }
-.st-farm-open, .st-strat-editor button, .st-strat-saved > button {
+.st-farm-open, .st-strat-editor button, .st-strat-saved > button, .st-strat-actions button {
   flex: 0 0 auto; padding: 7px 11px; color: #f0d8cb; background: #35160d; border: 1px solid #8d3518;
   border-radius: 5px; cursor: pointer; font: inherit; font-size: 12.5px;
 }
-.st-farm-open:hover, .st-strat-editor button:hover, .st-strat-saved > button:hover { border-color: #ef5b24; background: #491c0e; }
+.st-farm-open:hover, .st-strat-editor button:hover, .st-strat-saved > button:hover, .st-strat-actions button:hover { border-color: #ef5b24; background: #491c0e; }
+.st-farm-open:disabled { cursor: not-allowed; opacity: .45; }
+.st-watcher-head { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin: 2px 0 14px; }
+.st-watcher-head h2 { margin: 3px 0; color: #f0e3dc; font-size: 24px; font-weight: 500; }
+.st-watcher-head p { margin: 0; color: #a78f84; font-size: 13.5px; }
+.st-watcher-create { display: flex; gap: 10px; align-items: center; }
+.st-watcher-create > span { color: #9c877e; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.st-watcher-empty { padding: 26px 14px; color: #8f786f; background: #100c0a; border: 1px dashed #4d3021; border-radius: 6px; text-align: center; }
+.st-watcher-list { display: grid; gap: 8px; }
 .st-strat-editor {
   margin: 0 0 16px; padding: 12px; background: #120d0b; border: 1px solid #6f321e; border-radius: 7px;
   box-shadow: inset 3px 0 #c94a1e;
@@ -1575,6 +1617,9 @@ const css = `
 .st-strat-move strong { display: flex; gap: 5px; align-items: center; }
 .st-strat-move strong em { color: #ab8f83; font-size: 10.5px; font-style: normal; white-space: nowrap; }
 .st-strat-move .st-pct { margin: 0; }
+.st-strat-actions { display: flex; gap: 5px; }
+.st-strat-actions button { padding: 6px 8px; }
+.st-strat-actions button.danger { color: #d99483; background: #21100d; border-color: #683025; }
 .st-strat-icons { display: flex; gap: 4px; }
 .st-strat-icon {
   position: relative; display: grid; place-items: center; width: 32px; height: 32px;
@@ -1597,7 +1642,7 @@ const css = `
 .st-farms-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-bottom: 24px; }
 @media (max-width: 760px) {
   .st-farms-cols { grid-template-columns: 1fr; }
-  .st-farms-top, .st-strat-editor > header, .st-strat-editor > footer { align-items: stretch; flex-direction: column; }
+  .st-watcher-head, .st-strat-editor > header, .st-strat-editor > footer { align-items: stretch; flex-direction: column; }
   .st-farm-open { align-self: flex-end; }
   .st-strat-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .st-strat-editor header input { width: 100%; min-width: 0; }
@@ -1652,7 +1697,7 @@ const css = `
 }
 .ov-window button.on { color: #fff0e7; background: #7a2a13; }
 .ov-window button:focus-visible, .ov-signal:focus-visible, .ov-feature button:focus-visible,
-.ov-desk button:focus-visible, .ov-attention button:focus-visible { outline: 2px solid #ff6a24; outline-offset: 2px; }
+.ov-desk button:focus-visible, .ov-attention button:focus-visible, .ov-falling-head button:focus-visible { outline: 2px solid #ff6a24; outline-offset: 2px; }
 .ov-briefing { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, .75fr); gap: 8px; }
 .ov-feature {
   min-height: 190px; padding: 14px; border: 1px solid #66301e; border-left: 3px solid #f05a24;
@@ -1691,6 +1736,16 @@ const css = `
 .ov-value { grid-column: 2; grid-row: 1 / 3; color: #dbccc4; font-size: 14px; font-weight: 500; text-align: right; white-space: nowrap; }
 .ov-value.up { color: #69bfa1; }
 .ov-value.down { color: #d47f7f; }
+.ov-falling { margin-top: 8px; padding: 9px; background: #0f0b0a; border: 1px solid #482621; border-radius: 5px; }
+.ov-falling-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 7px; }
+.ov-falling-head > div { display: grid; gap: 2px; }
+.ov-falling-head strong { color: #e2cec6; font-size: 14px; font-weight: 500; }
+.ov-falling-head button {
+  padding: 5px 8px; color: #d99a87; background: #17100d; border: 1px solid #65351f;
+  border-radius: 4px; cursor: pointer; font: inherit; font-size: 11.5px;
+}
+.ov-falling-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.ov-falling > p { margin: 2px 0; color: #8f786f; font-size: 12px; }
 .ov-section-title {
   margin: 13px 0 6px; padding: 0; color: #9e8176; border: 0;
   font-size: 11px; font-weight: 500; letter-spacing: .13em; text-transform: uppercase;
@@ -1729,7 +1784,7 @@ const css = `
 }
 @media (max-width: 680px) {
   .ov-head { align-items: flex-start; flex-direction: column; }
-  .ov-briefing, .ov-desks, .ov-attention { grid-template-columns: 1fr; }
+  .ov-briefing, .ov-desks, .ov-attention, .ov-falling-grid { grid-template-columns: 1fr; }
   .ov-signal-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ov-attention > div, .ov-attention > button { border-right: 0; border-bottom: 1px solid #3a261e; }
   .ov-attention > :last-child { border-bottom: 0; }
@@ -1743,6 +1798,7 @@ const css = `
   .st-strat-saved { grid-template-columns: minmax(0, 1fr) auto; }
   .st-strat-saved-title { grid-column: 1; grid-row: 1; }
   .st-strat-saved > button { grid-column: 2; grid-row: 1; }
+  .st-strat-actions { grid-column: 2; grid-row: 1; }
   .st-strat-icons { grid-column: 1 / -1; grid-row: 2; }
 }
 

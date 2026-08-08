@@ -44,7 +44,7 @@ export default function Overview({
   divineRate,
   fmtPrice,
   movers,
-  customFarm,
+  customFarms,
   activeKey,
   changeKey,
   changeWindow,
@@ -56,6 +56,7 @@ export default function Overview({
 }) {
   const [snapshots, setSnapshots] = useState(null);
   const [selectedSignal, setSelectedSignal] = useState("farms");
+  const [strategyRotation, setStrategyRotation] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +153,33 @@ export default function Overview({
 
   const scarab = movers.rising[0] || movers.falling[0] || null;
   const scarabRising = !!movers.rising[0];
+  const rankedStrategies = useMemo(() => (customFarms || [])
+    .filter((strategy) => strategy.hasItems)
+    .slice()
+    .sort((a, b) => {
+      const av = Number.isFinite(a[activeKey]) ? a[activeKey] : -Infinity;
+      const bv = Number.isFinite(b[activeKey]) ? b[activeKey] : -Infinity;
+      return bv - av;
+    }), [customFarms, activeKey]);
+  const rotatingStrategies = useMemo(() => {
+    const measured = rankedStrategies.filter((strategy) => Number.isFinite(strategy[activeKey]));
+    return (measured.length ? measured : rankedStrategies).slice(0, 3);
+  }, [rankedStrategies, activeKey]);
+  const fallingStrategies = useMemo(() => rankedStrategies
+    .filter((strategy) => Number.isFinite(strategy[activeKey]) && strategy[activeKey] < 0)
+    .slice()
+    .sort((a, b) => a[activeKey] - b[activeKey])
+    .slice(0, 3), [rankedStrategies, activeKey]);
+  const rotationKey = rotatingStrategies.map((strategy) => strategy.id).join("|");
+
+  useEffect(() => {
+    setStrategyRotation(0);
+    if (rotatingStrategies.length < 2) return undefined;
+    const timer = setInterval(() => setStrategyRotation((index) => (index + 1) % rotatingStrategies.length), 5000);
+    return () => clearInterval(timer);
+  }, [rotationKey]);
+
+  const customFarm = rotatingStrategies[strategyRotation % Math.max(1, rotatingStrategies.length)] || null;
   const customChange = customFarm?.[activeKey];
   const customDirection = Number.isFinite(customChange)
     ? customChange > 0 ? "more expensive" : customChange < 0 ? "cheaper" : "unchanged"
@@ -181,17 +209,17 @@ export default function Overview({
       open: () => onOpenTab("farms"),
     },
     customFarm?.hasItems ? {
-      id: "custom-farm",
-      kind: "Your farming strat",
-      status: `${customFarm.scarabs.length}/5 scarabs${customFarm.astrolabe ? " + Astrolabe" : ""}`,
+      id: "watcher",
+      kind: "Strat Watcher",
+      status: `Top ${Math.min(3, rotatingStrategies.length)} · rotates every 5s`,
       title: `${customFarm.name} is ${customDirection}`,
-      value: Number.isFinite(customChange) ? pct(customChange) : "â€”",
+      value: Number.isFinite(customChange) ? pct(customChange) : "—",
       tone: Number.isFinite(customChange) ? (customChange > 0 ? "up" : customChange < 0 ? "down" : "") : "",
       unit: `${changeWindow}${activeKey.endsWith("R") ? " divine-adjusted" : ""} total cost movement`,
-      note: "The total counts every selected slot, including duplicate scarabs. Edit the saved setup in Popular farms whenever your map device changes.",
-      flow: [fmtPrice(customFarm.total, currency, divineRate), `${customFarm.scarabs.length} scarabs${customFarm.astrolabe ? " + Astrolabe" : ""}`, "Saved on this device"],
-      openLabel: "Open farming strat",
-      open: () => onOpenTab("farms"),
+      note: "This rotates through your three strongest saved setups for the selected window. The total counts every slot, including duplicates and the Astrolabe.",
+      flow: [fmtPrice(customFarm.total, currency, divineRate), `${customFarm.scarabs.length} scarabs${customFarm.astrolabe ? " + Astrolabe" : ""}`, `${strategyRotation + 1}/${rotatingStrategies.length}`],
+      openLabel: "Open Strat Watcher",
+      open: () => onOpenTab("watcher"),
     } : null,
     {
       id: "boss",
@@ -304,11 +332,31 @@ export default function Overview({
         </aside>
       </div>
 
+      <section className="ov-falling" aria-label="Worst performing saved strategies">
+        <div className="ov-falling-head">
+          <div><span className="ov-kind">Downward trends</span><strong>Cooling saved strategies</strong></div>
+          <button type="button" onClick={() => onOpenTab("watcher")}>Open Strat Watcher</button>
+        </div>
+        {fallingStrategies.length ? (
+          <div className="ov-falling-grid">
+            {fallingStrategies.map((strategy) => (
+              <button type="button" className="ov-signal" key={strategy.id} onClick={() => onOpenTab("watcher")}>
+                <span className="ov-kind">{changeWindow}{activeKey.endsWith("R") ? " divine-adjusted" : ""}</span>
+                <strong>{strategy.name} is getting cheaper</strong>
+                <span className="ov-value down">{pct(strategy[activeKey])}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p>No measured saved strategy is falling in the selected window.</p>
+        )}
+      </section>
+
       <h3 className="ov-section-title">Three decision desks</h3>
       <div className="ov-desks">
         <section className="ov-desk">
-          <header><h3>{customFarm?.hasItems ? customFarm.name : "Run a scarab strategy"}</h3><em>Popular farms</em></header>
-          <p>{customFarm?.hasItems ? "Your saved map-device cost and current movement." : "Save up to five scarabs and one Astrolabe to follow your own setup."}</p>
+          <header><h3>{customFarm?.hasItems ? customFarm.name : "Watch a farming strategy"}</h3><em>Strat Watcher</em></header>
+          <p>{customFarm?.hasItems ? "Currently rotating through your three strongest saved setups." : "Save up to ten setups of five scarabs and one Astrolabe."}</p>
           <dl>
             {customFarm?.hasItems ? <>
               <div><dt>Current cost</dt><dd>{fmtPrice(customFarm.total, currency, divineRate)}</dd></div>
@@ -320,7 +368,7 @@ export default function Overview({
               <div><dt>Direction</dt><dd>{scarab ? (scarabRising ? "Rising" : "Falling") : "Stable"}</dd></div>
             </>}
           </dl>
-          <button type="button" onClick={() => onOpenTab("farms")}>Open Popular farms</button>
+          <button type="button" onClick={() => onOpenTab("watcher")}>Open Strat Watcher</button>
         </section>
 
         <section className="ov-desk">

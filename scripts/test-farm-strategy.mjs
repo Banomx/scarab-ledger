@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import {
-  FARM_STRATEGY_KEY, computeFarmStrategy, loadFarmStrategy,
-  sanitizeFarmStrategy, saveFarmStrategy,
+  FARM_STRATEGIES_KEY, FARM_STRATEGY_COUNT_LIMIT, FARM_STRATEGY_KEY,
+  computeFarmStrategy, loadFarmStrategies, loadFarmStrategy,
+  sanitizeFarmStrategies, sanitizeFarmStrategy, saveFarmStrategies, saveFarmStrategy,
 } from "../src/farmStrategy.js";
 import { CHANGE_WINDOW_OPTIONS, nearestRateWindow } from "../src/marketWindows.js";
 
@@ -16,13 +17,24 @@ const clean = sanitizeFarmStrategy({
   scarabs: ["A", "A", "B", "C", "D", "E", "F", null],
   astrolabe: "  Templar Astrolabe  ",
 });
-assert.deepEqual(clean, { name: "Harvest loop", scarabs: ["A", "A", "B", "C", "D"], astrolabe: "Templar Astrolabe" });
+assert.deepEqual(clean, { id: "", name: "Harvest loop", scarabs: ["A", "A", "B", "C", "D"], astrolabe: "Templar Astrolabe" });
 assert.deepEqual(sanitizeFarmStrategy({ name: "Legacy", scarabs: ["A"] }),
-  { name: "Legacy", scarabs: ["A"], astrolabe: "" }, "older saved strategies migrate without being lost");
+  { id: "", name: "Legacy", scarabs: ["A"], astrolabe: "" }, "older saved strategies migrate without being lost");
 
 saveFarmStrategy(clean, fakeStorage);
 assert.deepEqual(loadFarmStrategy(fakeStorage), clean);
 assert.ok(storage.has(FARM_STRATEGY_KEY));
+const migrated = loadFarmStrategies(fakeStorage);
+assert.equal(migrated.length, 1, "the old single strategy migrates into Strat Watcher");
+assert.ok(migrated[0].id);
+
+const eleven = Array.from({ length: 11 }, (_, index) => ({ id: index < 2 ? "duplicate" : `id-${index}`, name: `Strat ${index}`, scarabs: ["A"] }));
+const capped = saveFarmStrategies(eleven, fakeStorage);
+assert.equal(capped.length, FARM_STRATEGY_COUNT_LIMIT);
+assert.equal(new Set(capped.map((strategy) => strategy.id)).size, FARM_STRATEGY_COUNT_LIMIT, "strategy ids stay unique");
+assert.ok(storage.has(FARM_STRATEGIES_KEY));
+assert.deepEqual(loadFarmStrategies(fakeStorage), capped);
+assert.equal(sanitizeFarmStrategies("junk").length, 0);
 
 const computed = computeFarmStrategy(clean, [
   { name: "A", chaosValue: 10, change1: 100, change1R: 50 },

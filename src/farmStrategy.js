@@ -1,14 +1,22 @@
 import { CHANGE_KEYS, weightedChange } from "./marketWindows.js";
 
 export const FARM_STRATEGY_KEY = "vaal-street.farmingStrategy.v1";
+export const FARM_STRATEGIES_KEY = "vaal-street.farmingStrategies.v2";
 export const FARM_STRATEGY_LIMIT = 5;
+export const FARM_STRATEGY_COUNT_LIMIT = 10;
+
+export function makeFarmStrategyId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `strat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
 export function defaultFarmStrategy() {
-  return { name: "My farming strat", scarabs: [], astrolabe: "" };
+  return { id: "", name: "My farming strat", scarabs: [], astrolabe: "" };
 }
 
 export function sanitizeFarmStrategy(raw) {
   const fallback = defaultFarmStrategy();
+  const id = typeof raw?.id === "string" ? raw.id.trim().slice(0, 80) : "";
   const name = typeof raw?.name === "string" && raw.name.trim()
     ? raw.name.trim().slice(0, 48)
     : fallback.name;
@@ -19,7 +27,18 @@ export function sanitizeFarmStrategy(raw) {
       .slice(0, FARM_STRATEGY_LIMIT)
     : [];
   const astrolabe = typeof raw?.astrolabe === "string" ? raw.astrolabe.trim() : "";
-  return { name, scarabs, astrolabe };
+  return { id, name, scarabs, astrolabe };
+}
+
+export function sanitizeFarmStrategies(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  return raw.slice(0, FARM_STRATEGY_COUNT_LIMIT).map((value) => {
+    const clean = sanitizeFarmStrategy(value);
+    if (!clean.id || seen.has(clean.id)) clean.id = makeFarmStrategyId();
+    seen.add(clean.id);
+    return clean;
+  });
 }
 
 export function loadFarmStrategy(storage = typeof localStorage !== "undefined" ? localStorage : null) {
@@ -34,6 +53,23 @@ export function loadFarmStrategy(storage = typeof localStorage !== "undefined" ?
 export function saveFarmStrategy(strategy, storage = typeof localStorage !== "undefined" ? localStorage : null) {
   const clean = sanitizeFarmStrategy(strategy);
   if (storage) storage.setItem(FARM_STRATEGY_KEY, JSON.stringify(clean));
+  return clean;
+}
+
+export function loadFarmStrategies(storage = typeof localStorage !== "undefined" ? localStorage : null) {
+  if (!storage) return [];
+  try {
+    const current = JSON.parse(storage.getItem(FARM_STRATEGIES_KEY));
+    if (Array.isArray(current)) return sanitizeFarmStrategies(current);
+  } catch { /* try the legacy single strategy below */ }
+  const legacy = loadFarmStrategy(storage);
+  if (!legacy.scarabs.length && !legacy.astrolabe) return [];
+  return saveFarmStrategies([{ ...legacy, id: makeFarmStrategyId() }], storage);
+}
+
+export function saveFarmStrategies(strategies, storage = typeof localStorage !== "undefined" ? localStorage : null) {
+  const clean = sanitizeFarmStrategies(strategies);
+  if (storage) storage.setItem(FARM_STRATEGIES_KEY, JSON.stringify(clean));
   return clean;
 }
 
