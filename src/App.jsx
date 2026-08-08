@@ -1690,13 +1690,7 @@ const css = `
 .ov-kicker { color: #f15b21; font-size: 11px; font-weight: 500; letter-spacing: .13em; text-transform: uppercase; }
 .ov-head h2 { margin: 3px 0 2px; color: #f0e3dc; font-size: 24px; font-weight: 500; }
 .ov-head p { margin: 0; color: #9f8e86; font-size: 13.5px; }
-.ov-window { display: flex; gap: 2px; padding: 2px; background: #15100d; border: 1px solid #483024; border-radius: 3px; }
-.ov-window button {
-  padding: 5px 8px; color: #a08c82; background: transparent; border: 0; border-radius: 2px;
-  cursor: pointer; font: inherit; font-size: 12px;
-}
-.ov-window button.on { color: #fff0e7; background: #7a2a13; }
-.ov-window button:focus-visible, .ov-signal:focus-visible, .ov-feature button:focus-visible,
+.ov-signal:focus-visible, .ov-feature button:focus-visible,
 .ov-desk button:focus-visible, .ov-attention button:focus-visible { outline: 2px solid #ff6a24; outline-offset: 2px; }
 .ov-briefing { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, .75fr); gap: 8px; }
 .ov-feature {

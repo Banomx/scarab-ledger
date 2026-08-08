@@ -375,7 +375,7 @@ export default function Overview({
           <h2>The daily briefing</h2>
           <p>The same live calculations, organised around what deserves a closer look.</p>
         </div>
-        <div className="ov-window" aria-label="Change window">
+        <div className="st-seg" aria-label="Change window">
           {CHANGE_WINDOW_OPTIONS.map((window) => (
             <button type="button" key={window} className={changeWindow === window ? "on" : ""}
               aria-pressed={changeWindow === window} onClick={() => setChangeWindow(window)}>
