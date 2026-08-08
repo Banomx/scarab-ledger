@@ -6,7 +6,8 @@ The site opens on a compact **Overview** briefing. It reuses the existing scarab
 movement, boss EV, Delve biome and category-price calculations in a selectable
 headline, three decision desks and a small data-quality strip. Every result links
 to the full tool. **Popular farms** keeps the existing mechanic movement layout
-and adds one saved custom setup of up to five scarab slots. Its total cost and
+and adds one saved custom setup of up to five scarabs plus one Astrolabe. Saved
+icons expose their full item names immediately on hover or keyboard focus. Its total cost and
 price movement also appear on Overview; duplicate scarabs count as separate
 map-device slots and the setup stays in this browser.
 Boss price-coverage warnings still open the boss that contains the first gap.

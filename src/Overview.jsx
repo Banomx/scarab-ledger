@@ -180,16 +180,16 @@ export default function Overview({
       openLabel: "Open Popular farms",
       open: () => onOpenTab("farms"),
     },
-    customFarm?.scarabs?.length ? {
+    customFarm?.hasItems ? {
       id: "custom-farm",
       kind: "Your farming strat",
-      status: `${customFarm.scarabs.length}/5 scarab slots`,
+      status: `${customFarm.scarabs.length}/5 scarabs${customFarm.astrolabe ? " + Astrolabe" : ""}`,
       title: `${customFarm.name} is ${customDirection}`,
       value: Number.isFinite(customChange) ? pct(customChange) : "â€”",
       tone: Number.isFinite(customChange) ? (customChange > 0 ? "up" : customChange < 0 ? "down" : "") : "",
       unit: `${changeWindow}${activeKey.endsWith("R") ? " divine-adjusted" : ""} total cost movement`,
       note: "The total counts every selected slot, including duplicate scarabs. Edit the saved setup in Popular farms whenever your map device changes.",
-      flow: [fmtPrice(customFarm.total, currency, divineRate), `${customFarm.scarabs.length} scarabs`, "Saved on this device"],
+      flow: [fmtPrice(customFarm.total, currency, divineRate), `${customFarm.scarabs.length} scarabs${customFarm.astrolabe ? " + Astrolabe" : ""}`, "Saved on this device"],
       openLabel: "Open farming strat",
       open: () => onOpenTab("farms"),
     } : null,
@@ -307,13 +307,13 @@ export default function Overview({
       <h3 className="ov-section-title">Three decision desks</h3>
       <div className="ov-desks">
         <section className="ov-desk">
-          <header><h3>{customFarm?.scarabs?.length ? customFarm.name : "Run a scarab strategy"}</h3><em>Popular farms</em></header>
-          <p>{customFarm?.scarabs?.length ? "Your saved map-device cost and current movement." : "Save up to five scarab slots to follow your own setup."}</p>
+          <header><h3>{customFarm?.hasItems ? customFarm.name : "Run a scarab strategy"}</h3><em>Popular farms</em></header>
+          <p>{customFarm?.hasItems ? "Your saved map-device cost and current movement." : "Save up to five scarabs and one Astrolabe to follow your own setup."}</p>
           <dl>
-            {customFarm?.scarabs?.length ? <>
+            {customFarm?.hasItems ? <>
               <div><dt>Current cost</dt><dd>{fmtPrice(customFarm.total, currency, divineRate)}</dd></div>
               <div><dt>{changeWindow}{activeKey.endsWith("R") ? " divine-adjusted" : ""}</dt><dd>{pct(customChange)}</dd></div>
-              <div><dt>Slots</dt><dd>{customFarm.scarabs.length}/5</dd></div>
+              <div><dt>Setup</dt><dd>{customFarm.scarabs.length}/5 scarabs{customFarm.astrolabe ? " + Astrolabe" : ""}</dd></div>
             </> : <>
               <div><dt>Movement leader</dt><dd>{scarab?.name || "No notable movement"}</dd></div>
               <div><dt>{changeWindow} move</dt><dd>{scarab ? pct(scarab[activeKey]) : "Stable"}</dd></div>

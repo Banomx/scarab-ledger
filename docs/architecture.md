@@ -85,9 +85,9 @@ headline, four core signal selectors, an optional saved-strategy signal, three
 decision desks and a data-quality strip.
 These are alternate presentations of existing results, not new calculations.
 Popular farms remains a dedicated scarab-only view and owns the searchable
-five-slot custom strategy editor. `src/farmStrategy.js` sanitises its
+five-scarab-plus-Astrolabe custom strategy editor. `src/farmStrategy.js` sanitises its
 `vaal-street.farmingStrategy.v1` localStorage record and calculates weighted
-nominal and divine-adjusted movement from the same live scarab rows; Overview
+nominal and divine-adjusted movement from the same live scarab and Astrolabe rows; Overview
 only presents that result. TTK profiles stay
 inside Boss profit and Delve sample profiles stay inside the Delve Assumptions
 panel. Boss summaries and price gaps carry a boss id through `src/App.jsx`, so
