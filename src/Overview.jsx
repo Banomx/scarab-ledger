@@ -391,7 +391,7 @@ export default function Overview({
           activeId={risingSignal.id} onSelect={setSelectedRising} />
       </div>
 
-      <div className="ov-head ov-head-flip">
+      <div className="ov-head ov-head-down">
         <div>
           <div className="ov-kicker">Downward trends</div>
           <h2>What is cooling off</h2>
@@ -399,10 +399,10 @@ export default function Overview({
         </div>
       </div>
 
-      <div className="ov-briefing ov-flip">
+      <div className="ov-briefing ov-down">
+        <Feature signal={fallingSignal} />
         <SignalList label="Downward trends" signals={fallingSignals}
           activeId={fallingSignal.id} onSelect={setSelectedFalling} />
-        <Feature signal={fallingSignal} />
       </div>
 
       <h3 className="ov-section-title">Three decision desks</h3>

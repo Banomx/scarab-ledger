@@ -80,9 +80,10 @@ badged `shared quote` rather than implying variant-level precision.
 `src/App.jsx` owns the shared shell, global market controls and scarab views.
 `src/Overview.jsx` is the default view and reads the same generated snapshots as
 the detailed tools. It calls the pure boss and Delve calculation modules instead
-of maintaining separate estimates. It stacks two briefing panels: an upward one
-with the feature card on the left and the signal selectors on the right, and a
-downward one mirrored on the y axis. Both panels draw the same five desks —
+of maintaining separate estimates. It stacks two briefing panels with the same
+layout — feature card on the left, signal selectors on the right — one reading
+upward and one downward, separated by accent colour rather than by shape so the
+same position means the same thing in both. Both panels draw the same five desks —
 Popular farms, Strat Watcher, Boss profit, Delve and category movers — and each
 desk contributes a signal only while it has an entry for that direction. Three
 decision desks and a data-quality strip follow. These are alternate
